@@ -1,23 +1,25 @@
 # kvendra-skills
 
-> **Pre-launch.** Public skills marketplace for the Kvendra platform.
+**The harness for advanced engineering.**
 
-## What lives here
-
-- Registry metadata for community-contributed skills
-- Versioning + compatibility declarations against Kvendra protocol versions
-- Fork/share/rating mechanics
-- Moderation tooling for the curated community KB
+Public marketplace of typed Kvendra skills. Versioned, forkable, rated. Differs from generic MCP registries: skills here declare typed contracts against the Kvendra knowledge graph.
 
 ## Status
 
-🚧 Building. Not yet usable.
+Pre-alpha. Placeholder repository.
+
+## What will live here
+
+- Registry metadata for community-contributed skills.
+- Versioning and compatibility declarations against Kvendra protocol versions.
+- Fork / share / rating mechanics.
+- Moderation and curation tooling for the community KB.
 
 ## Links
 
+- Site: [kvendra.com](https://kvendra.com)
 - Org: [github.com/KvendraAI](https://github.com/KvendraAI)
-- Web: [kvendra.com](https://kvendra.com)
-- Contact: admin@kvendra.ai
+- Contact: hello@kvendra.ai
 
 ## License
 
