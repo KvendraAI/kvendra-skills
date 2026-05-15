@@ -11,7 +11,7 @@ installable through the native `/plugin` command.
 | `plugins/kvendra-skills/skills/<name>/SKILL.md` | 25 skills: orchestrators (`feature`, `bug`, `incident`, `release`, `regression`), subagents (`planner`, `implementer`, `validator`, `tester`, `updater`, `analyzer`, …), doc + reporting (`manual-writer`, `doc-indexer`, `doc-validator`, `translator`, `changelog`, `to-do`, `to-do-summary`, `user-help`), consultancy (`consultancy`, `requirements-analyst`, `interface-validator`) and environment (`env-check`). |
 | `plugins/kvendra-skills/.claude-plugin/plugin.json` | Plugin manifest (`name`, `description`, `version`, author, repo). |
 | `.claude-plugin/marketplace.json` | Marketplace listing at the repo root — so a user can do `/plugin marketplace add KvendraAI/kvendra-skills` and pick up the plugin via its `./plugins/kvendra-skills` source path. |
-| `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra` HTTP MCP server (`https://api.kvendra.cloud/mcp`). `/plugin install` adds it to the user's `~/.claude.json` automatically. |
+| `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra-cloud` HTTP MCP server (`https://api.kvendra.cloud/mcp`). `/plugin install` adds it to the user's `~/.claude.json` automatically. The server is named `kvendra-cloud` (not `kvendra`) so it does not collide with users who already have the local `kvendra` CLI MCP server registered — Claude Code resolves same-name servers by scope precedence and a Plugin server is eclipsed silently by any Local server with the same name. |
 | `INSTALL.md` | Step-by-step setup (signup → Pro tier → `/plugin marketplace add` → first OAuth dance). |
 
 ## Install

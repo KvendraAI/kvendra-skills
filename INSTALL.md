@@ -43,8 +43,13 @@ In Claude Code:
 The `install` command:
 
 - Drops the 25 skills into `~/.claude/plugins/`.
-- Reads `.mcp.json` and adds the `kvendra` HTTP MCP server entry to
-  `~/.claude.json`.
+- Reads `.mcp.json` and adds the `kvendra-cloud` HTTP MCP server entry
+  to `~/.claude.json`. The server is named `kvendra-cloud` (not
+  `kvendra`) so it does not collide with users who already have a
+  local `kvendra` CLI MCP server registered — Claude Code resolves
+  same-name servers by scope precedence, and a Plugin server is
+  eclipsed silently by any Local server with the same name. Tools
+  appear under the `mcp__kvendra-cloud__*` prefix.
 
 ## 3. First MCP request triggers OAuth
 

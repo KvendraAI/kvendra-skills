@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "kvendra": {
+    "kvendra-cloud": {
       "type": "http",
       "url": "https://api.kvendra.cloud/mcp",
-      "description": "Kvendra hosted KB engine. 14 MCP tools (entity_*, txn_*, whoami, config_get, help). Auth: OAuth 2.1 + PKCE against auth.kvendra.cloud (Cognito Hosted UI). Pro tier required — promote a Free user to Pro with the AWS CLI snippet in docs/SETUP-PRO.md."
+      "description": "Kvendra hosted KB engine. 14 MCP tools (entity_*, txn_*, whoami, config_get, help). Auth: OAuth 2.1 + PKCE against auth.kvendra.cloud (Cognito Hosted UI). Pro tier required — promote a Free user to Pro with the AWS CLI snippet in docs/SETUP-PRO.md. Server name is `kvendra-cloud` (not `kvendra`) to avoid colliding with the local `kvendra` CLI MCP server — Claude Code resolves same-name servers by scope precedence and Local > Plugin, so a same-name plugin server gets eclipsed silently."
     }
   }
 }
