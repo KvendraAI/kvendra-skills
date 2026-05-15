@@ -13,15 +13,20 @@ ships. To get on Pro right now:
    They run:
 
    ```bash
-   aws cognito-idp admin-update-user-attributes \
+   aws cognito-idp admin-add-user-to-group \
      --profile aws_kvendra --region us-east-1 \
      --user-pool-id us-east-1_Bh2YsJNif \
      --username <your-cognito-sub-or-email> \
-     --user-attributes Name=custom:plan,Value=pro
+     --group-name kvendra-pro
    ```
 
-3. Sign out and sign back in so the new `custom:plan=pro` claim lands
-   in your access token.
+   (Tier is encoded as Cognito User Pool group membership — there are
+   `kvendra-pro` / `kvendra-team` / `kvendra-enterprise` groups, and a
+   user with none of them is free. `kvendra-staff` is orthogonal and
+   only gates admin endpoints.)
+
+3. Sign out and sign back in so the new `cognito:groups` claim with
+   `kvendra-pro` lands in your access token.
 
 The dashboard at <https://app.kvendra.cloud/kb/> will start showing the
 overview as soon as the upgrade is live.
