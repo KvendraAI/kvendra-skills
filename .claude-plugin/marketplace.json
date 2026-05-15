@@ -7,12 +7,7 @@
   "plugins": [
     {
       "name": "kvendra-skills",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/KvendraAI/kvendra-skills.git",
-        "path": ".",
-        "ref": "main"
-      },
+      "source": "./plugins/kvendra-skills",
       "description": "Orchestrators + subagents that drive the Kvendra hosted Knowledge engine (api.kvendra.cloud). 25 skills covering feature delivery, bug triage, incident response, release management, requirements analysis, planning, implementation, validation, regression, documentation and consultancy.",
       "version": "0.1.0",
       "category": "knowledge-management",
