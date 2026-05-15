@@ -1,0 +1,24 @@
+{
+  "name": "kvendra-marketplace",
+  "owner": {
+    "name": "Kvendra",
+    "url": "https://kvendra.com"
+  },
+  "plugins": [
+    {
+      "name": "kvendra-skills",
+      "source": ".",
+      "description": "Orchestrators + subagents that drive the Kvendra hosted Knowledge engine (api.kvendra.cloud). 25 skills covering feature delivery, bug triage, incident response, release management, requirements analysis, planning, implementation, validation, regression, documentation and consultancy.",
+      "version": "0.1.0",
+      "category": "knowledge-management",
+      "tags": ["kvendra", "knowledge-base", "orchestration", "kb-engine"],
+      "license": "MIT",
+      "author": {
+        "name": "Kvendra",
+        "url": "https://kvendra.com"
+      },
+      "homepage": "https://github.com/KvendraAI/kvendra-skills",
+      "repository": "https://github.com/KvendraAI/kvendra-skills"
+    }
+  ]
+}
