@@ -24,12 +24,12 @@ Identifica `project_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -53,19 +53,19 @@ Ejemplos:
 
 ### Fuente 1: entity_history (per entity)
 
-`entity_get({ entity_id, include_related: false })` devuelve `history` (últimas 5).
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id, include_related: false })` devuelve `history` (últimas 5).
 
 Si filtramos por entidad concreta, basta con esto. Si filtramos por
-componente o tipo: primero `entity_query({ entity_type, project_id, component_id, order_by: "updated_at_desc" })` y luego `entity_get` por cada uno.
+componente o tipo: primero `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type, project_id, component_id, order_by: "updated_at_desc" })` y luego `entity_get` por cada uno.
 
 ### Fuente 2: entity_changelog (per REL)
 
-Para cada REL del filtro, `entity_get({ entity_id:"REL-..." })` — el server
+Para cada REL del filtro, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-..." })` — el server
 devuelve el changelog asociado en el bundle.
 
 ### Fuente 3: TXN recientes
 
-`entity_query({ entity_type:"TXN", project_id:<PROY>, order_by:"updated_at_desc", limit:10 })`
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TXN", project_id:<PROY>, order_by:"updated_at_desc", limit:10 })`
 
 → pasos completados / cancelados, pipelines, tiempos.
 

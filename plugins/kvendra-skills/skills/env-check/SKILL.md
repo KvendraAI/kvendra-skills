@@ -50,7 +50,7 @@ Code.
 Ejecutar un read real:
 
 ```
-entity_query({ entity_type:"PRJ", limit: 5 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"PRJ", limit: 5 })
 ```
 
 **Si funciona:** mostrar los proyectos.
@@ -72,7 +72,7 @@ Verificar bloque:
 - Sugerir `/onboard-project <nombre>` o añadirlo manual.
 
 **Si tiene:**
-- `entity_get({ entity_id:"PRJ-<valor>" })`.
+- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<valor>" })`.
 - Si NOT_FOUND → proyecto no en Kvendra, sugerir `/onboard-project`.
 
 ### 5. Skills v3 disponibles

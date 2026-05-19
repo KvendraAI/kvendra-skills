@@ -23,12 +23,12 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -45,7 +45,7 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 6. Llamar:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",   // opcional
@@ -64,7 +64,7 @@ entity_create({
 ### UPDATE — Actualizar ISSUE
 
 ```
-entity_update({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   entity_id: "ISSUE-<PROY>-<COMP>-<NN>",
   content: <opcional>,
   tags_add: ["status:in-progress"],     // si cambia estado
@@ -78,19 +78,19 @@ Si tiene REL activa, el server pobla `entity_changelog` automáticamente.
 
 ### CLOSE — Cerrar ISSUE
 
-1. Leer ISSUE: `entity_get({ entity_id })`.
+1. Leer ISSUE: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
 2. Cambiar status según tipo:
    - bug: `closed`
    - task: `done`
    - incident: `postmortem-done`
 3. Si es bug: verificar que existe TEST regression-case que lo cubre
-   (`entity_query({ entity_type:"TEST", tags_all:["type:regression-case", "ISSUE-..."] })`).
+   (`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", tags_all:["type:regression-case", "ISSUE-..."] })`).
 4. `entity_update` con tags actualizados y `change_summary`.
 
 ### LIST — Listar ISSUEs
 
 ```
-entity_query({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
   entity_type: "ISSUE",
   project_id: "<PROY>",
   component_id: "<si filtra>",

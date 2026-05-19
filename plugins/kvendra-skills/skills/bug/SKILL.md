@@ -27,19 +27,19 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ### Check interrupted
 
 ```
-txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
 ```
 
 Si hay TXN in-progress:
@@ -53,7 +53,7 @@ Si hay TXN in-progress:
 ### Crear TXN
 
 ```
-txn_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "bug",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",
@@ -92,7 +92,7 @@ Para cada FASE:
 5. Informa progreso al usuario.
 
 Si una fase falla:
-- `txn_cancel({ txn_id, reason, updated_by })`.
+- `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel({ txn_id, reason, updated_by })`.
 - Drafts → cancelled automáticamente.
 - Informa al usuario.
 
@@ -139,7 +139,7 @@ orquestador.)
 
 ### 5b — Crear ISSUEs por bug encontrado (drafts en el TXN)
 
-Para cada bug confirmado, `entity_create({ entity_type:"ISSUE", ..., txn_id })`. Lo emite el server con id auto.
+Para cada bug confirmado, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ..., txn_id })`. Lo emite el server con id auto.
 
 ## FASE 6 — Actualización del KB + Activación TXN
 
@@ -153,7 +153,7 @@ updater aplica:
 ### Activar TXN
 
 ```
-txn_activate({ txn_id, updated_by:"skill:bug" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:bug" })
 ```
 
 Drafts → terminal automáticamente. El server pobla `entity_changelog` por
@@ -164,7 +164,7 @@ cada entidad activada que tenga REL activa.
 ## FASE 7 — Crear tareas pendientes (condicional)
 
 Si hay bugs bloqueados (3 iteraciones sin éxito) o trabajo pendiente:
-`entity_create({ entity_type:"ISSUE", ... })` con `status:open` o
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ... })` con `status:open` o
 `status:blocked`. NOTA: estos ISSUE se crean sin TXN porque la TXN del
 pipeline ya se activó. Crearlos AHORA significa que nacen `active`.
 

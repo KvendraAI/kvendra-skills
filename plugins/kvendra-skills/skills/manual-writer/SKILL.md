@@ -28,12 +28,12 @@ Identifica `project_id` desde el `CLAUDE.md` del directorio actual.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -42,10 +42,10 @@ Identifica `project_id` desde el `CLAUDE.md` del directorio actual.
 Carga del Kvendra:
 
 - **Funcional / arquitectura**:
-  `entity_search({ query:<tema>, entity_type:"REQ", project_id:<PROY> })`
-  `entity_search({ query:<tema>, entity_type:"CMP", project_id:<PROY> })`
+  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"REQ", project_id:<PROY> })`
+  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"CMP", project_id:<PROY> })`
 - **UX (si manual de usuario)**:
-  `entity_search({ query:<tema>, entity_type:"UX", project_id:<PROY> })`
+  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"UX", project_id:<PROY> })`
 
 ---
 
@@ -56,13 +56,13 @@ Este paso es **CRÍTICO**. Carga toda la documentación ya escrita.
 ### 2.1 — Documentación relacionada con el tema (cross-project)
 
 ```
-entity_search({ query:<tema del manual>, entity_type:"DOC", limit:20 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema del manual>, entity_type:"DOC", limit:20 })
 ```
 
 ### 2.2 — Toda la documentación del proyecto actual
 
 ```
-entity_query({ entity_type:"DOC", project_id:<PROY>, limit:100 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROY>, limit:100 })
 ```
 
 ### 2.3 — Documentación del doc-portal (si existe)
@@ -70,7 +70,7 @@ entity_query({ entity_type:"DOC", project_id:<PROY>, limit:100 })
 ```
 # TODO: project_id del doc-portal aún no formalizado en Kvendra.
 # Sustituir <DOC-PROJECT> por el id real cuando se cree PRJ-* del portal.
-entity_query({ entity_type:"DOC", project_id:<DOC-PROJECT>, limit:100 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<DOC-PROJECT>, limit:100 })
 ```
 
 ### 2.4 — BRIEF DE CONSISTENCIA
@@ -221,7 +221,7 @@ El doc-portal usa **auto-discovery** vía `scripts/build-registry.js`.
 ## Paso 6 — Capturar screenshots (si aplica)
 
 Usa **Playwright MCP**. Carga credenciales del KB:
-`entity_query({ entity_type:"ENV", project_id:<PROY>, tags_all:["env:dev"] })`
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ENV", project_id:<PROY>, tags_all:["env:dev"] })`
 
 ### Protocolo
 
@@ -360,7 +360,7 @@ Antes de redactar cada sección, consulta el **BRIEF DE CONSISTENCIA**:
 ### Verificación por sección
 
 ```
-entity_search({ query:<tema sección>, entity_type:"DOC", limit:10 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema sección>, entity_type:"DOC", limit:10 })
 ```
 
 Si encuentras DOC que cubre el mismo tema:

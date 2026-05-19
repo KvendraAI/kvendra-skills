@@ -25,33 +25,33 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md` o args.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ## Paso 1 — Cargar REG suite
 
 1. **REG del componente:**
-   `entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
 
    Si se especifica un REG ID concreto:
-   `entity_get({ entity_id:"REG-<PROY>-<COMP>-<SEQ>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REG-<PROY>-<COMP>-<SEQ>" })`
 
 2. Si no existe REG → informar y preguntar si crear una.
 
 3. **Tests incluidos (vía `entity_related` o relations_outbound `part_of`):**
-   Para cada `test_id` referenciado: `entity_get({ entity_id })`.
+   Para cada `test_id` referenciado: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
 
 4. **SLA targets:**
-   `entity_query({ entity_type:"SLA", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
 
 5. **REL activa (asociar resultados):**
-   `entity_query({ entity_type:"REL", project_id:<PROY>, tags_all:["status:planning"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, tags_all:["status:planning"] })`
 
 ## Paso 2 — Verificar precondiciones
 
@@ -71,7 +71,7 @@ Reglas:
 4. **Smoke gate**: si test order:1 (smoke) falla, ABORTAR la suite.
 
 Para cada test:
-1. `entity_get({ entity_id:"TEST-..." })` — leer entrada completa.
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"TEST-..." })` — leer entrada completa.
 2. Verificar precondiciones del test.
 3. Ejecutar pasos según el proceso definido.
 4. Evaluar cada validación.
@@ -94,7 +94,7 @@ Comparar contra SLA si disponible:
 Crear entry RUN (no embedding por defecto):
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "RUN",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",
@@ -123,7 +123,7 @@ entity_create({
 Para cada test blocking que falló:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",

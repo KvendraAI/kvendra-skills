@@ -26,12 +26,12 @@ Identifica `project_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -59,14 +59,14 @@ Para cada `.md`:
 
 ## Paso 3 — Verificar entries existentes
 
-Antes de crear: `entity_search({ query:<título sección>, entity_type:"DOC", project_id:<PROY>, limit:5 })`.
+Antes de crear: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<título sección>, entity_type:"DOC", project_id:<PROY>, limit:5 })`.
 
 Si encuentras una DOC con el mismo `file_path` en metadata → `entity_update`. Si no, `entity_create`.
 
 ## Paso 4 — Crear/actualizar entries DOC
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "DOC",
   project_id: <PROY>,
   title: "DOC-<manual_id>-<NN>: <título sección>",

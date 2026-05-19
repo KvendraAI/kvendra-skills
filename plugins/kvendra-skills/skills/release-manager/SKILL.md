@@ -24,12 +24,12 @@ Identifica `project_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -53,14 +53,14 @@ con `INTEGRITY` + constraint `entities_entity_id_format`.
 ### CREATE — Crear nueva release
 
 1. Determinar versión (SemVer): leer última REL para calcular siguiente:
-   `entity_query({ entity_type:"REL", project_id:<PROY>, order_by:"updated_at_desc", limit:5 })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, order_by:"updated_at_desc", limit:5 })`
 2. Tipo: major | minor | patch | hotfix.
 3. Si hotfix de componente: `REL-<PROY>-<COMP>-<VER>`.
 4. Si release de proyecto: `REL-<PROY>-<VER>`.
 5. Validar el id contra regex de ADR-JRV-008. Si OK, crear:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REL",
   project_id: "<PROY>",
   component_id: "<si hotfix de componente>",
@@ -75,10 +75,10 @@ entity_create({
 
 ### STATUS — Ver estado de una release
 
-1. `entity_get({ entity_id:"REL-<PROY>-<VER>" })`.
-2. Listar ISSUEs incluidos: `entity_query({ entity_type:"ISSUE", project_id:<PROY>, tags_all:["REL-<PROY>-<VER>"] })`.
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-<PROY>-<VER>" })`.
+2. Listar ISSUEs incluidos: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ISSUE", project_id:<PROY>, tags_all:["REL-<PROY>-<VER>"] })`.
 3. Verificar regression gates: para cada componente con ISSUE en la REL,
-   `entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`.
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`.
 4. Mostrar changelog (viene en `entity_get` automáticamente — el server pobla
    `entity_changelog` cuando hay REL activa).
 5. Mostrar bloqueadores: ISSUEs con `relations_outbound: blocks → REL-<PROY>-<VER>`.
@@ -89,7 +89,7 @@ entity_create({
 2. Verificar que el ISSUE existe y está en status adecuado (`entity_get`).
 3. Añadir relación `part_of` desde ISSUE a REL:
    ```
-   entity_update({
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
      entity_id: "ISSUE-<PROY>-<COMP>-<NN>",
      relations_add: [{ type:"part_of", target:"REL-<PROY>-<VER>" }],
      tags_add: ["REL-<PROY>-<VER>"],
@@ -103,7 +103,7 @@ entity_create({
 ### GATE-CHECK — Verificar regression gates
 
 Para cada componente incluido:
-1. `entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`.
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`.
 2. Verificar última ejecución (en `metadata.execution_history` o leer la
    última RUN asociada vía `entity_related`).
 3. Resultado por componente: PASS / BLOCKED (listar bugs) / PENDING.
@@ -116,7 +116,7 @@ Prerrequisitos:
 2. Todos los ISSUEs incluidos cerrados.
 
 Proceso:
-1. `entity_update({ entity_id:"REL-<PROY>-<VER>", status:"closed", change_summary:"Release cerrada", updated_by })`. (REL admite cambio de status directo via update porque NO está en TXN.)
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROY>-<VER>", status:"closed", change_summary:"Release cerrada", updated_by })`. (REL admite cambio de status directo via update porque NO está en TXN.)
 2. **Congelar changelog**: `entity_update` con `metadata.frozen: true` (server respeta `frozen` en `entity_changelog` para evitar edits posteriores).
 3. Para cada ISSUE incluido con status `done`/`closed`: verificar que tiene TEST regression-case.
 4. Actualizar ROAD si alguno se completó: `entity_update` sobre el ROAD con `status:done`.

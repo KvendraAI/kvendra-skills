@@ -26,12 +26,12 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -48,7 +48,7 @@ Del resumen recibido, extrae:
 ## Paso 2 — Verificar coherencia
 
 Para cada entidad mencionada:
-1. **Existe**: `entity_get({ entity_id })`. Si NOT_FOUND → reportar.
+1. **Existe**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`. Si NOT_FOUND → reportar.
 2. **Targets de relaciones existen** (mismo check).
 3. **Naming**: campos nuevos siguen GLO (ver interface-validator).
 
@@ -59,7 +59,7 @@ Para cada entidad mencionada:
 Para cada relación identificada, `entity_update` con `relations_add`:
 
 ```
-entity_update({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   entity_id: "<source>",
   relations_add: [{ type: "implements", target: "<target>" }],
   change_summary: "Añadida relación implements → <target> (TXN-...)",
@@ -73,12 +73,12 @@ existe, no se duplica.
 ### 3b — Changelog de REL activa
 
 ```
-entity_query({ entity_type:"REL", project_id:<PROY>, tags_all:["status:planning"] })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, tags_all:["status:planning"] })
 # o status:in-progress
 ```
 
 Para cada cambio relevante, leer la REL, añadir entrada en su sección de
-changelog vía `entity_update({ content, change_summary, ... })`.
+changelog vía `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ content, change_summary, ... })`.
 
 (Nota: el server también puebla `entity_changelog` table automáticamente
 para cada update mientras hay REL activa — la actualización del cuerpo
@@ -93,13 +93,13 @@ Si se implementó un REQ nuevo:
 ### 3d — REG suites
 
 Si se crearon TEST de tipo regression-case:
-- Buscar REG del componente: `entity_query({ entity_type:"REG", project_id:<PROY>, component_id:<PROY>-<COMP> })`
+- Buscar REG del componente: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:<PROY>-<COMP> })`
 - Añadir TEST IDs a la suite vía `update_entity` (content + relations_add: `{type:"part_of", target:"REG-..."}` desde el TEST).
 
 ### 3e — PAT (lecciones aprendidas)
 
 Si un bug tiene una lección generalizable:
-- `entity_create({ entity_type:"PAT", project_id:<PROY>, title:"PAT-<PROY>-<SEQ>: <lección>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
+- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROY>, title:"PAT-<PROY>-<SEQ>: <lección>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
 
 ## Paso 4 — Verificación final
 

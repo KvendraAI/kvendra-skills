@@ -26,35 +26,35 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ## Paso 1 — Cargar contexto del Kvendra
 
 1. **Definición del componente:**
-   `entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
    → tech_stack, standards, fulfills, interfaces_defined/consumed, deploy.
 
 2. **Playbook técnico (referenciado en CMP.standards):**
-   `entity_get({ entity_id:"STD-<PROY>-<NN>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"STD-<PROY>-<NN>" })`
    → patrones obligatorios, anti-patrones, handler pattern, testing.
 
 3. **Interfaces del componente:**
-   `entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
    → contratos con field names canónicos, tipos, dirección.
 
 4. **Glosario de dominio:**
-   `entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
    → naming canónico (camelCase, snake_case, never_use).
 
 5. **ADRs del componente** (si afecta a arquitectura):
-   `entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
    → decisiones vigentes que NO deben contradecirse.
 
 ## Paso 2 — Verificación pre-implementación

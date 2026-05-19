@@ -26,12 +26,12 @@ Identifica `component_id` si los cambios son específicos de un componente.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -40,13 +40,13 @@ Identifica `component_id` si los cambios son específicos de un componente.
 Carga del Kvendra:
 
 1. **Componente (paths, deploy, observabilidad):**
-   `entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
 
 2. **Bugs activos (para no confundir con regresiones):**
-   `entity_search({ query:<área de los cambios>, entity_type:"ISSUE", project_id:<PROY>, tags_all:["status:open"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<área de los cambios>, entity_type:"ISSUE", project_id:<PROY>, tags_all:["status:open"] })`
 
 3. **Tests existentes del componente** (referencia de protocolos):
-   `entity_query({ entity_type:"TEST", project_id:<PROY>, component_id:<PROY>-<COMP> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROY>, component_id:<PROY>-<COMP> })`
 
 ## Paso 2 — Determinar nivel
 

@@ -25,35 +25,35 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ## Paso 1 — Cargar contexto del Kvendra
 
 1. **CMP del componente:**
-   `entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
 
 2. **IFs (verificar naming en tests):**
-   `entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
 
 3. **REQ que validamos** (si se indica):
-   `entity_get({ entity_id:"REQ-<PROY>-<NN>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REQ-<PROY>-<NN>" })`
 
 4. **ISSUE bug que cubrimos** (si es regression-case):
-   `entity_get({ entity_id:"ISSUE-<PROY>-<COMP>-<NN>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"ISSUE-<PROY>-<COMP>-<NN>" })`
 
 5. **Tests existentes** (evitar duplicados — el server avisa por
    `check_duplicates` automáticamente, pero también podemos ver):
-   `entity_query({ entity_type:"TEST", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
 
 6. **SLA targets** (para tests de performance):
-   `entity_query({ entity_type:"SLA", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
 
 ## Paso 2 — Diseñar TEST
 
@@ -91,7 +91,7 @@ Diseñar la estructura:
 ## Paso 4 — Persistir TEST en Kvendra
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "TEST",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",

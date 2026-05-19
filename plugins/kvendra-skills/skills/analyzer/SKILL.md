@@ -26,31 +26,31 @@ Identifica `component_id` cuando el bug afecte a un componente concreto.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ## Paso 1 — Cargar contexto del Kvendra
 
 1. **ISSUE activos relacionados (no confundir con bugs ya conocidos):**
-   `entity_search({ query:<área del bug>, entity_type:"ISSUE", project_id:<PROY>, tags_all:["status:open"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<área del bug>, entity_type:"ISSUE", project_id:<PROY>, tags_all:["status:open"] })`
 
 2. **PAT — patrones de bugs / anti-patrones aplicables:**
-   `entity_search({ query:<descripción del bug>, entity_type:"PAT", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<descripción del bug>, entity_type:"PAT", project_id:<PROY> })`
 
 3. **CMP — paths del componente:**
-   `entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
 
 4. **STD — playbook técnico vigente** (referenciado desde CMP.standards):
-   `entity_get({ entity_id:"STD-<PROY>-<NN>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"STD-<PROY>-<NN>" })`
 
 5. **UX — si el bug tiene componente UI:**
-   `entity_search({ query:<área UI>, entity_type:"UX", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<área UI>, entity_type:"UX", project_id:<PROY> })`
 
 ## Paso 2 — Análisis
 

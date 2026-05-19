@@ -27,19 +27,19 @@ Identifica `project_id` y `component_id`(s) desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ### Check interrupted
 
 ```
-txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
 ```
 
 Si TXN in-progress: Retomar / Cancelar / Ignorar.
@@ -47,7 +47,7 @@ Si TXN in-progress: Retomar / Cancelar / Ignorar.
 ### Crear TXN
 
 ```
-txn_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "new-feature",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",
@@ -150,7 +150,7 @@ Nivel auto (basico|profesional|exhaustivo). Lanza `validator`. Bucle max
 ### 5b — Crear ISSUE type:task (draft del TXN)
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: <PROY>,
   component_id: "<PROY>-<COMP>",
@@ -180,7 +180,7 @@ updater:
 ### Activar TXN
 
 ```
-txn_activate({ txn_id, updated_by:"skill:new-feature" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:new-feature" })
 ```
 
 Drafts → terminal.

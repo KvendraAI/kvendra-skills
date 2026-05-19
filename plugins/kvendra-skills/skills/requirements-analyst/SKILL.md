@@ -25,12 +25,12 @@ Identifica `project_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -38,19 +38,19 @@ Identifica `project_id` desde el `CLAUDE.md`.
 
 1. **REQs existentes (verificar duplicados — además, el server hará
    check_duplicates automático en el create):**
-   `entity_search({ query:<requisito>, entity_type:"REQ", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<requisito>, entity_type:"REQ", project_id:<PROY> })`
 
 2. **ROAD (alineamiento / conflictos):**
-   `entity_query({ entity_type:"ROAD", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROY> })`
 
 3. **CMPs (componentes afectados):**
-   `entity_query({ entity_type:"CMP", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY> })`
 
 4. **IFs (impacto en interfaces):**
-   `entity_search({ query:<área>, entity_type:"IF", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<área>, entity_type:"IF", project_id:<PROY> })`
 
 5. **ADRs (compatibilidad):**
-   `entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
 
 ## Paso 2 — Análisis
 
@@ -66,7 +66,7 @@ Identifica `project_id` desde el `CLAUDE.md`.
 Si nuevo y aprobado por el usuario:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REQ",
   project_id: "<PROY>",
   title: "REQ-<PROY>-<auto>: <título>",

@@ -24,34 +24,34 @@ Identifica `project_id` y `component_id`(s) afectados desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
 ## Paso 1 — Contexto estratégico
 
 1. **REQs existentes:**
-   `entity_search({ query:<feature>, entity_type:"REQ", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<feature>, entity_type:"REQ", project_id:<PROY> })`
 
 2. **ROAD (CRÍTICO — verificar conflictos):**
-   `entity_query({ entity_type:"ROAD", project_id:<PROY>, tags_any:["status:planned","status:in-progress"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROY>, tags_any:["status:planned","status:in-progress"] })`
    → Si algún ROAD afecta los componentes de esta feature, REPORTAR el conflicto.
 
 3. **ADRs vigentes:**
-   `entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
    → Si la feature requiere contradecir una ADR, proponer nueva ADR.
 
 4. **SLAs:**
-   `entity_query({ entity_type:"SLA", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY> })`
    → La feature no debe degradar los SLA targets.
 
 5. **Costes:**
-   `entity_query({ entity_type:"COST", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROY> })`
    → Estimar impacto. Presentar análisis ANTES de comprometer arquitectura.
 
 ## Paso 2 — Contexto técnico
@@ -59,16 +59,16 @@ Identifica `project_id` y `component_id`(s) afectados desde el `CLAUDE.md`.
 Para cada componente afectado:
 
 1. **CMP:**
-   `entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
 
 2. **IFs:**
-   `entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
 
 3. **GLO:**
-   `entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
 
 4. **STD playbook (referenciado en CMP.standards):**
-   `entity_get({ entity_id:"STD-<PROY>-<NN>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"STD-<PROY>-<NN>" })`
 
 ## Paso 3 — Explorar código relevante
 

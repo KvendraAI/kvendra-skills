@@ -27,12 +27,12 @@ Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -43,8 +43,8 @@ búsqueda semántica encuentre incidentes pasados, este skill crea ISSUE
 con `generate_embedding: true`. Es la excepción justificada al opt-out.
 
 ```
-entity_search({ query:<descripción del problema>, entity_type:"ISSUE", project_id:<PROY>, limit:5 })
-entity_search({ query:<componente o síntoma>, entity_type:"RUN", project_id:<PROY>, limit:3 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<descripción del problema>, entity_type:"ISSUE", project_id:<PROY>, limit:5 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<componente o síntoma>, entity_type:"RUN", project_id:<PROY>, limit:3 })
 ```
 
 Si hay un RUN que cubre este escenario → mostrar como guía de resolución.
@@ -53,12 +53,12 @@ Si hay incidente pasado similar → mostrar para contexto.
 ## Paso 2 — Abrir TXN del incidente
 
 ```
-txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
 # si hay TXN in-progress: Retomar / Cancelar / Ignorar
 ```
 
 ```
-txn_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "incident",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",
@@ -77,7 +77,7 @@ Captura `txn_id`.
 ## Paso 3 — Crear ISSUE type:incident
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",
@@ -154,7 +154,7 @@ Conforme avanza, `entity_update` con tags actualizados y `change_summary`:
 Si no existe runbook que cubra este escenario:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "RUN",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",
@@ -173,7 +173,7 @@ entity_create({
 Si revela necesidad de mejora (alerting, monitoring, redundancia):
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REQ",
   project_id: "<PROY>",
   title: "REQ-<PROY>-<auto>: <mejora>",
@@ -191,7 +191,7 @@ entity_create({
 Si hay lección generalizable:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "PAT",
   project_id: "<PROY>",
   title: "PAT-<PROY>-<auto>: <lección>",
@@ -207,7 +207,7 @@ entity_create({
 ## Paso 6 — Cerrar TXN
 
 ```
-txn_activate({ txn_id, updated_by:"skill:incident-manager" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:incident-manager" })
 ```
 
 Las entidades pasan de `draft` a `active`/`postmortem-done` según corresponda.

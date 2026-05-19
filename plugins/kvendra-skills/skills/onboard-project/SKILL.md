@@ -26,12 +26,12 @@ nuevo, `project_id` lo provee el usuario en args.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -53,7 +53,7 @@ nuevo, `project_id` lo provee el usuario en args.
 ## Paso 3 — Verificar contra GLO
 
 ```
-entity_query({ entity_type:"GLO", project_id:<PROY> })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY> })
 ```
 
 - Si proyecto nuevo: crear `GLO-<PROY>-001` con términos de dominio
@@ -64,8 +64,8 @@ entity_query({ entity_type:"GLO", project_id:<PROY> })
 ## Paso 4 — Abrir TXN
 
 ```
-txn_check_interrupted({ project_id:<PROY> })
-txn_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY> })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "onboarding",
   project_id: "<PROY>",
   component_id: "<PROY>-<COMP>",       // si componente
@@ -83,13 +83,13 @@ txn_create({
 
 ### Para proyecto nuevo
 
-1. **PRJ-<PROY>**: `entity_create({ entity_type:"PRJ", project_id:<PROY>, force_id:"PRJ-<PROY>", title, content, txn_id, updated_by })`. PRJ usa `force_id` (no counter).
+1. **PRJ-<PROY>**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PRJ", project_id:<PROY>, force_id:"PRJ-<PROY>", title, content, txn_id, updated_by })`. PRJ usa `force_id` (no counter).
 
 2. **GLO-<PROY>-001**: con domain-terms y component-codes.
    `force_id:"GLO-<PROY>-001"`.
 
 3. **ENV-<PROY>-<auto>**: entornos del proyecto (dev/test/prod).
-   `entity_create({ entity_type:"ENV", ... })`.
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ENV", ... })`.
 
 4. **REL-<PROY>-0.1.0**: baseline (status:planning).
    `force_id:"REL-<PROY>-0.1.0"` (validado contra regex ADR-JRV-008).
@@ -100,7 +100,7 @@ txn_create({
 
 1. **CMP-<PROY>-<COMP>** (force_id: `"CMP-<PROY>-<COMP>"`):
    ```
-   entity_create({
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
      entity_type: "CMP",
      project_id: "<PROY>",
      component_id: "<PROY>-<COMP>",
@@ -123,7 +123,7 @@ txn_create({
 
 2. **IF-<PROY>-<COMP>-<NNN>** para cada interface identificada:
    ```
-   entity_create({
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
      entity_type: "IF",
      project_id: "<PROY>",
      component_id: "<PROY>-<COMP>",
@@ -147,12 +147,12 @@ Verificar perfil de componente (component_type → entidades obligatorias):
 
 Si todo OK:
 ```
-txn_activate({ txn_id, updated_by:"skill:onboard-project" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:onboard-project" })
 ```
 
 Si fallo o usuario cancela:
 ```
-txn_cancel({ txn_id, reason:"<motivo>", updated_by })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel({ txn_id, reason:"<motivo>", updated_by })
 ```
 
 ## Output

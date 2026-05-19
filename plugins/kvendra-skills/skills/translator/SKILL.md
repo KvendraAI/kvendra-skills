@@ -30,12 +30,12 @@ Identifica `project_id` desde el `CLAUDE.md`.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -94,19 +94,19 @@ secciones, sobrescribir o solo crear las que faltan.
 ### 2.1 — DOC del proyecto
 
 ```
-entity_query({ entity_type:"DOC", project_id:<PROY>, limit:50 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROY>, limit:50 })
 ```
 
 ### 2.2 — DOC cross-project (terminología compartida)
 
 ```
-entity_search({ query:"translation glossary terminology", entity_type:"DOC", limit:20 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:"translation glossary terminology", entity_type:"DOC", limit:20 })
 ```
 
 ### 2.3 — GLO de dominio
 
 ```
-entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })
 ```
 
 ### 2.4 — Traducciones previas del mismo manual
@@ -330,13 +330,13 @@ VERIFICACION — {locale}:
 
 Buscar entry DOC sobre i18n del manual:
 ```
-entity_search({ query:"i18n {manual-id} traducciones", entity_type:"DOC", project_id:<PROY> })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:"i18n {manual-id} traducciones", entity_type:"DOC", project_id:<PROY> })
 ```
 
 Si existe, `entity_update` (con `change_summary`). Si no:
 
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "DOC",
   project_id: <PROY>,
   title: "DOC-{manual-id}-i18n: Estado de traducciones",

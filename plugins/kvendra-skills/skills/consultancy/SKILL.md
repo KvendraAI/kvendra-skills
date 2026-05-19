@@ -29,12 +29,12 @@ Si el tema es cross-project, trabaja sin componente.
 - Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
   `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
 - Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `txn_cancel(reason)` (fallo).
+  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
   Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `txn_check_interrupted(project_id, component_id?)`.
+- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
 - IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `help({topic})`. Topics:
+- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
@@ -42,27 +42,27 @@ Si el tema es cross-project, trabaja sin componente.
 
 Carga progresivamente según relevancia:
 
-1. **PRJ**: `entity_get({ entity_id:"PRJ-<PROY>" })`
+1. **PRJ**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<PROY>" })`
 2. **ROAD (visión estratégica):**
-   `entity_query({ entity_type:"ROAD", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROY> })`
 3. **REQs relacionados:**
-   `entity_search({ query:<tema>, entity_type:"REQ", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"REQ", project_id:<PROY> })`
 4. **ADRs (decisiones vigentes):**
-   `entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
 5. **CMPs afectados:**
-   `entity_search({ query:<tema>, entity_type:"CMP", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"CMP", project_id:<PROY> })`
 6. **IFs (si tema afecta a comunicación):**
-   `entity_search({ query:<tema>, entity_type:"IF", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"IF", project_id:<PROY> })`
 7. **PATs (precedentes):**
-   `entity_search({ query:<tema>, entity_type:"PAT", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"PAT", project_id:<PROY> })`
 8. **ISSUEs existentes (trabajo previo):**
-   `entity_search({ query:<tema>, entity_type:"ISSUE", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ISSUE", project_id:<PROY> })`
 9. **SLAs (si afecta rendimiento):**
-   `entity_query({ entity_type:"SLA", project_id:<PROY> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY> })`
 10. **COST (si tiene impacto económico):**
-    `entity_query({ entity_type:"COST", project_id:<PROY> })`
+    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROY> })`
 11. **GLO:**
-    `entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
+    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
 
 ## Paso 2 — Investigar
 
@@ -150,7 +150,7 @@ Skill(skill="kvendra-skills:requirements-analyst", args="<requisito>")
 ### ROAD item:
 Crear ROAD entry directamente en Kvendra:
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ROAD",
   project_id: <PROY>,
   title: "ROAD-<PROY>-<auto>: <título>",
@@ -163,7 +163,7 @@ entity_create({
 
 ### Guardar como PAT:
 ```
-entity_create({
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "PAT",
   project_id: <PROY>,
   title: "PAT-<PROY>-<auto>: <lección>",
@@ -192,15 +192,15 @@ las opciones 2/3 (pipelines) o 1 (ISSUE).
    sin al menos UNA de estas tres acciones, en este orden de preferencia:
 
    a. **Changelog en la REL activa** (si existe):
-      Buscar REL: `entity_query({ entity_type:"REL", project_id:<PROY>, tags_any:["status:planning","status:in-progress"] })`.
-      `entity_update({ entity_id:"REL-<PROY>-<VER>", content:<actualizado>, change_summary:"<cambio>", trigger:"consultancy", updated_by:"skill:consultancy" })`.
+      Buscar REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, tags_any:["status:planning","status:in-progress"] })`.
+      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROY>-<VER>", content:<actualizado>, change_summary:"<cambio>", trigger:"consultancy", updated_by:"skill:consultancy" })`.
       El server pobla `entity_changelog` automáticamente.
 
    b. **ISSUE retrospectivo** (`type: task, status: done`):
       `Skill(skill="kvendra-skills:to-do", args="create <descripción> --type=task --status=done")`
 
    c. **PAT** si reveló una lección útil:
-      `entity_create({ entity_type:"PAT", ... })` (ver patrón arriba).
+      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", ... })` (ver patrón arriba).
 
 4. **Confirmar al usuario** qué se persistió (mostrar IDs creados/modificados).
    Sin este paso el flujo se considera incompleto.
