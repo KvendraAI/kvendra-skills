@@ -1,151 +1,148 @@
 ---
 name: to-do
-description: Gestor de tareas v3 — crea y gestiona ISSUEs en Kvendra con nomenclatura, relaciones y trazabilidad
+description: Task manager — creates and manages ISSUE entities in the Kvendra KB with canonical naming, relations and traceability
 user_invocable: true
-args: "[acción: create|update|close|list] [argumentos]"
+args: "[action: create|update|close|list] [arguments]"
 ---
 
-# To-Do v3 — Gestión de ISSUEs en Kvendra
+# To-Do — ISSUE management in the Kvendra KB
 
-Gestionas work items (ISSUE) en el Kvendra: bugs, tasks e incidents con
-nomenclatura estandarizada, relaciones y trazabilidad a REQ/REL.
+You manage work items (ISSUE) in the Kvendra KB: bugs, tasks and incidents
+with standardised naming, relations and REQ/REL traceability.
 
-## Acción
+## Action
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Acciones
+## Actions
 
-### CREATE — Crear ISSUE
+### CREATE — Create an ISSUE
 
-1. Determinar `type`: `bug | task | incident`.
-2. Determinar componente (o cross-componente).
-3. **No generes el ID manualmente** — el server lo emite.
-4. Construir `content` con campos según tipo (referencia: schema en
-   `docs/kb-v3/02-schema-reference.md`).
-5. Determinar relaciones: `implements → REQ`, `fixes → ISSUE`, `blocks → REL`.
-6. Llamar:
+1. Determine `type`: `bug | task | incident`.
+2. Determine the component (or cross-component).
+3. **Do not generate the ID manually** — the server emits it.
+4. Build `content` with fields per type (reference: schema in the
+   project's docs).
+5. Determine relations: `implements → REQ`, `fixes → ISSUE`, `blocks → REL`.
+6. Call:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",   // opcional
-  title: "<título>",
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",   // optional
+  title: "<title>",
   content: <markdown>,
   metadata: { severity, priority },
-  tags: ["type:<tipo>", "priority:<prio>"],
+  tags: ["type:<type>", "priority:<prio>"],
   relations: [
-    { type:"implements", target:"REQ-<PROY>-<NN>" },
-    { type:"blocks",     target:"REL-<PROY>-<VER>" }
+    { type:"implements", target:"REQ-<PROJ>-<NN>" },
+    { type:"blocks",     target:"REL-<PROJ>-<VER>" }
   ],
   updated_by: "skill:to-do"
 })
 ```
 
-### UPDATE — Actualizar ISSUE
+### UPDATE — Update an ISSUE
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
-  entity_id: "ISSUE-<PROY>-<COMP>-<NN>",
-  content: <opcional>,
-  tags_add: ["status:in-progress"],     // si cambia estado
+  entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",
+  content: <optional>,
+  tags_add: ["status:in-progress"],     // if changing state
   tags_remove: ["status:new"],
-  change_summary: "Asignado a @user, estado in-progress",
+  change_summary: "Assigned to @user, status in-progress",
   updated_by: "skill:to-do"
 })
 ```
 
-Si tiene REL activa, el server pobla `entity_changelog` automáticamente.
+If there is an active REL, the server populates `entity_changelog` automatically.
 
-### CLOSE — Cerrar ISSUE
+### CLOSE — Close an ISSUE
 
-1. Leer ISSUE: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
-2. Cambiar status según tipo:
+1. Read ISSUE: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
+2. Change status per type:
    - bug: `closed`
    - task: `done`
    - incident: `postmortem-done`
-3. Si es bug: verificar que existe TEST regression-case que lo cubre
+3. If bug: verify there is a regression-case TEST that covers it
    (`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", tags_all:["type:regression-case", "ISSUE-..."] })`).
-4. `entity_update` con tags actualizados y `change_summary`.
+4. `entity_update` with updated tags and `change_summary`.
 
-### LIST — Listar ISSUEs
+### LIST — List ISSUEs
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
   entity_type: "ISSUE",
-  project_id: "<PROY>",
-  component_id: "<si filtra>",
-  tags_all: ["type:<tipo>"],     // opcional
-  status: "<status>",            // opcional
+  project_id: "<PROJ>",
+  component_id: "<if filtering>",
+  tags_all: ["type:<type>"],     // optional
+  status: "<status>",            // optional
   order_by: "updated_at_desc"
 })
 ```
 
 ## Output
 
-### Para CREATE:
+### For CREATE:
 ```
-ISSUE creada: ISSUE-<PROY>-<COMP>-<NNN> (auto-generado)
-- Tipo: bug | task | incident
-- Prioridad: critical | high | medium | low
-- Componente: <COMP>
-- Relaciones: implements REQ-..., blocks REL-...
+ISSUE created: ISSUE-<PROJ>-<COMP>-<NNN> (auto-generated)
+- Type: bug | task | incident
+- Priority: critical | high | medium | low
+- Component: <COMP>
+- Relations: implements REQ-..., blocks REL-...
 ```
 
-### Para LIST:
+### For LIST:
 ```
-| ID | Tipo | Prioridad | Estado | Componente | Título |
-|----|------|-----------|--------|-----------|--------|
-| ISSUE-WO-IVR-001 | bug | high | new | IVR | Timeout en callback |
-| ISSUE-WO-042 | task | medium | in-progress | (cross) | Actualizar docs |
+| ID | Type | Priority | Status | Component | Title |
+|----|------|----------|--------|-----------|-------|
+| ISSUE-<PROJ>-<COMP>-001 | bug | high | new | <COMP> | Timeout in callback |
+| ISSUE-<PROJ>-042 | task | medium | in-progress | (cross) | Update docs |
 ```

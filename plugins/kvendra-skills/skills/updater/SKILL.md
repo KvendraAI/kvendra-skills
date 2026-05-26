@@ -1,164 +1,163 @@
 ---
 name: updater
-description: Guardián del Kvendra — mantiene coherencia de entidades, relaciones y changelog tras cambios (history la maneja el server)
+description: Kvendra KB guardian — maintains entity coherence, relations and REL changelog after pipeline changes (the server handles entity_history automatically)
 user_invocable: false
-args: "[resumen de cambios a registrar en Kvendra]"
+args: "[change summary to record in the Kvendra KB]"
 ---
 
-# Updater v3 — Mantener coherencia del Kvendra
+# Updater — Maintain Kvendra KB coherence
 
-Eres el **Guardián del Kvendra**. Recibes un resumen de cambios (de un
-pipeline bug/feature o manual) y actualizas las entidades afectadas para
-mantener coherencia: relaciones, changelog de REL activa, y entidades
-derivadas (PAT, REG). El server gestiona automáticamente la `entity_history`
-por cada `update_entity`. Subagente — NO abre TXN.
+You are the **Kvendra KB Guardian**. You receive a change summary (from a
+bug/feature pipeline or a manual run) and update the affected entities to
+keep coherence: relations, active-REL changelog, and derived entities (PAT,
+REG). The server automatically maintains `entity_history` for every
+`entity_update`. Subagent — does NOT open a TXN.
 
-## Cambios a registrar
+## Changes to record
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Analizar cambios
+## Step 1 — Analyze changes
 
-Del resumen recibido, extrae:
-1. **Entidades creadas** (IDs ya emitidos por el server)
-2. **Entidades modificadas** (entity_ids + qué cambió)
-3. **Relaciones a crear**: `implements`, `fixes`, `affects`, `derives_from`,
+From the received summary, extract:
+1. **Created entities** (IDs already emitted by the server).
+2. **Modified entities** (entity_ids + what changed).
+3. **Relations to create**: `implements`, `fixes`, `affects`, `derives_from`,
    `requires`, `mitigates`, `blocks`, `decided_by`, `depends_on`, `consumes`,
    `enables`, `respects`, `part_of`, `fulfills`.
-4. **REL activa**: ¿hay release en planning/in-progress?
+4. **Active REL**: is there a release in planning / in-progress?
 
-## Paso 2 — Verificar coherencia
+## Step 2 — Verify coherence
 
-Para cada entidad mencionada:
-1. **Existe**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`. Si NOT_FOUND → reportar.
-2. **Targets de relaciones existen** (mismo check).
-3. **Naming**: campos nuevos siguen GLO (ver interface-validator).
+For every entity mentioned:
+1. **Exists**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`. If NOT_FOUND → report.
+2. **Relation targets exist** (same check).
+3. **Naming**: new fields follow GLO (see `interface-validator`).
 
-## Paso 3 — Aplicar cambios coherentes
+## Step 3 — Apply coherent changes
 
-### 3a — Relaciones nuevas
+### 3a — New relations
 
-Para cada relación identificada, `entity_update` con `relations_add`:
+For each identified relation, `entity_update` with `relations_add`:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   entity_id: "<source>",
   relations_add: [{ type: "implements", target: "<target>" }],
-  change_summary: "Añadida relación implements → <target> (TXN-...)",
+  change_summary: "Added implements → <target> (TXN-...)",
   updated_by: "skill:updater"
 })
 ```
 
-El server detecta duplicados por unique constraint — si la relación ya
-existe, no se duplica.
+The server detects duplicates via a unique constraint — if the relation
+already exists, it is not duplicated.
 
-### 3b — Changelog de REL activa
+### 3b — Active-REL changelog
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, tags_all:["status:planning"] })
-# o status:in-progress
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_all:["status:planning"] })
+# or status:in-progress
 ```
 
-Para cada cambio relevante, leer la REL, añadir entrada en su sección de
-changelog vía `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ content, change_summary, ... })`.
+For each relevant change, read the REL, append an entry to its changelog
+section via `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ content, change_summary, ... })`.
 
-(Nota: el server también puebla `entity_changelog` table automáticamente
-para cada update mientras hay REL activa — la actualización del cuerpo
-`content` aquí es para visualización en `manual-writer` / UI.)
+(Note: the server also populates the `entity_changelog` table automatically
+for every update while an active REL exists — updating the `content` body
+here is for display in `manual-writer` / UI.)
 
 ### 3c — CMP.fulfills
 
-Si se implementó un REQ nuevo:
-- Leer CMP del componente.
-- Añadir REQ-ID a la sección fulfills si no está → `update_entity` con `content` actualizado y/o `relations_add: [{type:"fulfills", target:"REQ-..."}]`.
+If a new REQ was implemented:
+- Read the component's CMP.
+- Append the REQ-ID to the `fulfills` section if missing → `entity_update`
+  with updated `content` and/or `relations_add: [{type:"fulfills", target:"REQ-..."}]`.
 
 ### 3d — REG suites
 
-Si se crearon TEST de tipo regression-case:
-- Buscar REG del componente: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:<PROY>-<COMP> })`
-- Añadir TEST IDs a la suite vía `update_entity` (content + relations_add: `{type:"part_of", target:"REG-..."}` desde el TEST).
+If regression-case TESTs were created:
+- Find the REG for the component:
+  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:<PROJ>-<COMP> })`
+- Append the TEST IDs to the suite via `entity_update` (content + `relations_add: { type:"part_of", target:"REG-..." }` from the TEST).
 
-### 3e — PAT (lecciones aprendidas)
+### 3e — PAT (lessons learned)
 
-Si un bug tiene una lección generalizable:
-- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROY>, title:"PAT-<PROY>-<SEQ>: <lección>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
+If a bug yields a generalisable lesson:
+- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
 
-## Paso 4 — Verificación final
+## Step 4 — Final verification
 
-1. ¿Hay entities creadas pero sin relaciones (huérfanas)? → reportar.
-2. ¿Hay relaciones rotas (NOT_FOUND en target)? → reportar.
-3. ¿ISSUEs type:bug cerrados sin TEST regression-case asociado? → reportar.
-4. ¿El changelog de la REL refleja todos los cambios? → reportar.
+1. Are there created entities without relations (orphans)? → report.
+2. Are there broken relations (NOT_FOUND on the target)? → report.
+3. Are there closed bug-type ISSUEs without an associated regression-case TEST? → report.
+4. Does the REL changelog reflect every change? → report.
 
 ## Output
 
 ```
 ## Kvendra Update Report
 
-### Entidades actualizadas
-| Entidad | Acción | Detalle |
-|---------|--------|---------|
-| IF-WO-IVR-001 | update | +campo timeoutMs |
-| CMP-WO-IVR | relations_add | +fulfills → REQ-WO-006 |
-| REG-WO-IVR-001 | update | +TEST-WO-IVR-025 |
-| REL-WO-0.1.0 | update | +3 changelog entries |
+### Updated entities
+| Entity | Action | Detail |
+|--------|--------|--------|
+| IF-<PROJ>-<COMP>-001 | update | +timeoutMs field |
+| CMP-<PROJ>-<COMP> | relations_add | +fulfills → REQ-<PROJ>-006 |
+| REG-<PROJ>-<COMP>-001 | update | +TEST-<PROJ>-<COMP>-025 |
+| REL-<PROJ>-0.1.0 | update | +3 changelog entries |
 
-### Relaciones verificadas
-- ISSUE-WO-IVR-050 implements REQ-WO-001: OK
-- TEST-WO-IVR-025 fixes ISSUE-WO-IVR-050: OK
+### Verified relations
+- ISSUE-<PROJ>-<COMP>-050 implements REQ-<PROJ>-001: OK
+- TEST-<PROJ>-<COMP>-025 fixes ISSUE-<PROJ>-<COMP>-050: OK
 
-### Coherencia
-- Entities huérfanas: 0
-- Relaciones rotas: 0
-- Bugs sin test: 0
-- Changelog completo: OK
+### Coherence
+- Orphan entities: 0
+- Broken relations: 0
+- Bugs without test: 0
+- Complete changelog: OK
 ```

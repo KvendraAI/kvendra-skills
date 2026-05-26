@@ -1,145 +1,142 @@
 ---
 name: interface-validator
-description: Validador de interfaces v3 — verifica naming de campos en código contra IF y GLO del Kvendra
+description: Interface validator — verifies field naming in code against IF and GLO entities from the Kvendra KB
 user_invocable: false
-args: "[componente a validar o 'all' para todos]"
+args: "[component to validate or 'all' for all components]"
 ---
 
-# Interface Validator v3 — Verificar naming contra Kvendra
+# Interface Validator — Verify naming against the Kvendra KB
 
-Escaneas el código fuente de un componente y verificas que los nombres de
-campos usados coinciden con los contratos de interface (IF) y el glosario
-(GLO) del Kvendra. Detectas discrepancias de naming que causan bugs de
-integración. Subagente — NO abre TXN.
+You scan a component's source code and verify that the field names used
+match the interface (IF) contracts and the glossary (GLO) defined in the
+Kvendra KB. You detect naming discrepancies that cause integration bugs.
+Subagent — does NOT open a TXN.
 
-## Componente a validar
+## Component to validate
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Cargar contratos de referencia
+## Step 1 — Load reference contracts
 
-1. **GLO global del proyecto (fuente de verdad para naming):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
-   → cada término con sus formas canónicas (camelCase, snake_case) y never_use
+1. **Project-wide GLO (source of truth for naming):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
+   → each term with its canonical forms (camelCase, snake_case) and never_use list.
 
-2. **Tabla de códigos de componentes (si existe GLO con component-codes):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["component-codes"] })`
+2. **Component code table (if a GLO with component-codes exists):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["component-codes"] })`
 
-3. **CMP del componente (interfaces_defined / interfaces_consumed):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+3. **CMP for the component (interfaces_defined / interfaces_consumed):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
 
-4. **IFs definidas e IFs consumidas:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
-   Para cada IF consumida desde otro componente, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"IF-<...>" })`.
+4. **Defined and consumed IFs:**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   For each IF consumed from another component, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"IF-<...>" })`.
 
-## Paso 2 — Escanear código fuente
+## Step 2 — Scan source code
 
-Para el directorio del componente (de CMP.implementation_paths o GLO):
+For the component directory (from CMP.implementation_paths or GLO):
 
-1. **Buscar `never_use` del glosario** en el código (Grep).
+1. **Search for `never_use` terms from the glossary** in the code (Grep).
    - Match → VIOLATION
-2. **Verificar naming canónico de cada IF.field**:
-   - Python: snake_case (`route_id`)
-   - TypeScript: camelCase (`routeId`)
-   - Match incorrecto → VIOLATION
-3. **Buscar campos hardcoded** que parecen field names sospechosos:
-   - Strings literales (ej `"rutaId"`, `"session_ID"`)
-   - Comparar contra GLO e IF
+2. **Verify canonical naming per IF.field**:
+   - Python: snake_case (e.g. `route_id`).
+   - TypeScript: camelCase (e.g. `routeId`).
+   - Wrong match → VIOLATION
+3. **Look for suspicious hardcoded field names**:
+   - String literals (e.g. `"rutaId"`, `"session_ID"`).
+   - Compare against GLO and IF.
 
-## Paso 3 — Clasificar resultados
+## Step 3 — Classify results
 
-- **VIOLATION**: nombre incorrecto que DEBE corregirse.
-- **WARNING**: posible inconsistencia que debe revisarse.
-- **INFO**: observación sobre naming sin error.
+- **VIOLATION**: incorrect name that MUST be fixed.
+- **WARNING**: possible inconsistency to review.
+- **INFO**: observation about naming with no error.
 
-## Output requerido
+## Required output
 
 ```
 ## Interface Validation Report
-Componente: CMP-<PROY>-<COMP>
-Fecha: <fecha>
+Component: CMP-<PROJ>-<COMP>
+Date: <date>
 
-### Resumen
-- Ficheros escaneados: N
+### Summary
+- Files scanned: N
 - Violations: N
 - Warnings: N
 - Info: N
 
 ### VIOLATIONS
 
-**V-001: <fichero>:<línea>**
-- Encontrado: `rutaId`
-- Canónico: `routeId` (camelCase) / `route_id` (snake_case)
-- Referencia: GLO-<PROY>-001 (route), IF-<PROY>-<COMP>-001
-- Impacto: campo no será reconocido por adapter consumidor
+**V-001: <file>:<line>**
+- Found: `rutaId`
+- Canonical: `routeId` (camelCase) / `route_id` (snake_case)
+- Reference: GLO-<PROJ>-001 (route), IF-<PROJ>-<COMP>-001
+- Impact: field will not be recognised by consuming adapter
 
 ### WARNINGS
-... (mismo formato)
+... (same format)
 
-### INTERFACES VERIFICADAS
-| IF ID | Campos verificados | Violations | Estado |
-|-------|-------------------|------------|--------|
-| IF-WO-FLW-001 | 7/7 | 0 | OK |
-| IF-WO-BE-002 | 12/12 | 1 | FAIL |
+### VERIFIED INTERFACES
+| IF ID | Fields verified | Violations | Status |
+|-------|-----------------|------------|--------|
+| IF-<PROJ>-<COMP>-001 | 7/7 | 0 | OK |
+| IF-<PROJ>-<COMP>-002 | 12/12 | 1 | FAIL |
 
-### GLO TERMS VERIFICADOS
-| Término | Formas canónicas | Violations never_use | Estado |
-|---------|------------------|----------------------|--------|
+### VERIFIED GLO TERMS
+| Term | Canonical forms | never_use violations | Status |
+|------|-----------------|----------------------|--------|
 | route | routeId/route_id | 0 | OK |
 
-### RECOMENDACIONES
-1. Corregir V-001 ...
+### RECOMMENDATIONS
+1. Fix V-001 ...
 ```
 
 ---
-Devuelve el reporte. NO sugieras llamar a otros skills — el orquestador o el
-usuario decide si invoca implementer para corregir.
+Return the report. Do NOT suggest calling other skills — the orchestrator
+or the user decides whether to invoke `implementer` to apply fixes.

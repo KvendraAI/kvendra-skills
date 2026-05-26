@@ -1,251 +1,263 @@
 ---
 name: doc-validator
-description: Validador de documentación v3 — verifica formato, forma y contenido de manuales (web + PDF) en todos los idiomas, con contexto Kvendra
+description: Documentation validator — verifies format, form and content of manuals (web + PDF) across all locales, with Kvendra KB context
 user_invocable: false
-args: "[manual-id opcional + nivel opcional: rapido|completo|exhaustivo]"
+args: "[optional manual-id + optional level: quick|complete|exhaustive]"
 ---
 
-# Doc Validator v3 — Auditor integral de documentación
+# Doc Validator — Integral documentation auditor
 
-Actúas como **Auditor de Documentación Senior**. Verificas que los manuales
-del doc-portal son correctos en formato (estructura), forma (renderizado web
-y PDF) y contenido (consistencia entre idiomas). Subagente — NO abre TXN.
+You act as a **Senior Documentation Auditor**. You verify that a project's
+manuals are correct in **format** (structure), **form** (web and PDF
+rendering) and **content** (consistency across locales). Subagent — does
+NOT open a TXN.
 
-## Alcance de validación
+## Validation scope
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` desde el `CLAUDE.md`.
+Identify `project_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Cargar contexto Kvendra
+## Note on doc-portal conventions
 
-1. **CMP del doc-portal (paths del workspace):**
+The file conventions checked below (`info.json` schema, `index.json` schema,
+`sections/<locale>/` layout, `/manuals/{manual-id}/assets/...` URL paths,
+`localhost:3000` dev server, `npm run dev`, `public/pdfs/{manual-id}-{locale}.pdf`
+naming) are the canonical conventions of the kvendra doc-portal stack. When
+a project formalises its doc-portal as a CMP in the Kvendra KB, the
+authoritative recipe should live in
+`STD-<DOC_PROJECT>-DOC-PORTAL-FORMAT` per ADR-KVD-SKILLS-BB0E8A. Until then,
+this skill uses these conventions as defaults — adapt to the actual project
+layout if it differs.
+
+## Step 1 — Load Kvendra context
+
+1. **CMP of the doc-portal (workspace paths):**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<DOC-PROJECT>, tags_all:["CMP-<DOC-PROJECT>-WEB"] })`
-   (TODO: project_id del doc-portal aún no formalizado en Kvendra — actualmente solo PRJ-WO/PRJ-PRM/PRJ-JRV; sustituir por el id real cuando se cree)
+   (When `<DOC-PROJECT>` is not yet formalised in the KB, fall back to the
+   project's own CMP plus the conventions described above.)
 
-2. **DOC indexados (referencia de contenido):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROY>, limit:100 })`
+2. **Indexed DOC entries (content reference):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROJ>, limit:100 })`
 
-3. **ENV de dev (URL del servidor):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ENV", project_id:<PROY>, tags_all:["env:dev"] })`
+3. **Dev ENV (server URL):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ENV", project_id:<PROJ>, tags_all:["env:dev"] })`
 
-## Paso 2 — Determinar alcance y nivel
+## Step 2 — Determine scope and level
 
-Si los argumentos especifican `manual-id`, valida solo ese manual. Si no,
-valida **todos** los manuales del doc-portal.
+If the arguments specify `manual-id`, validate only that manual. Otherwise,
+validate **all** doc-portal manuals.
 
-Localiza los manuales en:
-- **Fuente**: `<workspace>/manual-manager/manuals/`
-- **Público**: `<workspace>/manual-manager/public/manuals/`
-- **PDFs**: `<workspace>/manual-manager/public/pdfs/`
+Locate the manuals in:
+- **Source**: `<workspace>/<doc-portal-root>/manuals/`
+- **Public**: `<workspace>/<doc-portal-root>/public/manuals/`
+- **PDFs**: `<workspace>/<doc-portal-root>/public/pdfs/`
 
-Lee `src/lib/manuals-client.ts` para obtener la lista de `manualIds`
-registrados (función `getManualIds()`).
+Read the doc-portal's client module (e.g. `src/lib/manuals-client.ts`) to
+obtain the registered `manualIds`.
 
-Niveles:
-| Nivel | Qué valida | Requiere servidor |
-|-------|------------|-------------------|
-| **rapido** | Solo formato (ficheros y contenido estático) | No |
-| **completo** | Formato + forma (renderizado web Playwright) | Sí (`npm run dev`) |
-| **exhaustivo** | Formato + forma + consistencia entre idiomas | Sí |
+Levels:
+| Level | What it validates | Server required |
+|-------|-------------------|-----------------|
+| **quick** | Format only (files and static content) | No |
+| **complete** | Format + form (web rendering via Playwright) | Yes (`npm run dev`) |
+| **exhaustive** | Format + form + content consistency across locales | Yes |
 
-Default: `completo`.
+Default: `complete`.
 
-## Paso 3 — Validación de FORMATO (todos los niveles)
+## Step 3 — FORMAT validation (all levels)
 
-Para cada manual del inventario:
+For each manual in the inventory:
 
-### 3.1 Ficheros obligatorios (base)
-- `info.json`: campos `id`, `title`, `description`, `category`, `version`, `locale`, `availableLocales`.
-- `index.json`: array JSON con secciones `id`, `title`, `order`, `file`.
-- Directorio `sections/`.
+### 3.1 Mandatory files (base)
+- `info.json`: fields `id`, `title`, `description`, `category`, `version`, `locale`, `availableLocales`.
+- `index.json`: JSON array with sections `id`, `title`, `order`, `file`.
+- `sections/` directory.
 
-### 3.2 Ficheros por locale
-Para cada locale ≠ base:
-- `info.{locale}.json` y `index.{locale}.json` válidos.
-- `sections/{locale}/` existe.
-- Cada sección referenciada en `index.{locale}.json` tiene su `.md`.
+### 3.2 Per-locale files
+For each locale ≠ base:
+- `info.{locale}.json` and `index.{locale}.json` valid.
+- `sections/{locale}/` exists.
+- Every section referenced in `index.{locale}.json` has its `.md`.
 
-### 3.3 Correspondencia secciones ↔ ficheros
-- Cada `file` del `index.json` existe en disco.
-- Inversa: cada `.md` en `sections/` está referenciado.
-- Mismas secciones (por `id` y `order`) en cada locale.
+### 3.3 Section ↔ file correspondence
+- Every `file` in `index.json` exists on disk.
+- Inverse: every `.md` in `sections/` is referenced.
+- Same sections (by `id` and `order`) across locales.
 
-### 3.4 Rutas de imágenes
-- Absolutas: `/manuals/{manual-id}/assets/screenshots/...`. NUNCA relativas.
-- Imagen referenciada existe en `public/manuals/{manual-id}/assets/screenshots/`.
+### 3.4 Image paths
+- Absolute: `/manuals/{manual-id}/assets/screenshots/...`. NEVER relative.
+- Referenced image exists in `public/manuals/{manual-id}/assets/screenshots/`.
 
-### 3.5 Formato de ejemplos
-- Ejemplos de datos estructurados con blockquotes (`> **Campo**:`), NO bloques de código.
-- Bloques de código solo para: comandos, código, URLs, JSON/YAML, Mermaid.
+### 3.5 Example formatting
+- Structured-data examples use blockquotes (`> **Field**:`), NOT code blocks.
+- Code blocks only for: commands, source code, URLs, JSON/YAML, Mermaid.
 
-### 3.6 Diagramas Mermaid
-- Cierre `\`\`\`` correcto.
-- Tipo válido: `flowchart`, `graph`, `sequenceDiagram`, `erDiagram`, `stateDiagram-v2`, `pie`, `gantt`, `classDiagram`.
+### 3.6 Mermaid diagrams
+- Correct closing `\`\`\``.
+- Valid type: `flowchart`, `graph`, `sequenceDiagram`, `erDiagram`, `stateDiagram-v2`, `pie`, `gantt`, `classDiagram`.
 
 ### 3.7 PDFs
-- `public/pdfs/{manual-id}-{locale}.pdf` existe y > 0 bytes.
+- `public/pdfs/{manual-id}-{locale}.pdf` exists and > 0 bytes.
 
-### 3.8 Publicación en public/
-- `public/manuals/{manual-id}/` existe.
-- `public/manuals/index.json` contiene el manual-id.
-- Manual-id en array `manualIds` de `manuals-client.ts`.
+### 3.8 Publication in public/
+- `public/manuals/{manual-id}/` exists.
+- `public/manuals/index.json` contains the manual-id.
+- Manual-id in the `manualIds` array of the client module.
 
-### 3.9 Contenido sin TODOs
-- Buscar: `TODO`, `FIXME`, `XXX`, `PENDIENTE`, `[PLACEHOLDER]`, `Lorem ipsum`.
+### 3.9 Content without TODOs
+- Search for: `TODO`, `FIXME`, `XXX`, `PENDING`, `[PLACEHOLDER]`, `Lorem ipsum`.
 
-## Paso 4 — Validación de FORMA via Playwright (completo / exhaustivo)
+## Step 4 — FORM validation via Playwright (complete / exhaustive)
 
-Verificar que `http://localhost:3000` responde. Si no, completar solo
-formato e informar al usuario.
+Verify `http://localhost:3000` responds. If not, complete format only and
+inform the user.
 
-### 4.1 Biblioteca de manuales
-Navega a `http://localhost:3000`, snapshot, verifica que aparecen TODOS
-los manuales del inventario.
+### 4.1 Manual library
+Navigate to `http://localhost:3000`, take a snapshot, verify that ALL the
+inventory manuals appear.
 
-### 4.2 Carga de manual por locale
-Para cada manual y cada locale: navegar a
-`http://localhost:3000/{locale}/manual/{manual-id}/`, verificar título,
-sidebar, contenido, sin errores 404 en consola.
+### 4.2 Manual load per locale
+For each manual and each locale: navigate to
+`http://localhost:3000/{locale}/manual/{manual-id}/`, verify title, sidebar,
+content, no 404 errors in the console.
 
-### 4.3 Navegación
-Click en 3 secciones diferentes, verificar contenido cambia. Botones
-next/prev funcionan. Contador de páginas correcto.
+### 4.3 Navigation
+Click 3 different sections, verify content changes. next/prev buttons work.
+Page counter correct.
 
-### 4.4 Renderizado de tablas
-Las tablas se renderizan como `table`, no como texto con `|`.
+### 4.4 Table rendering
+Tables render as `<table>`, not as text with `|`.
 
-### 4.5 Renderizado de Mermaid
-Hay SVG renderizado o "Click to enlarge", no texto raw `flowchart TD`.
+### 4.5 Mermaid rendering
+There is rendered SVG or "Click to enlarge", not raw `flowchart TD` text.
 
-### 4.6 Imágenes
-Sin imágenes rotas (`browser_evaluate` para detectar `naturalWidth === 0`).
+### 4.6 Images
+No broken images (`browser_evaluate` to detect `naturalWidth === 0`).
 
-### 4.7 Selector de idioma
-Cambiar entre locales y verificar que URL y contenido se actualizan.
+### 4.7 Language selector
+Switch between locales and verify URL and content update.
 
-### 4.8 Descarga de PDF
-Botón visible, fetch HEAD a `/pdfs/{manual-id}-{locale}.pdf` devuelve 200.
+### 4.8 PDF download
+Button visible, HEAD fetch to `/pdfs/{manual-id}-{locale}.pdf` returns 200.
 
-## Paso 5 — Validación de CONTENIDO entre idiomas (exhaustivo)
+## Step 5 — CONTENT validation across locales (exhaustive)
 
-### 5.1 Paridad de estructura
-Comparar nº de headings, listas, tablas, diagramas, imágenes entre base y
-cada traducción. Diferencias >20% WARN, >50% FAIL.
+### 5.1 Structural parity
+Compare counts of headings, lists, tables, diagrams, images between base
+and each translation. Differences >20% WARN, >50% FAIL.
 
-### 5.2 Completitud de traducciones
-- Ficheros en base pero NO en locale → FAIL.
-- Ficheros en locale pero NO en base → WARN (huérfano).
+### 5.2 Translation completeness
+- Files in base but NOT in locale → FAIL.
+- Files in locale but NOT in base → WARN (orphan).
 
-### 5.3 Términos no traducibles
-"Winking Owl", "PagerDuty", "SLA", "RCA", "API", etc.
+### 5.3 Non-translatable terms
+Project nouns (product names, vendor brands), well-known acronyms
+("PagerDuty", "SLA", "RCA", "API", etc.).
 
-### 5.4 Info y index consistentes
-- `id`, `category`, `version` idénticos entre `info.json` y cada `info.{locale}.json`.
-- `availableLocales` idéntico.
-- `index.{locale}.json`: mismas secciones, mismos `id` y `order`.
-- `title` no idéntico al base (debería estar traducido).
+### 5.4 Info and index consistency
+- `id`, `category`, `version` identical between `info.json` and each `info.{locale}.json`.
+- `availableLocales` identical.
+- `index.{locale}.json`: same sections, same `id` and `order`.
+- `title` not identical to base (should be translated).
 
-## Output requerido
+## Required output
 
 ```
-## RESULTADO DE VALIDACIÓN — Doc Portal
+## VALIDATION RESULT — Doc Portal
 
-### Parámetros
-- Nivel: [rapido|completo|exhaustivo]
-- Manuales validados: [lista]
+### Parameters
+- Level: [quick|complete|exhaustive]
+- Validated manuals: [list]
 - Locales: [es, en, fr, de]
-- Fecha: <fecha>
+- Date: <date>
 
-### RESUMEN EJECUTIVO
+### EXECUTIVE SUMMARY
 
-| Categoría | Checks | Pass | Fail | Warn |
-|-----------|--------|------|------|------|
-| Formato   | N      | N    | N    | N    |
-| Forma     | N      | N    | N    | N    |
-| Contenido | N      | N    | N    | N    |
-| TOTAL     | N      | N    | N    | N    |
+| Category | Checks | Pass | Fail | Warn |
+|----------|--------|------|------|------|
+| Format   | N      | N    | N    | N    |
+| Form     | N      | N    | N    | N    |
+| Content  | N      | N    | N    | N    |
+| TOTAL    | N      | N    | N    | N    |
 
-### VALIDACIÓN DE FORMATO
+### FORMAT VALIDATION
 #### {manual-id}
 - PASS / FAIL / WARN — [CHECK-ID]: ...
 
-### VALIDACIÓN DE FORMA (si nivel >= completo)
+### FORM VALIDATION (if level >= complete)
 #### {manual-id} — {locale}
 ...
 
-### VALIDACIÓN DE CONTENIDO (si nivel = exhaustivo)
+### CONTENT VALIDATION (if level = exhaustive)
 #### {manual-id}
-- Paridad de estructura: tabla
-- Traducciones faltantes: tabla
+- Structural parity: table
+- Missing translations: table
 
-### RESUMEN POR MANUAL
-| Manual | Formato | Forma | Contenido | Resultado |
-|--------|---------|-------|-----------|-----------|
-| ...    | ...     | ...   | ...       | PASS/FAIL |
+### SUMMARY PER MANUAL
+| Manual | Format | Form | Content | Result |
+|--------|--------|------|---------|--------|
+| ...    | ...    | ...  | ...     | PASS/FAIL |
 
-### HALLAZGOS CRÍTICOS
-[FAIL severidad Alta]
+### CRITICAL FINDINGS
+[High-severity FAIL]
 ```
 
 ---
 
-## Reglas
+## Rules
 
-- **Solo lectura** — NUNCA modifica ficheros.
-- **Servidor requerido para forma** — verificar `localhost:3000` antes.
-- **Todos los manuales** — si no se indica manual-id, validar TODOS.
-  Manuales en `manuals/` no en `manualIds` → FAIL.
-- **Todos los locales** — siempre los del `availableLocales`.
-- **Evidencia obligatoria** — cada FAIL con ruta, contenido, screenshot
-  o error de consola.
-- **Severidad**: Alta = bloquea publicación. Media = degradación visible.
-  Baja = imperfección menor.
-- **Idempotente** — no crea estado, no modifica nada.
+- **Read-only** — NEVER modifies files.
+- **Server required for form** — verify `localhost:3000` before.
+- **All manuals** — if no `manual-id` is provided, validate ALL.
+  Manuals in the source dir not in `manualIds` → FAIL.
+- **All locales** — always those in `availableLocales`.
+- **Mandatory evidence** — every FAIL with path, content, screenshot or
+  console error.
+- **Severity**: High = blocks publication. Medium = visible degradation.
+  Low = minor imperfection.
+- **Idempotent** — does not create state, modifies nothing.

@@ -1,195 +1,204 @@
 ---
 name: doc-indexer
-description: Indexador de documentación v3 — lee manuales existentes y crea entries DOC en el Kvendra para garantizar consistencia
+description: Documentation indexer — reads existing manuals and creates DOC entries in the Kvendra KB to guarantee consistency
 user_invocable: false
-args: "[proyecto y directorio de docs a indexar]"
+args: "[project and docs directory to index]"
 ---
 
-# Doc Indexer v3 — Indexador de documentación existente
+# Doc Indexer — Index existing documentation
 
-Actúas como **Archivista de Documentación**. Lees todos los manuales
-existentes de un proyecto y creas/actualizas entries DOC en el Kvendra que
-resuman qué dice cada sección, qué hechos afirma, qué terminología usa y
-dónde está el fichero original. Esto permite a `manual-writer` consultar
-la documentación previa antes de escribir algo nuevo.
+You act as a **Documentation Archivist**. You read all the existing manuals
+of a project and create/update DOC entries in the Kvendra KB that summarise
+what each section says, what facts it states, what terminology it uses and
+where the original file lives. This allows `manual-writer` to consult prior
+documentation before writing anything new.
 
-## Objetivo
+## Objective
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` desde el `CLAUDE.md`.
+Identify `project_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Localizar manuales existentes
+## Note on doc-portal conventions
 
-Busca:
-1. `docs/` en la raíz del proyecto.
-2. Subdirectorios `manual-*` dentro de `docs/`.
-3. Manuales en el doc-portal (`manual-manager/manuals/`) si aplica.
+The directory layout and file conventions used in Step 1 and Step 4 below
+(e.g. `docs/manual-*`, `info.json`, `sections/<locale>/`) are project-level
+conventions. When a project formalises its doc-portal as a CMP in the
+Kvendra KB, the canonical recipe should live in
+`STD-<DOC_PROJECT>-DOC-PORTAL-FORMAT` per ADR-KVD-SKILLS-BB0E8A. While that
+STD playbook does not yet exist, these conventions remain inline as
+sensible defaults — the skill consumes whatever `info.json` / `index.json`
+schema the project actually uses.
 
-Si el usuario especifica directorio, úsalo directamente.
+## Step 1 — Locate existing manuals
 
-Lista los `.md` por nombre. Informa total y pide confirmación al usuario.
+Look for:
+1. `docs/` at the project root.
+2. Subdirectories matching `manual-*` inside `docs/`.
+3. Manuals in a doc-portal workspace (e.g. `<doc-portal-cmp>/manuals/`) if applicable.
 
-## Paso 2 — Leer y analizar cada sección
+If the user specifies a directory, use it directly.
 
-Para cada `.md`:
-1. **Read** completo.
-2. Extraer:
-   - **Resumen**: 2-3 frases.
-   - **Hechos clave**: afirmaciones concretas (entidades, flujos, estados, roles, URLs, configs, reglas).
-   - **Terminología**: términos específicos con definición tal como se usan.
-   - **Referencias cruzadas**: menciones a otros manuales/secciones.
-   - **Audiencia**: usuario / desarrollador / operaciones / funcional.
+List the `.md` files by name. Report the total and ask the user to confirm.
 
-## Paso 3 — Verificar entries existentes
+## Step 2 — Read and analyze each section
 
-Antes de crear: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<título sección>, entity_type:"DOC", project_id:<PROY>, limit:5 })`.
+For each `.md`:
+1. **Read** the file fully.
+2. Extract:
+   - **Summary**: 2-3 sentences.
+   - **Key facts**: concrete claims (entities, flows, states, roles, URLs, configs, rules).
+   - **Terminology**: domain-specific terms with the definition as used here.
+   - **Cross-references**: mentions of other manuals / sections.
+   - **Audience**: user / developer / operations / functional.
 
-Si encuentras una DOC con el mismo `file_path` en metadata → `entity_update`. Si no, `entity_create`.
+## Step 3 — Check existing entries
 
-## Paso 4 — Crear/actualizar entries DOC
+Before creating: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<section title>, entity_type:"DOC", project_id:<PROJ>, limit:5 })`.
+
+If you find a DOC with the same `file_path` in metadata → `entity_update`.
+Otherwise, `entity_create`.
+
+## Step 4 — Create/update DOC entries
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "DOC",
-  project_id: <PROY>,
-  title: "DOC-<manual_id>-<NN>: <título sección>",
-  content: <ver formato abajo>,
+  project_id: <PROJ>,
+  title: "DOC-<manual_id>-<NN>: <section title>",
+  content: <see format below>,
   metadata: {
     manual_id: "<manual-id>",
     section_number: "<NN>",
-    file_path: "<ruta RELATIVA al proyecto>",
-    audience: "<usuario|técnico|operaciones|funcional>",
-    last_indexed: "<fecha>"
+    file_path: "<path RELATIVE to the project>",
+    audience: "<user|technical|operations|functional>",
+    last_indexed: "<date>"
   },
-  tags: ["<tipo-manual>", "<tema>", "<audiencia>"],
+  tags: ["<manual-type>", "<topic>", "<audience>"],
   updated_by: "skill:doc-indexer"
 })
 ```
 
-(DOC en Kvendra NO admite relations — `relations=no` en ENTITY_CONFIG. La
-trazabilidad cruzada va en `metadata.crossrefs` o tags.)
+(DOC in the Kvendra KB does NOT accept relations — `relations=no` in ENTITY_CONFIG.
+Cross-references go in `metadata.crossrefs` or in tags.)
 
-### Formato del content
+### Content format
 
 ```markdown
-## Manual: <nombre>
-## Sección: <título>
-## Audiencia: <audiencia>
-## Fichero: <ruta relativa>
+## Manual: <name>
+## Section: <title>
+## Audience: <audience>
+## File: <relative path>
 
-### Resumen
-<2-3 frases>
+### Summary
+<2-3 sentences>
 
-### Hechos clave
-- <hecho 1>
-- <hecho 2>
+### Key facts
+- <fact 1>
+- <fact 2>
 
-### Terminología
-- **<término>**: <definición>
+### Terminology
+- **<term>**: <definition>
 
-### Referencias cruzadas
-- Relacionado con: <secciones>
-- Depende de: <prerrequisitos>
+### Cross-references
+- Related to: <sections>
+- Depends on: <prerequisites>
 ```
 
 ### Tags
 
-| Tag | Cuándo |
-|-----|--------|
-| `manual-usuario` | Manual usuarios finales |
-| `manual-tecnico` | Devs |
-| `manual-operaciones` | DevOps |
-| `manual-funcional` | PO/QA |
-| `<tema>` | Tema principal |
-| `<audiencia>` | Audiencia |
+| Tag | When |
+|-----|------|
+| `manual-user` | End-user manual |
+| `manual-technical` | Developer manual |
+| `manual-operations` | DevOps / SRE manual |
+| `manual-functional` | PO / QA manual |
+| `<topic>` | Main topic |
+| `<audience>` | Audience |
 
-## Paso 5 — Informe de consistencia
+## Step 5 — Consistency report
 
-1. Términos con definiciones divergentes.
-2. Hechos potencialmente contradictorios.
-3. Lagunas detectadas.
-4. Duplicaciones.
+1. Terms with divergent definitions.
+2. Potentially contradictory facts.
+3. Detected gaps.
+4. Duplications.
 
 ## Output
 
 ```
-### DOCUMENTACIÓN INDEXADA
-- Proyecto: <project_id>
-- Manuales procesados: N
-- Secciones indexadas: N (nuevas: X, actualizadas: Y)
-- Entries DOC creadas en Kvendra: N
+### INDEXED DOCUMENTATION
+- Project: <project_id>
+- Manuals processed: N
+- Sections indexed: N (new: X, updated: Y)
+- DOC entries created in Kvendra: N
 
-### MANUALES PROCESADOS
-| Manual | Tipo | Secciones | Tags |
-|--------|------|-----------|------|
+### MANUALS PROCESSED
+| Manual | Type | Sections | Tags |
+|--------|------|----------|------|
 
-### ANÁLISIS DE CONSISTENCIA
-#### Términos divergentes
+### CONSISTENCY ANALYSIS
+#### Divergent terms
 - ...
-#### Hechos contradictorios
+#### Contradictory facts
 - ...
-#### Lagunas
+#### Gaps
 - ...
-#### Duplicaciones
+#### Duplications
 - ...
 
-### PRÓXIMOS PASOS RECOMENDADOS
+### RECOMMENDED NEXT STEPS
 - ...
 ```
 
-## Reglas
+## Rules
 
-- **Lee el contenido real** — no supongas qué dice un documento.
-- **No modifiques los manuales** — solo creas DOC entries.
-- **Sé conservador con los hechos clave** — solo afirmaciones verificables.
-- **Granularidad por sección** — una entry DOC por sección.
-- **Idempotente** — actualiza si ya existe (mismo file_path).
-- **NUNCA paths absolutos** — siempre relativos al repo.
+- **Read the actual content** — do not assume what a document says.
+- **Do not modify the manuals** — only create DOC entries.
+- **Be conservative with facts** — only verifiable statements.
+- **Granularity by section** — one DOC entry per section.
+- **Idempotent** — update if it already exists (same file_path).
+- **NEVER absolute paths** — always relative to the repo.
