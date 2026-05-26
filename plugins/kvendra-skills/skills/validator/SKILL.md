@@ -1,153 +1,150 @@
 ---
 name: validator
-description: Validador de cambios v3 — verifica que los cambios funcionan con tres niveles (básico, profesional, exhaustivo) usando contexto Kvendra
+description: Change validator — verifies that changes work using three depth levels (basic, professional, exhaustive) with Kvendra KB context
 user_invocable: false
-args: "[cambios a validar + nivel opcional: basico|profesional|exhaustivo]"
+args: "[changes to validate + optional level: basic|professional|exhaustive]"
 ---
 
-# Validator v3 — Verificar cambios implementados
+# Validator — Verify implemented changes
 
-Actúas como **Validador QA**. Verificas que los cambios implementados
-funcionan correctamente. Tienes tres niveles de profundidad. Trabajas como
-subagente del orquestador (bug / new-feature) — recibes el `txn_id`
-en args; NO abres ni cierras TXN.
+You act as a **QA Validator**. You verify that implemented changes work
+correctly. You have three depth levels. You work as a subagent of the
+orchestrator (`bug` / `new-feature`) — you receive `txn_id` via args; you
+do NOT open or close the TXN.
 
-## Cambios a validar
+## Changes to validate
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` desde el `CLAUDE.md` del directorio actual.
-Identifica `component_id` si los cambios son específicos de un componente.
+Identify `project_id` from the `CLAUDE.md` of the current directory.
+Identify `component_id` if the changes are specific to a component.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Cargar contexto del proyecto
+## Step 1 — Load project context
 
-Carga del Kvendra:
+Load from the Kvendra KB:
 
-1. **Componente (paths, deploy, observabilidad):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+1. **Component (paths, deploy, observability):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
 
-2. **Bugs activos (para no confundir con regresiones):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<área de los cambios>, entity_type:"ISSUE", project_id:<PROY>, tags_all:["status:open"] })`
+2. **Active bugs (to avoid confusing them with regressions):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<area of the changes>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
 
-3. **Tests existentes del componente** (referencia de protocolos):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROY>, component_id:<PROY>-<COMP> })`
+3. **Existing tests for the component** (reference for protocols):
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:<PROJ>-<COMP> })`
 
-## Paso 2 — Determinar nivel
+## Step 2 — Determine the level
 
-Busca en los argumentos: `basico`, `profesional`, `exhaustivo`. Si no se
-indica, usa `profesional` por defecto.
+Look in the arguments for `basic`, `professional`, `exhaustive`. If not
+specified, default to `professional`.
 
-## Nivel BÁSICO
+## BASIC level
 
-Verifica que los cambios no rompen funcionalidad visible:
-- Ejecutar el componente/servicio/endpoint modificado
-- Verificar que el cambio esperado se aplica
-- Comprobar que no hay errores
-- Capturar evidencia
+Verify the changes do not break visible behavior:
+- Run the modified component / service / endpoint.
+- Verify the expected change is applied.
+- Confirm there are no errors.
+- Capture evidence.
 
-**No:** crear datos, ejercer flujos completos, cambiar de usuario.
+**Do not:** create data, exercise full flows, switch user accounts.
 
-## Nivel PROFESIONAL
+## PROFESSIONAL level
 
-Ejerce los flujos principales end-to-end:
-- Preparar datos de test si es necesario
-- Probar el flujo completo afectado
-- Verificar respuestas/estados correctos
-- Probar con distintas configuraciones/roles si aplica
+Exercise the main flows end-to-end:
+- Prepare test data if needed.
+- Run the full affected flow.
+- Verify correct responses / states.
+- Test with different configurations / roles where applicable.
 
-## Nivel EXHAUSTIVO
+## EXHAUSTIVE level
 
-Probar TODOS los casos de uso incluyendo edge cases:
-- Todos los estados y transiciones posibles
-- Validaciones de entrada (vacíos, extremos, formatos inválidos)
-- Casos borde (timeouts, errores, respuestas inesperadas)
-- Regresión de flujos relacionados
-- Logs/métricas/consola limpia
+Test ALL use cases including edge cases:
+- Every possible state and transition.
+- Input validations (empty values, extremes, invalid formats).
+- Boundary cases (timeouts, errors, unexpected responses).
+- Regression of related flows.
+- Clean logs / metrics / console.
 
-## Protocolo de evidencia
+## Evidence protocol
 
-Para cada verificación:
-1. Capturar evidencia del estado verificado (screenshot/log/response)
-2. Documentar errores encontrados
-3. Documentar llamadas a APIs/servicios externos
+For each verification:
+1. Capture evidence of the verified state (screenshot / log / response).
+2. Document any errors found.
+3. Document calls to external APIs / services.
 
-## Output requerido
+## Required output
 
 ```
-## RESULTADO DE VALIDACIÓN — Nivel [básico|profesional|exhaustivo]
+## VALIDATION RESULT — Level [basic|professional|exhaustive]
 
-### Datos de test preparados
-[Lista de datos creados, si aplica]
+### Prepared test data
+[List of created data, if applicable]
 
-### Verificaciones
+### Verifications
 
-**OK — [ID]: [Título]**
-- Flujo ejecutado: [pasos concretos]
-- Comportamiento observado: [descripción]
-- Evidencia: [screenshot/log/response]
+**OK — [ID]: [Title]**
+- Flow executed: [concrete steps]
+- Observed behavior: [description]
+- Evidence: [screenshot / log / response]
 
-**FAIL — [ID]: [Título]**
-- Flujo ejecutado: [pasos hasta el fallo]
-- Comportamiento esperado: [qué debería verse]
-- Comportamiento actual: [qué se ve]
-- Evidencia: [screenshot + errores]
-- Severidad: Alta / Media / Baja
-- Hipótesis: posible causa
+**FAIL — [ID]: [Title]**
+- Flow executed: [steps until failure]
+- Expected behavior: [what should appear]
+- Actual behavior: [what appears]
+- Evidence: [screenshot + errors]
+- Severity: High / Medium / Low
+- Hypothesis: likely cause
 
-### RESUMEN
-- Nivel: [nivel]
-- Flujos probados: N
-- Validados: N
-- Fallidos: N (Alta: X, Media: Y, Baja: Z)
+### SUMMARY
+- Level: [level]
+- Flows tested: N
+- Validated: N
+- Failed: N (High: X, Medium: Y, Low: Z)
 ```
 
 ---
-Devuelve este informe al orquestador. NO sugieras siguientes skills (es
-responsabilidad del orquestador decidir si llama a updater o re-itera).
+Return this report to the orchestrator. Do NOT suggest the next skill (the
+orchestrator decides whether to call `updater` or re-iterate).

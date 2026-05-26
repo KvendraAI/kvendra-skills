@@ -1,99 +1,97 @@
 ---
 name: incident-manager
-description: Gestor de incidentes v3 — crea ISSUE type:incident con RCA y postmortem en Kvendra, y genera RUN/REQ/PAT derivados
+description: Incident manager — creates ISSUE type:incident with RCA and postmortem in the Kvendra KB, and generates derived RUN/REQ/PAT entities
 user_invocable: true
-args: "[descripción del incidente o 'postmortem' para cerrar uno existente]"
+args: "[incident description or 'postmortem' to close an existing one]"
 ---
 
-# Incident Manager v3 — Gestión de incidentes Kvendra
+# Incident Manager — Kvendra incident lifecycle
 
-Gestionas incidentes operativos (caídas, degradación, errores en producción).
-Creas ISSUE type:incident con impacto, duración, RCA y postmortem. Generas
-entidades derivadas: RUN (runbooks nuevos), REQ (mejoras), PAT (lecciones).
+You manage operational incidents (outages, degradation, production errors).
+You create an ISSUE `type:incident` with impact, duration, RCA and postmortem.
+You generate derived entities: RUN (new runbooks), REQ (improvements), PAT
+(lessons).
 
-Orquestador soft — abre TXN para agrupar las creaciones del postmortem,
-pero no delega a subagentes v3.
+Soft orchestrator — you open a TXN to group postmortem creations, but you do
+not delegate to other subagents.
 
-## Incidente
+## Incident
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Buscar incidentes y runbooks similares
+## Step 1 — Search for similar incidents and runbooks
 
-**IMPORTANTE — opt-in de embedding para ISSUE de incidentes**: para que la
-búsqueda semántica encuentre incidentes pasados, este skill crea ISSUE
-con `generate_embedding: true`. Es la excepción justificada al opt-out.
+**IMPORTANT — embedding opt-in for incident ISSUEs**: so that semantic search
+finds past incidents, this skill creates the ISSUE with `generate_embedding:
+true`. This is the justified exception to the default opt-out.
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<descripción del problema>, entity_type:"ISSUE", project_id:<PROY>, limit:5 })
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<componente o síntoma>, entity_type:"RUN", project_id:<PROY>, limit:3 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<problem description>, entity_type:"ISSUE", project_id:<PROJ>, limit:5 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<component or symptom>, entity_type:"RUN", project_id:<PROJ>, limit:3 })
 ```
 
-Si hay un RUN que cubre este escenario → mostrar como guía de resolución.
-Si hay incidente pasado similar → mostrar para contexto.
+If there is a RUN that covers this scenario → show it as a resolution guide.
+If a similar past incident exists → show it for context.
 
-## Paso 2 — Abrir TXN del incidente
+## Step 2 — Open the incident TXN
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
-# si hay TXN in-progress: Retomar / Cancelar / Ignorar
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })
+# if an in-progress TXN exists: Resume / Cancel / Ignore
 ```
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "incident",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  trigger: "<descripción breve>",
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  trigger: "<short description>",
   pipeline: [
     { step: 1, name: "create-issue" },
     { step: 2, name: "lifecycle-updates" },
@@ -103,17 +101,17 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
 })
 ```
 
-Captura `txn_id`.
+Capture `txn_id`.
 
-## Paso 3 — Crear ISSUE type:incident
+## Step 3 — Create the ISSUE type:incident
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  title: "<descripción breve>",
-  content: <markdown ver formato abajo>,
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  title: "<short description>",
+  content: <markdown — see format below>,
   metadata: {
     type: "incident",
     severity: "critical|major|minor",
@@ -127,139 +125,139 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 })
 ```
 
-### Formato del content
+### Content format
 
 ```markdown
-# <título>
+# <title>
 
-## Tipo: incident
-## Estado: detected → investigating → mitigating → resolved → postmortem-done
-## Severidad: critical | major | minor
+## Type: incident
+## Status: detected → investigating → mitigating → resolved → postmortem-done
+## Severity: critical | major | minor
 
-## Impacto
-- Qué se afectó: [servicios, usuarios, funcionalidades]
-- Alcance: [% usuarios afectados, volumen perdido]
-- Duración: [desde — hasta]
+## Impact
+- What was affected: [services, users, features]
+- Reach: [% users affected, lost volume]
+- Duration: [from — to]
 
 ## Timeline
-| Hora | Evento |
-|------|--------|
-| HH:MM | Detectado: [cómo] |
-| HH:MM | Investigando: [primeras acciones] |
-| HH:MM | Causa identificada |
-| HH:MM | Mitigación aplicada |
-| HH:MM | Resuelto |
+| Time | Event |
+|------|-------|
+| HH:MM | Detected: [how] |
+| HH:MM | Investigating: [first actions] |
+| HH:MM | Cause identified |
+| HH:MM | Mitigation applied |
+| HH:MM | Resolved |
 
-## Detección
-- Método: ...
-- Tiempo de detección: ...
+## Detection
+- Method: ...
+- Time to detect: ...
 
-## RCA (cuando se identifica)
-[Causa raíz]
+## RCA (once identified)
+[Root cause]
 
-## Resolución
-[Qué se hizo]
+## Resolution
+[What was done]
 
 ## Postmortem
-### Qué salió bien
-### Qué salió mal
-### Acciones derivadas
+### What went well
+### What went wrong
+### Derived actions
 - RUN: ...
 - REQ: ...
 - PAT: ...
 ```
 
-## Paso 4 — Gestionar lifecycle
+## Step 4 — Manage the lifecycle
 
-Conforme avanza, `entity_update` con tags actualizados y `change_summary`:
-1. `detected` → primer estado.
-2. `investigating` → analizando causa.
-3. `mitigating` → solución temporal.
-4. `resolved` → servicio restaurado.
-5. `postmortem-done` → RCA completado, derivadas creadas.
+As things progress, call `entity_update` with updated tags and `change_summary`:
+1. `detected` → first state.
+2. `investigating` → analyzing the cause.
+3. `mitigating` → temporary solution applied.
+4. `resolved` → service restored.
+5. `postmortem-done` → RCA completed, derived entities created.
 
-## Paso 5 — Generar entidades derivadas (al postmortem)
+## Step 5 — Generate derived entities (at postmortem)
 
-### 5a — RUN (si procede)
+### 5a — RUN (if applicable)
 
-Si no existe runbook que cubra este escenario:
+If no runbook covers this scenario:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "RUN",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  title: "RUN-<PROY>-<COMP>-<auto>: <descripción>",
-  content: <pasos de resolución>,
-  metadata: { origin_issue: "ISSUE-<PROY>-<COMP>-<NN>" },
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  title: "RUN-<PROJ>-<COMP>-<auto>: <description>",
+  content: <resolution steps>,
+  metadata: { origin_issue: "ISSUE-<PROJ>-<COMP>-<NN>" },
   txn_id: "<txn_id>",
   updated_by: "skill:incident-manager"
 })
 ```
 
-(RUN no admite relations en Kvendra — la trazabilidad va en metadata.)
+(RUN does not accept relations in the Kvendra KB — traceability lives in metadata.)
 
-### 5b — REQ (si procede)
+### 5b — REQ (if applicable)
 
-Si revela necesidad de mejora (alerting, monitoring, redundancia):
+If it reveals a need for improvement (alerting, monitoring, redundancy):
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REQ",
-  project_id: "<PROY>",
-  title: "REQ-<PROY>-<auto>: <mejora>",
-  content: <descripción + criterios de aceptación>,
+  project_id: "<PROJ>",
+  title: "REQ-<PROJ>-<auto>: <improvement>",
+  content: <description + acceptance criteria>,
   relations: [
-    { type: "derives_from", target: "ISSUE-<PROY>-<COMP>-<NN>" }
+    { type: "derives_from", target: "ISSUE-<PROJ>-<COMP>-<NN>" }
   ],
   txn_id: "<txn_id>",
   updated_by: "skill:incident-manager"
 })
 ```
 
-### 5c — PAT (si procede)
+### 5c — PAT (if applicable)
 
-Si hay lección generalizable:
+If there is a generalisable lesson:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "PAT",
-  project_id: "<PROY>",
-  title: "PAT-<PROY>-<auto>: <lección>",
-  content: <markdown con la lección + cuándo aplicarla + ejemplo>,
+  project_id: "<PROJ>",
+  title: "PAT-<PROJ>-<auto>: <lesson>",
+  content: <markdown with the lesson + when to apply + example>,
   relations: [
-    { type: "derives_from", target: "ISSUE-<PROY>-<COMP>-<NN>" }
+    { type: "derives_from", target: "ISSUE-<PROJ>-<COMP>-<NN>" }
   ],
   txn_id: "<txn_id>",
   updated_by: "skill:incident-manager"
 })
 ```
 
-## Paso 6 — Cerrar TXN
+## Step 6 — Close the TXN
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:incident-manager" })
 ```
 
-Las entidades pasan de `draft` a `active`/`postmortem-done` según corresponda.
+Entities move from `draft` to `active` / `postmortem-done` as appropriate.
 
 ## Output
 
 ```
-## Incidente: ISSUE-<PROY>-<COMP>-<NNN>
-- Estado: <status>
-- Severidad: <severidad>
-- Impacto: <resumen>
-- Duración: <tiempo>
-- RCA: <resumen>
-- TXN: TXN-<PROY>-<YYYYMMDD>-<NNN>
+## Incident: ISSUE-<PROJ>-<COMP>-<NNN>
+- Status: <status>
+- Severity: <severity>
+- Impact: <summary>
+- Duration: <time>
+- RCA: <summary>
+- TXN: TXN-<PROJ>-<YYYYMMDD>-<NNN>
 
-### Entidades derivadas
-- RUN-<PROY>-<COMP>-<NNN>: runbook creado
-- REQ-<PROY>-<NNN>: mejora propuesta
-- PAT-<PROY>-<NNN>: lección aprendida
+### Derived entities
+- RUN-<PROJ>-<COMP>-<NNN>: runbook created
+- REQ-<PROJ>-<NNN>: improvement proposed
+- PAT-<PROJ>-<NNN>: lesson learned
 
-### Kvendra actualizado
-- ISSUE creada (con embedding)
-- TXN activada (drafts → active)
+### Kvendra updated
+- ISSUE created (with embedding)
+- TXN activated (drafts → active)
 ```

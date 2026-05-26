@@ -1,216 +1,213 @@
 ---
 name: regression
-description: Suite de regresión v3 — ejecuta REG suites del Kvendra, persiste resultados como RUN, compara vs SLA, auto-genera ISSUEs
+description: Regression suite runner — executes REG suites from the Kvendra KB, persists results as RUN entries, compares against SLAs and auto-generates ISSUE entities
 user_invocable: true
-args: "[componente o REG suite a ejecutar]"
+args: "[component or REG suite to run]"
 ---
 
-# Regression v3 — Ejecutar suites de regresión Kvendra
+# Regression — Run regression suites from the Kvendra KB
 
-Ejecutas suites de regresión (REG) definidas en el Kvendra. Respetas orden y
-dependencias entre tests, persistes resultados como entries RUN, comparas
-contra SLA targets, y auto-generas ISSUE type:bug si algún test blocking
-falla.
+You run regression suites (REG) defined in the Kvendra KB. You respect order
+and dependencies between tests, persist results as RUN entries, compare
+against SLA targets, and auto-generate ISSUE `type:bug` if any blocking
+test fails.
 
-## Componente o suite
+## Component or suite
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md` o args.
+Identify `project_id` and `component_id` from the `CLAUDE.md` or args.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Cargar REG suite
+## Step 1 — Load the REG suite
 
-1. **REG del componente:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+1. **REG for the component:**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
 
-   Si se especifica un REG ID concreto:
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REG-<PROY>-<COMP>-<SEQ>" })`
+   If a specific REG ID is provided:
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REG-<PROJ>-<COMP>-<SEQ>" })`
 
-2. Si no existe REG → informar y preguntar si crear una.
+2. If no REG exists → report and ask whether to create one.
 
-3. **Tests incluidos (vía `entity_related` o relations_outbound `part_of`):**
-   Para cada `test_id` referenciado: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
+3. **Included tests (via `entity_related` or relations_outbound `part_of`):**
+   For each `test_id` referenced: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
 
 4. **SLA targets:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
 
-5. **REL activa (asociar resultados):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, tags_all:["status:planning"] })`
+5. **Active REL (to associate results):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_all:["status:planning"] })`
 
-## Paso 2 — Verificar precondiciones
+## Step 2 — Verify preconditions
 
-Verificar que se cumplen:
-- Componente desplegado en el entorno target.
-- Dependencias accesibles.
-- Datos de test disponibles.
+Verify that:
+- Component is deployed to the target environment.
+- Dependencies are reachable.
+- Test data is available.
 
-Si alguna falla → resultado BLOCKED, no ejecutar.
+If any fails → result BLOCKED, do not execute.
 
-## Paso 3 — Ejecutar tests en orden
+## Step 3 — Execute tests in order
 
-Reglas:
-1. **Orden**: por campo `order` de cada test.
-2. **Blocking**: si test con `blocking: true` falla → suite falla.
-3. **Parallel groups**: tests con mismo `order` y `parallel_group` en paralelo.
-4. **Smoke gate**: si test order:1 (smoke) falla, ABORTAR la suite.
+Rules:
+1. **Order**: by each test's `order` field.
+2. **Blocking**: if a test with `blocking: true` fails → suite fails.
+3. **Parallel groups**: tests with the same `order` and `parallel_group` run in parallel.
+4. **Smoke gate**: if test order:1 (smoke) fails, ABORT the suite.
 
-Para cada test:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"TEST-..." })` — leer entrada completa.
-2. Verificar precondiciones del test.
-3. Ejecutar pasos según el proceso definido.
-4. Evaluar cada validación.
-5. Registrar resultado: pass | warning | fail | blocked.
+For each test:
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"TEST-..." })` — read the full entry.
+2. Verify the test's preconditions.
+3. Execute the steps as defined in the process.
+4. Evaluate each validation.
+5. Record result: pass | warning | fail | blocked.
 
-## Paso 4 — Evaluar resultado global
+## Step 4 — Evaluate global result
 
-Aplicar `success_criteria` de la REG:
-- **Pass**: todos los blocking pasan.
-- **Warning**: pass pero algún no-blocking falla.
-- **Fail**: cualquier blocking falla.
-- **Blocked**: smoke (order:1) falla.
+Apply the REG's `success_criteria`:
+- **Pass**: all blocking tests pass.
+- **Warning**: passes but some non-blocking failed.
+- **Fail**: any blocking test fails.
+- **Blocked**: smoke (order:1) fails.
 
-Comparar contra SLA si disponible:
-- Tests `performance` → contra SLA targets.
-- Si excede SLA → warning (no fail, salvo que blocking).
+Compare against SLA if available:
+- `performance` tests → against SLA targets.
+- If SLA is exceeded → warning (not fail, unless blocking).
 
-## Paso 5 — Persistir RUN
+## Step 5 — Persist RUN
 
-Crear entry RUN (no embedding por defecto):
+Create a RUN entry (no embedding by default):
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "RUN",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  title: "RUN-<PROY>-<COMP>-<auto>: regression <REG-id> <fecha>",
-  content: <markdown con resultado por test, tiempos, evidencia, SLA compliance>,
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  title: "RUN-<PROJ>-<COMP>-<auto>: regression <REG-id> <date>",
+  content: <markdown with per-test result, timings, evidence, SLA compliance>,
   metadata: {
-    reg_id: "REG-<PROY>-<COMP>-<SEQ>",
+    reg_id: "REG-<PROJ>-<COMP>-<SEQ>",
     started_at: "<ISO>",
     completed_at: "<ISO>",
     overall_result: "pass|warning|fail|blocked",
     test_results: [
       { test_id, result, duration_ms, validations: [...] }
     ],
-    rel_id: "REL-<PROY>-<VER>"   // si activa
+    rel_id: "REL-<PROJ>-<VER>"   // if active
   },
-  tags: ["result:<resultado>"],
+  tags: ["result:<result>"],
   updated_by: "skill:regression"
 })
 ```
 
-(RUN no admite relations en Kvendra — `relations=no`. La trazabilidad va en
-`metadata.reg_id` / `metadata.rel_id` y en tags.)
+(RUN does not accept relations in the Kvendra KB — `relations=no`. Traceability
+goes in `metadata.reg_id` / `metadata.rel_id` and in tags.)
 
-## Paso 6 — Auto-generar ISSUE si falla blocking
+## Step 6 — Auto-generate an ISSUE if a blocking test failed
 
-Para cada test blocking que falló:
+For each blocking test that failed:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  title: "ISSUE-<PROY>-<COMP>-<auto>: Regresión en <test_name>",
-  content: <descripción con steps to reproduce del TEST>,
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  title: "ISSUE-<PROJ>-<COMP>-<auto>: Regression in <test_name>",
+  content: <description with steps-to-reproduce from the TEST>,
   metadata: {
     type: "bug",
     severity: "major",
     priority: "high",
-    found_in: "REG-<PROY>-<COMP>-<SEQ>",
-    test_id: "TEST-<PROY>-<COMP>-<SEQ>"
+    found_in: "REG-<PROJ>-<COMP>-<SEQ>",
+    test_id: "TEST-<PROJ>-<COMP>-<SEQ>"
   },
   tags: ["type:bug", "priority:high", "found-in:regression"],
   relations: [
-    { type:"blocks", target:"REL-<PROY>-<VER>" },     // si REL activa
-    { type:"affects", target:"CMP-<PROY>-<COMP>" }
+    { type:"blocks", target:"REL-<PROJ>-<VER>" },     // if REL is active
+    { type:"affects", target:"CMP-<PROJ>-<COMP>" }
   ],
   updated_by: "skill:regression"
 })
 ```
 
-## Paso 7 — Output
+## Step 7 — Output
 
 ```
-## Suite de regresión — REG-<PROY>-<COMP>-<SEQ>
-Fecha: <fecha ISO>
-Componente: CMP-<PROY>-<COMP>
-Release: REL-<PROY>-<VER> (si activa)
+## Regression suite — REG-<PROJ>-<COMP>-<SEQ>
+Date: <ISO date>
+Component: CMP-<PROJ>-<COMP>
+Release: REL-<PROJ>-<VER> (if active)
 
-### Resultado global: PASS / WARNING / FAIL / BLOCKED
+### Global result: PASS / WARNING / FAIL / BLOCKED
 
-### Duración: <tiempo total>
+### Duration: <total time>
 
-### Tests ejecutados
-| # | Test ID | Tipo | Blocking | Resultado | Duración | Notas |
-|---|---------|------|----------|-----------|----------|-------|
-| 1 | TEST-...-050 | smoke | sí | pass | 2s | |
-| 2 | TEST-...-001 | functional | sí | pass | 45s | |
-| 3 | TEST-...-020 | regression | sí | fail | 30s | V3 falló |
+### Executed tests
+| # | Test ID | Type | Blocking | Result | Duration | Notes |
+|---|---------|------|----------|--------|----------|-------|
+| 1 | TEST-...-050 | smoke | yes | pass | 2s | |
+| 2 | TEST-...-001 | functional | yes | pass | 45s | |
+| 3 | TEST-...-020 | regression | yes | fail | 30s | V3 failed |
 | 4 | TEST-...-060 | performance | no | warning | 120s | p95=33s, SLA=30s |
 
 ### SLA compliance
-| Métrica | Target | Actual | Estado |
-|---------|--------|--------|--------|
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
 | latency_e2e | < 120s | 95s | OK |
 | error_rate | < 5% | 0% | OK |
 
-### RUN persistido
-- RUN-<PROY>-<COMP>-<NNN> (overall_result: <resultado>)
+### Persisted RUN
+- RUN-<PROJ>-<COMP>-<NNN> (overall_result: <result>)
 
-### Bugs auto-generados
-- ISSUE-<PROY>-<COMP>-<NNN> (type: bug): Regresión en TEST-...-020
-  - Severidad: major
-  - Bloquea: REL-<PROY>-<VER>
+### Auto-generated bugs
+- ISSUE-<PROJ>-<COMP>-<NNN> (type: bug): Regression in TEST-...-020
+  - Severity: major
+  - Blocks: REL-<PROJ>-<VER>
 
-### Impacto en release
-- REL-<PROY>-<VER>: BLOQUEADA por ISSUE-<PROY>-<COMP>-<NNN>
-  (o: gate OK — todos los blocking pasan)
+### Release impact
+- REL-<PROJ>-<VER>: BLOCKED by ISSUE-<PROJ>-<COMP>-<NNN>
+  (or: gate OK — all blocking tests passed)
 ```

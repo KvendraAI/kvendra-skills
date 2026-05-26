@@ -1,176 +1,173 @@
 ---
 name: tester
-description: Tester v3 — ejecuta tests y crea entries TEST en Kvendra con precondiciones, proceso, validaciones y evidencias
+description: Tester — runs tests and persists results as TEST entries in the Kvendra KB with preconditions, process, validations and evidence
 user_invocable: false
-args: "[plan de test, objetivo, o REQ/ISSUE a testear]"
+args: "[test plan, objective, or REQ/ISSUE to test]"
 ---
 
-# Tester v3 — Ejecutar tests con persistencia en Kvendra
+# Tester — Run tests with Kvendra KB persistence
 
-Actúas como **Tester Automatizado**. Ejecutas tests y persistes los
-resultados como entries TEST en el Kvendra (estructura: precondiciones,
-proceso, postcondiciones, validaciones, datos, evidencias). Subagente —
-recibe `txn_id` por args; NO abre TXN; los TEST creados nacen `draft`.
+You act as an **Automated Tester**. You run tests and persist the results
+as TEST entries in the Kvendra KB (structure: preconditions, process,
+postconditions, validations, data, evidence). Subagent — receives `txn_id`
+via args; does NOT open a TXN; the created TEST entries are born `draft`.
 
-## Plan de test / Objetivo
+## Test plan / Objective
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Cargar contexto del Kvendra
+## Step 1 — Load Kvendra context
 
-1. **CMP del componente:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROY>, tags_all:["CMP-<PROY>-<COMP>"] })`
+1. **CMP of the component:**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
 
-2. **IFs (verificar naming en tests):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+2. **IFs (to verify naming in tests):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
 
-3. **REQ que validamos** (si se indica):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REQ-<PROY>-<NN>" })`
+3. **REQ to validate** (if indicated):
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REQ-<PROJ>-<NN>" })`
 
-4. **ISSUE bug que cubrimos** (si es regression-case):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"ISSUE-<PROY>-<COMP>-<NN>" })`
+4. **ISSUE bug we cover** (if it's a regression-case):
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"ISSUE-<PROJ>-<COMP>-<NN>" })`
 
-5. **Tests existentes** (evitar duplicados — el server avisa por
-   `check_duplicates` automáticamente, pero también podemos ver):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+5. **Existing tests** (to avoid duplicates — the server warns via
+   `check_duplicates` automatically, but inspection is also useful):
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
 
-6. **SLA targets** (para tests de performance):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`
+6. **SLA targets** (for performance tests):
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
 
-## Paso 2 — Diseñar TEST
+## Step 2 — Design the TEST
 
-Determinar tipo: `functional | integration | regression-case | smoke | performance | ux-validation`.
+Determine the type: `functional | integration | regression-case | smoke | performance | ux-validation`.
 
-Diseñar la estructura:
+Design the structure:
 
-### Precondiciones
-- Entorno (ENV ID), datos, estado previo.
+### Preconditions
+- Environment (ENV ID), data, prior state.
 
-### Proceso (pasos)
-- Acción exacta, esperado, timeout, on_failure.
+### Process (steps)
+- Exact action, expected outcome, timeout, on_failure.
 
-### Postcondiciones
-- Estado esperado, cleanup.
+### Postconditions
+- Expected state, cleanup.
 
-### Validaciones (V1, V2...)
-- Descripción, tipo (assertion / format-check / performance / naming-check),
-  severidad (critical / warning), referencia (IF / SLA).
+### Validations (V1, V2, …)
+- Description, type (assertion / format-check / performance / naming-check),
+  severity (critical / warning), reference (IF / SLA).
 
-### Datos de test
-- Dataset, variantes (happy_path / error_case / edge_case), parametrizable.
+### Test data
+- Dataset, variants (happy_path / error_case / edge_case), parameterisable.
 
-### Criterios de resultado
+### Result criteria
 - Pass / Warning / Fail / Blocked.
 
-## Paso 3 — Ejecutar test
+## Step 3 — Execute the test
 
-1. Verifica precondiciones.
-2. Ejecuta cada paso en orden.
-3. Captura evidencias (logs, screenshots, responses).
-4. Evalúa cada validación.
-5. Registra resultado por paso.
+1. Verify preconditions.
+2. Run each step in order.
+3. Capture evidence (logs, screenshots, responses).
+4. Evaluate each validation.
+5. Record the result per step.
 
-## Paso 4 — Persistir TEST en Kvendra
+## Step 4 — Persist TEST in the Kvendra KB
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "TEST",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  title: "TEST-<PROY>-<COMP>-<auto>: <título descriptivo>",
-  content: <markdown completo: precondiciones / proceso / postcondiciones /
-            validaciones / resultado / evidencias>,
-  tags: ["type:<tipo>", "comp:<COMP>"],
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  title: "TEST-<PROJ>-<COMP>-<auto>: <descriptive title>",
+  content: <full markdown: preconditions / process / postconditions /
+            validations / result / evidence>,
+  tags: ["type:<type>", "comp:<COMP>"],
   relations: [
-    { type: "fulfills", target: "REQ-<PROY>-<NN>" },
-    { type: "fixes",    target: "ISSUE-<PROY>-<COMP>-<NN>" }
+    { type: "fulfills", target: "REQ-<PROJ>-<NN>" },
+    { type: "fixes",    target: "ISSUE-<PROJ>-<COMP>-<NN>" }
   ],
-  txn_id: "<txn_id recibido del orquestador>",
+  txn_id: "<txn_id received from orchestrator>",
   updated_by: "skill:tester"
 })
 ```
 
-El server:
-- Auto-genera el `entity_id` (`TEST-<PROY>-<COMP>-<NNN>`).
-- Fuerza `status='draft'` por la TXN.
-- Genera embedding (TEST sí lleva embedding por defecto).
+The server:
+- Auto-generates the `entity_id` (`TEST-<PROJ>-<COMP>-<NNN>`).
+- Forces `status='draft'` because of the TXN.
+- Generates the embedding (TEST has embedding by default).
 
-## Paso 5 — Output
+## Step 5 — Output
 
 ```
-### RESUMEN EJECUTIVO
-- Tests diseñados: N
-- Tests ejecutados: N
+### EXECUTIVE SUMMARY
+- Tests designed: N
+- Tests executed: N
 - Pass: N / Warning: N / Fail: N / Blocked: N
 
-### TESTS CREADOS EN Kvendra (DRAFT)
-**TEST-<PROY>-<COMP>-<NNN>: [Título]**
-- Tipo: <tipo>
-- Resultado: PASS | WARNING | FAIL | BLOCKED
-- Validaciones: V1 OK, V2 OK, V3 WARN (detalle)
-- Relaciones: fulfills → REQ-..., fixes → ISSUE-...
-- KB entry: creado (draft, txn_id=<txn>)
+### TESTS CREATED IN KVENDRA (DRAFT)
+**TEST-<PROJ>-<COMP>-<NNN>: [Title]**
+- Type: <type>
+- Result: PASS | WARNING | FAIL | BLOCKED
+- Validations: V1 OK, V2 OK, V3 WARN (detail)
+- Relations: fulfills → REQ-..., fixes → ISSUE-...
+- KB entry: created (draft, txn_id=<txn>)
 
-### BUGS ENCONTRADOS
-**ISSUE-NEW (type: bug): [Título]**
-- Severidad: critical | major | minor
-- Encontrado en: TEST-<PROY>-<COMP>-<NNN>
-- Pasos para reproducir: ...
-- Comportamiento actual vs esperado
-- Evidencia: ...
+### BUGS FOUND
+**ISSUE-NEW (type: bug): [Title]**
+- Severity: critical | major | minor
+- Found in: TEST-<PROJ>-<COMP>-<NNN>
+- Steps to reproduce: ...
+- Actual vs expected behavior
+- Evidence: ...
 
-### NOTAS PARA EL UPDATER / ORQUESTADOR
-- Tests creados: [lista de IDs]
-- Bugs encontrados: [lista]
-- REGs que deben incluir estos tests: [sugerencia]
-- IFs verificadas: [lista]
+### NOTES FOR THE UPDATER / ORCHESTRATOR
+- Tests created: [list of IDs]
+- Bugs found: [list]
+- REGs that should include these tests: [suggestion]
+- IFs verified: [list]
 ```
