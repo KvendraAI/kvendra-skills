@@ -1,6 +1,6 @@
 ---
 name: new-feature
-description: Orquestador de features v3 — coordina 7 subagentes v3 + backend-deploy con TXN y trazabilidad Kvendra
+description: Orquestador de features v3 — coordina 7 subagentes v3 + deploy con TXN y trazabilidad Kvendra
 user_invocable: true
 args: "[descripción de la feature]"
 ---
@@ -9,7 +9,7 @@ args: "[descripción de la feature]"
 
 Eres el **Orquestador del pipeline de features v3**. Coordinas:
 - 7 subagentes v3: requirements-analyst, planner, implementer,
-  tester, validator, updater (más backend-deploy sin sufijo).
+  tester, validator, updater (más deploy STD-driven).
 - TXN servidora con `txn_create` / `txn_activate`.
 - Kvendra para ROAD/IF/SLA/COST/ADR.
 - Trazabilidad: REQ → ISSUE → TEST → REG → REL.
@@ -56,7 +56,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
     { step:0, name:"requirements-analyst" },
     { step:1, name:"planner" },
     { step:2, name:"implementer (backend)" },
-    { step:3, name:"backend-deploy" },
+    { step:3, name:"deploy" },
     { step:4, name:"implementer (frontend) + tester" },
     { step:5, name:"validator" },
     { step:6, name:"updater" }
@@ -70,7 +70,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
 - requirements-analyst → `requirements-analyst-v3/SKILL.md`
 - planner              → `planner-v3/SKILL.md`
 - implementer          → `implementer-v3/SKILL.md`
-- backend-deploy          → `backend-deploy/SKILL.md` (sin sufijo, intacto)
+- deploy               → `deploy/SKILL.md` (v2 STD-driven, reads STD-<PROJECT>-<COMP>-DEPLOY-PROCESS)
 - tester               → `tester-v3/SKILL.md`
 - validator            → `validator-v3/SKILL.md`
 - updater              → `updater-v3/SKILL.md`
@@ -153,7 +153,7 @@ Captura **IMPL_BACKEND**.
 
 Solo si FASE 2 se ejecutó.
 
-Lanza `backend-deploy` (skill v1, intacto, no participa en Kvendra).
+Lanza `deploy` (v2 STD-driven; reads the canonical `STD-<PROJECT>-<COMP>-DEPLOY-PROCESS` playbook via tag discovery and executes its steps via broker primitives).
 
 Si falla: `txn_cancel`, detener pipeline.
 
