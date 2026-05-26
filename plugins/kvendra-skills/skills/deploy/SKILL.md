@@ -176,4 +176,5 @@ N. <step name>: ✅ <durationMs>ms
 - The skill is **idempotent** in spirit: re-running it after a failed step (after the user fixes the issue) should pick up correctly. The playbook's Pre-conditions section is checked at every invocation.
 - The skill is **dual-mode**: works in cloud (tier:pro+, MCP `kvendra-cloud`) and local (tier:free, MCP Platform). The STD lookup uses the project's KB regardless.
 - The skill is **modeloagnostic**: no LLM-specific assumptions. Any LLM that Claude Code supports can run it.
-- The skill **does NOT publish** to public registries (`cargo publish`, `npm publish`, `pypi upload`) — those are explicit NO-GO per `STD-KVD-57DAE1` and require owner-only manual execution.
+- The skill **does NOT publish** to public registries (`cargo publish`, `npm publish`, `pypi upload`) — those are explicit NO-GO per `STD-KVD-57DAE1` and require owner-only manual execution. <!-- lint-allow-tech -->
+

@@ -1,0 +1,157 @@
+name: lint-skill-md
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/kvendra-skills/skills/**/SKILL.md'
+      - '.github/workflows/lint-skill-md.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/kvendra-skills/skills/**/SKILL.md'
+
+jobs:
+  lint:
+    name: SKILL.md lint (EN-only + no-tech-specifics)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: EN-only check
+        id: en_only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Spanish-vocabulary patterns. Matched as standalone words (\b boundaries)
+          # to minimise false positives. The broker-rules block uses neutral English
+          # ("Each call requires a profile_id") so it does not trigger any of these.
+          PATTERNS=(
+            '\b[Cc]uando\b'
+            '\b[Hh]acer\b'
+            '\b[Ee]ste\b'
+            '\b[Ee]sta\b'
+            '\b[Ee]stas\b'
+            '\b[Ee]stos\b'
+            '\b[Ss]obre\b'
+            '\b[Pp]ara\b'
+            '\b[Cc]ada\b'
+            '\b[Dd]espu[eé]s\b'
+            '\b[Aa]ntes\b'
+            '\b[Aa]plicaci[oó]n\b'
+            '\b[Ff]unci[oó]n\b'
+            '\b[Cc]omponente\b'
+            '\b[Cc]omponentes\b'
+            '\b[Pp]royecto\b'
+            '\b[Uu]suario\b'
+            '\b[Rr]equisito\b'
+            '\b[Ii]nstalaci[oó]n\b'
+            '\b[Tt]raducci[oó]n\b'
+            '\b[Vv]alidaci[oó]n\b'
+            '\bDevuelve\b'
+            '\b[Ee]jecutar\b'
+            '\b[Ll]anza\b'
+            '\b[Aa]ctualiza\b'
+            'á|é|í|ó|ú|ñ|¿|¡'
+          )
+
+          PATTERN_RE=$(IFS='|'; echo "${PATTERNS[*]}")
+
+          fail=0
+          while IFS= read -r -d '' f; do
+            if grep -nE "$PATTERN_RE" "$f" | grep -v 'lint-allow-es' > /tmp/lint_hits.txt; then
+              if [[ -s /tmp/lint_hits.txt ]]; then
+                echo "::error file=$f::EN-only lint failed in $f. Spanish tokens detected:"
+                sed -e "s|^|$f:|" /tmp/lint_hits.txt
+                fail=1
+              fi
+            fi
+          done < <(find plugins/kvendra-skills/skills -name SKILL.md -print0)
+
+          if [[ $fail -ne 0 ]]; then
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Translate the flagged lines to English. The runtime agent"
+            echo "    translates output to the project's CLAUDE.md language at"
+            echo "    runtime per ADR-KVD-SKILLS-244215."
+            echo "  - If a line legitimately requires Spanish content (e.g. an"
+            echo "    example quoting Spanish input), append '<!-- lint-allow-es -->'"
+            echo "    at end-of-line to whitelist it."
+            exit 1
+          fi
+          echo "EN-only check passed for all SKILL.md files."
+
+      - name: No-tech-specifics check
+        id: no_tech
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Strategy:
+          # - Track fenced-code-block state (lines inside ```...``` are skipped).
+          # - Track section state (skip the entire '## External-execution rules'
+          #   section, which is canonical documentation about the broker primitives
+          #   and the FORBIDDEN-via-Bash list).
+          # - Allow lines that reference 'kvendra.<primitive>' on the same line.
+          # - Allow lines tagged with '<!-- lint-allow-tech -->' (escape hatch for
+          #   prose that legitimately mentions commands as documentation, e.g.
+          #   "the skill does NOT publish to cargo").
+          # - Flag remaining bare tech-specific inline-code references.
+
+          fail=0
+          while IFS= read -r -d '' f; do
+            out=$(awk '
+              BEGIN { in_block = 0; in_external = 0 }
+
+              # Section tracking
+              /^## External-execution rules/ { in_external = 1; next }
+              /^## / {
+                if (!/^## External-execution rules/) in_external = 0
+              }
+
+              # Fenced code block tracking
+              /^```/ { in_block = !in_block; next }
+              in_block { next }
+              in_external { next }
+
+              {
+                # Allow lines that reference broker primitives
+                if (/kvendra\.(git|github|aws|npm|pypi|http|shell)/) next
+                # Allow per-line whitelist
+                if (/lint-allow-tech/) next
+                # Flag bare tech-specific inline-code references
+                if (/[`]aws s3 (sync|cp)[`]/ ||
+                    /[`]sam deploy[`]/ ||
+                    /[`]cargo publish[`]/ ||
+                    /[`]npm publish[`]/ ||
+                    /[`]pip upload[`]/ ||
+                    /[`]twine upload[`]/ ||
+                    /[`]docker run[`]/) {
+                  printf("%s:%d:%s\n", FILENAME, NR, $0)
+                }
+              }
+            ' "$f")
+            if [[ -n "$out" ]]; then
+              echo "::error file=$f::No-tech-specifics lint failed:"
+              echo "$out"
+              fail=1
+            fi
+          done < <(find plugins/kvendra-skills/skills -name SKILL.md -print0)
+
+          if [[ $fail -ne 0 ]]; then
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Tech-specific recipes should live in STD entities of the"
+            echo "    Kvendra KB (ADR-KVD-SKILLS-BB0E8A), read by the skill at"
+            echo "    runtime via tag-based discovery (PAT-KVD-577667)."
+            echo "  - The '## External-execution rules' section is whitelisted"
+            echo "    because it is the canonical broker-primitive contract."
+            echo "  - The broker primitive table ('kvendra.<primitive>') is"
+            echo "    allowed because it is the skill-thin contract, not a"
+            echo "    direct invocation."
+            echo "  - If a line legitimately references a command in prose (e.g."
+            echo "    'the skill does NOT publish to cargo'), append"
+            echo "    '<!-- lint-allow-tech -->' at end-of-line."
+            exit 1
+          fi
+          echo "No-tech-specifics check passed for all SKILL.md files."

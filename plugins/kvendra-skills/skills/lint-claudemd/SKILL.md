@@ -88,7 +88,7 @@ entity_get({ entity_id: "PRJ-<PROJECT_ID>" })
 
 ## Step 6 — Drift smells in Manual section
 
-Extract the Manual section content (between the markers). Apply heuristics for "drift toward bitácora":
+Extract the Manual section content (between the markers). Apply heuristics for "drift toward logbook":
 
 ### Entity-ID smell
 Scan for substrings that look like Kvendra entity IDs:
