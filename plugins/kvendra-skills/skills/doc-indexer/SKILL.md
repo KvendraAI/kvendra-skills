@@ -194,8 +194,7 @@ After all files are processed, report:
 - **Read the actual content** — do not assume what a file says.
 - **Do not modify the Markdown files** — only create / update DOC entries.
 - **Be conservative with facts** — only verifiable statements.
-- **One DOC entry per `.md` file** — no sub-section splitting; that is a
-  Jarvis-era convention and adds complexity without value for Kvendra.
+- **One DOC entry per `.md` file** — no sub-section splitting.
 - **Idempotent** — update if a DOC with the same `file_path` already
   exists. Re-running is safe.
 - **Always relative paths** — `file_path` is relative to the project root.

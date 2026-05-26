@@ -149,8 +149,7 @@ docs/<topic>/
     └── diagrams/
 ```
 
-The structure is flat — no `sections/`, no `info.json`, no `index.json`,
-no `manual-manager/`. Only `.md` files plus `assets/` for images.
+The structure is flat — `.md` files plus an `assets/` directory for images.
 
 ## Step 5 — Capture screenshots (optional, if user-facing)
 
@@ -379,9 +378,8 @@ docs/<topic>/
 
 - **Single language: English.** No multi-locale generation. The runtime
   agent translates to the project's CLAUDE.md language.
-- **Single source of truth: filesystem + KB.** No doc-portal stack
-  (no `info.json`, `index.json`, `sections/<locale>/`, `build-registry`,
-  visibility levels, private-S3 publishing).
+- **Single source of truth: filesystem + KB.** The output lives as `.md`
+  files under `docs/<topic>/` and as DOC entries in the Kvendra KB.
 - **Mandatory pause** after Step 4 (TOC + consistency brief). Do not
   write any `.md` until the user approves.
 - **Do not invent data**. If you need information not in the KB or in
