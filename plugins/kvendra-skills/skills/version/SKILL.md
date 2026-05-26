@@ -18,6 +18,14 @@ Useful when:
 - Quickly checking if a recently-announced capability is present locally.
 - Onboarding a new contributor: shows the release timeline at a glance.
 
+## External-execution policy
+
+This skill respects the project's broker policy declared in
+`STD-<PROJ>-BROKER-POLICY` and materialised at `.kvendra-protected`.
+See `help({topic:"broker-policy"})` for the schema and resolution
+order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
+pointing to the required broker primitive.
+
 ## Input
 
 `$ARGUMENTS` may be:

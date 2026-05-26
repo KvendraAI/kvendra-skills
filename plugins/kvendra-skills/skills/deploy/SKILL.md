@@ -30,18 +30,13 @@ The same skill orchestrates a `CMP-KVD-WEB` deploy or a `CMP-KVD-ENTERPRISE` sta
 - This skill does NOT open a TXN by default — a deploy is a runtime operation, not a structural change. Optional: open a TXN if the playbook itself creates KB entities (rare; only some `STD-*-DEPLOY-PROCESS` variants do this).
 - On any error with `error.help.topic`: call `help({topic})`.
 
-## External execution rules (MANDATORY)
+## External-execution policy
 
-ALL deploy steps that touch credentials or external systems go through broker primitives:
-- AWS s3 / cloudfront / lambda → `kvendra.aws`.
-- AWS via SAM CLI / other allowlisted binary → `kvendra.shell exec` with `accept_destructive: true`.
-- Git commit / push → `kvendra.git`.
-- GitHub REST writes → `kvendra.github`.
-- HTTP with auth → `kvendra.http`.
-
-Read-only Bash (`git status`, `git log`, `aws sts get-caller-identity`) is permitted for verification only.
-
-If the broker is unreachable: STOP per Step 0 fail-safe.
+This skill respects the project's broker policy declared in
+`STD-<PROJ>-BROKER-POLICY` and materialised at `.kvendra-protected`.
+See `help({topic:"broker-policy"})` for the schema and resolution
+order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
+pointing to the required broker primitive.
 
 ## Step 1 — Resolve target component
 

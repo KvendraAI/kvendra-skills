@@ -38,33 +38,13 @@ Identify `project_id` from the `CLAUDE.md`. If the user passed a path
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
-## External-execution rules (MANDATORY)
+## External-execution policy
 
-Any operation that uses credentials or leaves the local machine (git, github,
-aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
-of the `kvendra` broker (local stdio MCP). NO direct Bash.
-
-| Desired op | Primitive |
-|---|---|
-| git clone/push/pull/commit/tag | `kvendra.git` |
-| GitHub REST/GraphQL | `kvendra.github` |
-| AWS s3/cloudfront/lambda | `kvendra.aws` |
-| npm publish/deprecate/read_metadata | `kvendra.npm` |
-| PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP with auth | `kvendra.http` |
-| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
-
-Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
-
-**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
-`gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
-
-If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
-
-Additionally enforced by the plugin's PreToolUse hook (active only inside
-workspaces with a `.kvendra-workspace` marker).
+This skill respects the project'''s broker policy declared in
+`STD-<PROJ>-BROKER-POLICY` and materialised at `.kvendra-protected`.
+See `help({topic:"broker-policy"})` for the schema and resolution
+order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
+pointing to the required broker primitive.
 
 ## Step 1 — Locate the Markdown files
 

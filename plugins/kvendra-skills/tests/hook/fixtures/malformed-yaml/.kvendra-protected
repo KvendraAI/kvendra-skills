@@ -1,0 +1,4 @@
+this is not: valid
+  yaml at all
+    - foo: bar :: baz
+  random: { } [ unclosed

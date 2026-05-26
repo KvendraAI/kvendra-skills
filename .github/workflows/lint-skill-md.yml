@@ -155,3 +155,41 @@ jobs:
             exit 1
           fi
           echo "No-tech-specifics check passed for all SKILL.md files."
+
+      - name: No-mandatory-broker-block check
+        id: no_mandatory_broker
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Negative check: no SKILL.md may carry the legacy MANDATORY block.
+          # Both spellings ("rules" and "rule") and both spacings are matched.
+          legacy_hits=$(grep -lE '^## External-execution rules \(MANDATORY\)|^## External execution rules \(MANDATORY\)' \
+                       plugins/kvendra-skills/skills/*/SKILL.md 2>/dev/null || true)
+          if [[ -n "$legacy_hits" ]]; then
+            echo "::error::Legacy '## External-execution rules (MANDATORY)' block found in SKILL.md files:"
+            echo "$legacy_hits"
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Replace the legacy MANDATORY block with the canonical"
+            echo "    '## External-execution policy' pointer per REQ-KVD-SKILLS-48062A."
+            echo "  - See help({topic:'broker-policy'}) for the schema and the"
+            echo "    canonical pointer text."
+            exit 1
+          fi
+
+          # Positive check: every SKILL.md must carry the canonical pointer.
+          missing=$(grep -L '^## External-execution policy' \
+                    plugins/kvendra-skills/skills/*/SKILL.md 2>/dev/null || true)
+          if [[ -n "$missing" ]]; then
+            echo "::error::Missing canonical '## External-execution policy' pointer in:"
+            echo "$missing"
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Every SKILL.md must reference the project's broker policy"
+            echo "    via the canonical pointer section."
+            echo "  - See help({topic:'broker-policy'}) for the canonical wording."
+            exit 1
+          fi
+
+          echo "No-mandatory-broker-block check passed: legacy block absent, canonical pointer present in all SKILL.md files."

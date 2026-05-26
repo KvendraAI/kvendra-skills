@@ -11,6 +11,14 @@ Verifies that a project's `CLAUDE.md` conforms to the canonical tripartite model
 
 The skill is **read-only**: it does NOT modify files, does NOT touch the KB beyond verifying the project_id exists.
 
+## External-execution policy
+
+This skill respects the project's broker policy declared in
+`STD-<PROJ>-BROKER-POLICY` and materialised at `.kvendra-protected`.
+See `help({topic:"broker-policy"})` for the schema and resolution
+order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
+pointing to the required broker primitive.
+
 ## Input
 
 `$ARGUMENTS` may be:

@@ -1,0 +1,21 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture)
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 1
+synced_at: 2026-05-26T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: permissive
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+broker_min_version: "0.4.0"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+push([[:space:]]|$)'
+
+allow_bash: []
+
+require_broker:
+  - op_pattern: 'git[[:space:]]+push'
+    primitive: kvendra.git

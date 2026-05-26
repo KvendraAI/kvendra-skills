@@ -1,0 +1,5 @@
+{
+  "tool_name": "Bash",
+  "command": "git status",
+  "expected_exit": 0
+}

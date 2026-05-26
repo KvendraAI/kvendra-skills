@@ -1,0 +1,5 @@
+{
+  "tool_name": "Bash",
+  "command": "ls -la /tmp",
+  "expected_exit": 0
+}

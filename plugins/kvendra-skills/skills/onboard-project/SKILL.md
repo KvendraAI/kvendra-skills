@@ -32,23 +32,17 @@ Read `help({topic:"workspace-layout"})` to refresh the canonical metadata conven
 - IDs are server-emitted. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - On any error with `error.help.topic`: call `help({topic})`. Topic list: `bootstrap, identity, naming, txn, validation, errors, embeddings, tools, examples, entity_types, workspace-layout, skill-playbooks, install, tier`.
 
-## External execution rules (MANDATORY)
+## External-execution policy
 
-Any operation that uses credentials or leaves the machine (git, github, aws, npm, pypi, http-with-auth, allowlisted shell) MUST go through broker primitives (`kvendra.*`). NO direct Bash.
+This skill respects the project's broker policy declared in
+`STD-<PROJ>-BROKER-POLICY` and materialised at `.kvendra-protected`.
+See `help({topic:"broker-policy"})` for the schema and resolution
+order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
+pointing to the required broker primitive.
 
-| Operation | Primitive |
-|---|---|
-| git clone/push/pull/commit/tag | `kvendra.git` |
-| GitHub REST/GraphQL writes | `kvendra.github` |
-| AWS s3/cloudfront/lambda/sam | `kvendra.aws` or `kvendra.shell` (allowlisted bin) |
-| npm publish/deprecate | `kvendra.npm` |
-| PyPI upload | `kvendra.pypi` |
-| HTTP with auth | `kvendra.http` |
-| Shell with allowlisted binary | `kvendra.shell` |
-
-Read-only Bash (`git status`, `git log`, `gh issue view`, `aws sts get-caller-identity`) is permitted — the hook only blocks writes/deploys.
-
-If the broker is unreachable: STOP and tell the user to start it. NO Bash fallback.
+For new projects this skill materialises the seed `.kvendra-protected`
+at the workspace root after creating the project's
+`STD-<PROJECT>-BROKER-POLICY` entity (see Step 5 and Step 6).
 
 ## Step 1 — Auto-detect the tier (no user question)
 
@@ -148,17 +142,27 @@ txn_create({
      force_id: "PRJ-<PROJECT_ID>",
      title, content,
      metadata: {
-       bootstrap_extras: ["STD-<PROJECT_ID>-DEPLOY-POLICY"],
+       bootstrap_extras: [
+         "<STD-DEPLOY-POLICY entity_id from step 2>",
+         "<STD-BROKER-POLICY entity_id from step 2b>"
+       ],
        owner_handle: <whoami or asked>,
        workspace_layout: <answered>
      },
      txn_id, updated_by
    })
    ```
-   Conventions per `help({topic:"workspace-layout"})`.
+   Conventions per `help({topic:"workspace-layout"})`. The PRJ create happens AFTER steps 2 and 2b so the resolved entity_ids can be embedded in `bootstrap_extras`. Alternatively, create PRJ first with an empty `bootstrap_extras` then `entity_update` after steps 2 + 2b — pipeline-friendly inside the same TXN.
 
 2. **`STD-<PROJECT_ID>-DEPLOY-POLICY`** (server-generated id):
    Content built from the operational-policy answers (Step 3). Schema per `help({topic:"skill-playbooks"})` (`playbook_type:"deploy-policy"`).
+
+2b. **`STD-<PROJECT_ID>-BROKER-POLICY`** (server-generated id):
+   Seed broker-policy playbook with **strict** mode + canonical production blocklist (cloned from the schema documented at `help({topic:"broker-policy"})` and from `STD-KVD-BROKER-POLICY` as the reference instance). Schema per `help({topic:"broker-policy"})` (`playbook_type:"broker-policy"`).
+   - `metadata.playbook_type = "broker-policy"`, `metadata.mode = "strict"`, `metadata.schema_version = 1`, `metadata.broker_min_version = "0.4.0"`, `metadata.broker_install_hint = "Install kvendra-cli: cargo install kvendra (or see https://github.com/KvendraAI/kvendra-cli)"`.
+   - Content includes the canonical YAML payload (mode + block_bash[] + allow_bash[] + require_broker[] + broker_install_hint + broker_min_version), pre-populated with the canonical Kvendra blocklist as the default seed.
+   - Tags: `playbook_type:broker-policy`, `mode:strict`, `scope:broker-policy`.
+   - Relations: `derives_from → ADR-KVD-SKILLS-BB0E8A`, `part_of → PRJ-<PROJECT_ID>`.
 
 3. **`GLO-<PROJECT_ID>-001`** (`force_id`):
    Domain terms + component codes.
@@ -204,6 +208,23 @@ txn_create({
    - `{{PARTICULARITIES}}` → answer from Step 3 (or an empty placeholder comment if no particularities).
 3. Write the resulting file to `<cwd>/CLAUDE.md` (only in new-project mode — in add-component mode the existing CLAUDE.md is preserved).
 4. **Do NOT overwrite** an existing CLAUDE.md without `--force`. If one exists, show the diff and ask the user.
+
+## Step 6.5 — Materialise `.kvendra-protected` (broker policy)
+
+Only in **new project mode**. After the seed `STD-<PROJECT_ID>-BROKER-POLICY` is created in Step 2b:
+
+1. Read the freshly-created STD (the txn-scoped entity_id is known from Step 2b).
+2. Extract the canonical YAML body from `## Steps` step 3 (the fenced ```yaml … ``` block).
+3. Compute provenance: `schema_version`, `std_id = <created entity_id>`, `synced_version = STD.version (1 at creation)`, `synced_at = current ISO8601 UTC`, `synced_by = "skill:onboard-project"`, `cmp_overrides_applied = []`, `checksum = sha256(canonical body)`.
+4. Validate the payload (each regex must compile under `grep -E`; `mode` valid; `require_broker[].primitive` in the 7-value enum).
+5. Write the file atomically to `<workspace_root>/.kvendra-protected` with the canonical header comment:
+   ```
+   # synced from <std_id> (do not edit by hand — run /sync-claudemd --policy-only)
+   ```
+6. If `.kvendra-protected` already exists at workspace root, prompt the user before overwriting. The default is **DO NOT overwrite** an existing file (protects manual edits / prior project tenants).
+7. Best-effort cleanup of legacy `.kvendra-workspace` if it exists in the same directory: leave it in place (do NOT delete), but log an INFO line recommending the user remove it after one release.
+
+**Add-component mode**: this step is SKIPPED — `.kvendra-protected` belongs to the workspace root, not the component subdir. Re-syncing on existing projects is the job of `/sync-claudemd --policy-only`.
 
 ## Step 7 — Validate completeness
 

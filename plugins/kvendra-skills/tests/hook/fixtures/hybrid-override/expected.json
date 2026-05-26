@@ -1,0 +1,5 @@
+{
+  "tool_name": "Bash",
+  "command": "git log --oneline -n 5",
+  "expected_exit": 0
+}

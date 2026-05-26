@@ -4,6 +4,98 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.2.0-alpha.1] — 2026-05-26 — Broker-policy foundation (REQ-48062A — first incremental alpha)
+
+### Highlights
+
+First incremental alpha of the v1.2.0 "broker-agnostic + policy-driven
+hook" iteration tracked by `REQ-KVD-SKILLS-48062A` /
+`ROAD-KVD-SKILLS-C20D24` M1. Lays the **foundation** for decoupling the
+27 skills from a hard `kvendra-cli` install dependency by extracting the
+external-execution policy out of every `SKILL.md` and the hardcoded hook
+blocklist into a first-class KB STD entity materialised locally as
+`.kvendra-protected`.
+
+This release is **non-breaking** for current users:
+- Workspaces that still carry only the legacy `.kvendra-workspace`
+  empty marker continue to be enforced under a hardcoded seed strict
+  policy identical to the v1 hook blocklist. A deprecation warning is
+  emitted on every Bash invocation in this state. The seed is removed
+  in the next release.
+- Workspaces that have been migrated via `/sync-claudemd --policy-only`
+  (or fresh `/onboard-project`) carry `.kvendra-protected` and run
+  under the policy-driven hook v2.
+
+### Added
+
+- `STD-KVD-BROKER-POLICY` entity (KB) — canonical external-execution
+  policy playbook for Kvendra workspaces (subclass of
+  `ADR-KVD-SKILLS-BB0E8A` with `playbook_type: "broker-policy"`, mode
+  strict, schema_version 1).
+- `IF-KVD-SKILLS-BROKER-POLICY` v1.0 (KB) — wire-public schema of the
+  `.kvendra-protected` YAML payload.
+- `IF-KVD-SKILLS-HOOK-CONTRACT` v1.0 (KB) — wire-public stdin/exit-code
+  contract of the PreToolUse hook + canonical stderr format.
+- `STD-KVD-BROKER-POLICY` appended to `PRJ-KVD.metadata.bootstrap_extras`
+  alongside `STD-KVD-8F3BFB` and `STD-KVD-57DAE1`, so the policy is part
+  of the session context.
+- `tests/hook/` — fixture-driven unit-test suite for `block-unsafe-ops.sh`
+  (≥8 scenarios incl. p95 latency benchmark).
+- `help({topic:"broker-policy"})` topic declared in
+  `kvendra-platform/src/tools/help.ts` (canonical schema, modes, drift
+  semantics).
+
+### Changed (foundational refactor)
+
+- `scripts/block-unsafe-ops.sh` — full refactor to **hook v2**:
+  policy-driven (reads `.kvendra-protected` YAML on every invocation),
+  three modes (strict / permissive / hybrid), canonical
+  `[KVD-PROTECTED]` stderr format, transition fallback for legacy
+  `.kvendra-workspace` empty marker (one-line deprecation warning +
+  seed strict policy identical to v1 blocklist). Pure-bash awk YAML
+  reader, single pass, p95 ≤50 ms warm.
+- `sync-claudemd` — extended with `--policy-only` flag. Default action
+  now syncs both CLAUDE.md AND `.kvendra-protected`. Step 6 documents
+  the broker-policy materialisation flow + idempotency + validation.
+- `onboard-project` — creates `STD-<PROJECT>-BROKER-POLICY` as part of
+  the seed entities (alongside `STD-<PROJECT>-DEPLOY-POLICY`), appends
+  it to `PRJ.metadata.bootstrap_extras`, and materialises
+  `.kvendra-protected` at the workspace root (Step 6.5).
+- All 27 SKILL.md files — replaced the duplicated
+  `## External-execution rules (MANDATORY)` block (broker primitives
+  table + FORBIDDEN list + "if broker unavailable: STOP" line) with
+  a 6-line canonical `## External-execution policy` pointer
+  referencing `help({topic:"broker-policy"})`. Net diff ≈ -550 LoC
+  across the 27 files combined.
+- `.github/workflows/lint-skill-md.yml` — added
+  `no-mandatory-broker-block` lint step. Negative check rejects any
+  SKILL.md that reintroduces the legacy MANDATORY block; positive
+  check enforces presence of the canonical pointer in every SKILL.md.
+
+### Migration notes
+
+- Existing workspaces continue to work — the hook v2 transition
+  fallback enforces the same blocklist as v1 when only the legacy
+  marker is present.
+- To migrate a workspace to policy-driven mode: run
+  `/sync-claudemd --policy-only` (after upgrading to v1.2.0-alpha.1).
+  This materialises `.kvendra-protected` from the project's
+  `STD-<PROJECT>-BROKER-POLICY`. If the STD does not exist yet, the
+  skill stops with a canonical fail-safe message — define the STD
+  via `/requirements-analyst` or run a fresh `/onboard-project`.
+- The legacy `.kvendra-workspace` empty marker is preserved for 1
+  release. It will be removed in v1.2.0-alpha.2+ once the canonical
+  marker is widespread.
+
+### KB traceability
+
+- `REQ-KVD-SKILLS-48062A` (29 ACs) — driver REQ.
+- `ROAD-KVD-SKILLS-C20D24` — v2.x hardening roadmap, M1.
+- `TXN-KVD-20260526-014` — pipeline TXN.
+- New STDs / IFs: `STD-KVD-D31D54` (BROKER-POLICY),
+  `IF-KVD-SKILLS-840EE9` (broker-policy wire schema),
+  `IF-KVD-SKILLS-2AD807` (hook contract).
+
 ## [1.1.0] — 2026-05-26 — Doc skills simplified (doc-portal heritage removed)
 
 ### Highlights

@@ -1,22 +1,35 @@
 ---
 name: sync-claudemd
-description: Regenerate a project's CLAUDE.md from the canonical template (STD-KVD-CLAUDEMD-TEMPLATE), preserving the Particularidades section. Detects manual_version + tier drift.
+description: Regenerate a project's CLAUDE.md from the canonical template (STD-KVD-CLAUDEMD-TEMPLATE), preserving the Particularidades section. Also materialises the broker policy at .kvendra-protected from STD-<PROJ>-BROKER-POLICY. Detects manual_version + tier drift.
 user_invocable: true
-args: "[<PROJECT_ID> (optional, defaults to project_id from cwd CLAUDE.md)] [--dry-run] [--force]"
+args: "[<PROJECT_ID> (optional, defaults to project_id from cwd CLAUDE.md)] [--dry-run] [--force] [--policy-only]"
 ---
 
-# Sync CLAUDE.md v1 — Regenerate from canonical template
+# Sync CLAUDE.md v1 — Regenerate from canonical template + materialise broker policy
 
-Regenerates the `CLAUDE.md` of the current project (or a specified one) from the canonical template entity `STD-KVD-CLAUDEMD-TEMPLATE` in the KB. **Preserves the `## Particularidades` section verbatim** unless `--force` is passed. Detects drift in `manual_version` and `tier` and warns the user before regenerating.
+Regenerates the `CLAUDE.md` of the current project (or a specified one) from the canonical template entity `STD-KVD-CLAUDEMD-TEMPLATE` in the KB AND materialises the project's broker policy as `.kvendra-protected` at the workspace root from `STD-<PROJECT>-BROKER-POLICY`. **Preserves the `## Particularidades` section verbatim** unless `--force` is passed. Detects drift in `manual_version`, `tier` and broker-policy `synced_version` and warns the user before regenerating.
 
-This skill closes the lifecycle of the CLAUDE.md ultra-minimum model (per REQ-KVD-SKILLS-50F9E4) — `onboard-project` generates the initial CLAUDE.md; `sync-claudemd` keeps it aligned with the evolving canonical template; `lint-claudemd` verifies conformance.
+This skill closes the lifecycle of the CLAUDE.md ultra-minimum model (per REQ-KVD-SKILLS-50F9E4) and the broker-policy materialisation lifecycle (per REQ-KVD-SKILLS-48062A) — `onboard-project` generates the initial CLAUDE.md + `.kvendra-protected`; `sync-claudemd` keeps both aligned with the evolving canonical sources; `lint-claudemd` verifies conformance.
+
+## External-execution policy
+
+This skill respects the project's broker policy declared in
+`STD-<PROJ>-BROKER-POLICY` and materialised at `.kvendra-protected`.
+See `help({topic:"broker-policy"})` for the schema and resolution
+order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
+pointing to the required broker primitive.
 
 ## Input
 
 `$ARGUMENTS` may be:
 - `<PROJECT_ID>` (uppercase 3-6 chars) → regen for that project. Default: project_id from `<cwd>/CLAUDE.md` Project section.
-- `--dry-run` → show the diff vs the would-be regenerated CLAUDE.md, do NOT write.
+- `--dry-run` → show the diff vs the would-be regenerated CLAUDE.md AND `.kvendra-protected`, do NOT write.
 - `--force` → overwrite the Particularidades section too (DESTRUCTIVE).
+- `--policy-only` → write only `.kvendra-protected` (broker policy), leave `CLAUDE.md` untouched. Useful when the policy STD evolves independently of the CLAUDE.md template.
+
+### Default action (no flags)
+
+Syncs **both** `CLAUDE.md` AND `.kvendra-protected`. Each side is idempotent (no-op if local copy already matches its canonical KB source).
 
 ## Step 0 — Initialization + fail-safe
 
@@ -150,9 +163,102 @@ STD-KVD-CLAUDEMD-TEMPLATE  manual_version: <canonical>
 - If the regen revealed drift in canonical Manual content, take note — the project's onboarding model has evolved and may apply to other projects too.
 ```
 
+## Step 6 — Materialise `.kvendra-protected` (broker policy)
+
+This step runs in the default mode (no flags) AND in `--policy-only` mode. In `--policy-only` mode, Steps 1-5 (CLAUDE.md side) are skipped.
+
+### Step 6.1 — Read the canonical broker-policy STD
+
+Use **tag-based discovery** (per `PAT-KVD-577667`) — `force_id` only applies to PRJ/CMP/REL:
+
+```
+entity_query({
+  entity_type: "STD",
+  project_id: "<PROJECT>",
+  tags_all: ["scope:broker-policy", "playbook_type:broker-policy"],
+  status: "active",
+  order_by: "updated_at_desc",
+  limit: 1
+})
+```
+
+- **0 results** → **FAIL-SAFE** per `ADR-KVD-SKILLS-BB0E8A`. STOP and surface the canonical message:
+
+  > *"No `STD-<PROJECT>-BROKER-POLICY` exists. Run `/onboard-project` if this is a new project, or `/requirements-analyst` to define one."*
+
+  No improvisation, no inlined default policy.
+
+- **1 result** → continue. Record the STD's `entity_id` (will be written verbatim as `std_id` in the YAML payload) and `version` (will be written as `synced_version`).
+
+- **>1 results** → pick `[0]` (most recent), surface a WARNING and recommend archiving older duplicates.
+
+### Step 6.2 — Optionally merge a CMP-level override
+
+If a component context is in scope (cwd inside a known `CMP.metadata.workspace_subdir`), also query:
+
+```
+entity_query({
+  entity_type: "STD",
+  project_id: "<PROJECT>",
+  component_id: "<PROJECT>-<COMP>",
+  tags_all: ["scope:broker-policy"],
+  status: "active",
+  order_by: "updated_at_desc",
+  limit: 1
+})
+```
+
+- If present, merge **additively** into the PROJ STD: CMP overrides MAY add new `block_bash` regex / `require_broker` entries; they MAY NOT remove or weaken PROJ-level entries.
+- Track the merged STD ids in `cmp_overrides_applied[]` of the YAML provenance block.
+
+### Step 6.3 — Render the YAML payload
+
+Extract from the STD `content` the canonical YAML block under `## Steps` step 3 (the payload inside the fenced ```yaml … ``` block). Substitute provenance:
+
+- `schema_version` ← `STD.metadata.schema_version` (or `1` default).
+- `std_id` ← STD's `entity_id`.
+- `synced_version` ← STD's `version` field.
+- `synced_at` ← current ISO8601 UTC timestamp.
+- `synced_by` ← `"skill:sync-claudemd"`.
+- `cmp_overrides_applied` ← list of CMP STD ids merged in Step 6.2.
+- `checksum` ← `sha256` hex of the canonical YAML body (everything below the provenance block, i.e. starting from `mode:`).
+
+### Step 6.4 — Idempotency check
+
+Read existing `.kvendra-protected` if present. If:
+- local `schema_version` == new `schema_version`, AND
+- local `synced_version` == new `synced_version`, AND
+- local `checksum` recomputes to itself (file body matches),
+
+then **NO write** is performed (no-op). Report `policy: no-op (up to date)`.
+
+### Step 6.5 — Validate the YAML payload before writing
+
+- `mode` must be one of `strict|permissive|hybrid`.
+- `block_bash`, `allow_bash`, `require_broker` must be arrays (possibly empty).
+- Every regex in `block_bash` / `allow_bash` / `require_broker[].op_pattern` must compile under `grep -E` without error. Validate each pattern individually; on first failure, STOP and surface the offending pattern.
+- `require_broker[].primitive` must be one of `kvendra.git|kvendra.github|kvendra.aws|kvendra.npm|kvendra.pypi|kvendra.http|kvendra.shell`.
+
+If any validation fails, STOP — do NOT write a broken policy file.
+
+### Step 6.6 — Write `.kvendra-protected`
+
+Write the YAML payload to the **workspace root** (resolved from `PRJ.metadata.workspace_layout` + `<cwd>`). Preserve the canonical header comment:
+
+```
+# synced from <std_id> (do not edit by hand — run /sync-claudemd --policy-only)
+```
+
+The file is rewritten atomically: write to `.kvendra-protected.new`, then `mv` over the existing one.
+
+### Step 6.7 — Fail-safe
+
+If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*. Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers.
+
 ## Reglas operacionales
 
-- The skill is **idempotent**: running it twice in a row without intervening changes produces no diff.
+- The skill is **idempotent**: running it twice in a row without intervening changes produces no diff (CLAUDE.md unchanged AND `.kvendra-protected` no-op per Step 6.4).
 - The skill is **read-write-local-only**: it does NOT touch the KB. NO TXN required, NO entity_create/update.
 - The skill is **dual-mode**: works identically against `kvendra-platform` local (tier:free) and `kvendra-cloud` Enterprise (tier:pro+).
 - The skill respects **AC-CLAUDEMD-8 (Manual immutable from project content)**: it never injects project-specific IDs into the Manual section. Only generic placeholders.
+- The `--policy-only` flag is the canonical surface for re-syncing `.kvendra-protected` independently of CLAUDE.md drift.

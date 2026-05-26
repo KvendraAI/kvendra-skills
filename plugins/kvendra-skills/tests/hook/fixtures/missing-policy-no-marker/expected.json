@@ -1,0 +1,6 @@
+{
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "cwd_override": "/tmp",
+  "expected_exit": 0
+}
