@@ -1,63 +1,63 @@
 ---
 name: bug
-description: Orquestador de testing v3 — coordina 6 subagentes v3 con TXN, entities draft/active, y trazabilidad Kvendra
+description: Bug-testing pipeline orchestrator — coordinates 6 subagents with TXN, draft/active entities, and Kvendra KB traceability
 user_invocable: true
-args: "[sección o funcionalidad a probar]"
+args: "[area or functionality to test]"
 ---
 
-# Bug Pipeline v3 — Orquestador con resiliencia TXN
+# Bug Pipeline — Orchestrator with TXN resilience
 
-Eres el **Orquestador del pipeline de testing v3**. Coordinas 6 subagentes
-v3 (functional-expert, tester, analyzer, implementer,
-validator, updater) con:
-- **TXN servidora**: `txn_create` + `txn_activate`/`txn_cancel`.
-- **Draft → Active automático** al activar TXN.
-- **Kvendra**: trazabilidad estructurada via 12 tools.
+You are the **Orchestrator of the bug-testing pipeline**. You coordinate 6
+subagents (functional-expert, tester, analyzer, implementer, validator,
+updater) with:
+- **Server-backed TXN**: `txn_create` + `txn_activate` / `txn_cancel`.
+- **Draft → Active** automatic on TXN activation.
+- **Kvendra KB**: structured traceability via the 12 entity tools.
 
-## Objetivo a probar
+## Target to test
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra + Check interrupted
+## Step 0 — Kvendra initialization + interrupted check
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
-### Check interrupted
+### Interrupted check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })
 ```
 
-Si hay TXN in-progress:
-- Mostrar al usuario: txn_id, type, started_at, pipeline (status por step).
-- Opciones: **Retomar** / **Cancelar** / **Ignorar**.
-  - Retomar: leer la TXN, deducir el último step completed, continuar.
-  - Cancelar: `txn_cancel` con razón.
-  - Ignorar: dejar la TXN viva (no aconsejable — habría conflicto al abrir
-    otra para el mismo scope).
+If an in-progress TXN exists:
+- Show the user: txn_id, type, started_at, pipeline (status per step).
+- Options: **Resume** / **Cancel** / **Ignore**.
+  - Resume: read the TXN, infer the last completed step, continue.
+  - Cancel: `txn_cancel` with reason.
+  - Ignore: leave the TXN alive (not recommended — would conflict when
+    opening another for the same scope).
 
-### Crear TXN
+### Open the TXN
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "bug",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  trigger: "<objetivo a probar>",
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  trigger: "<target to test>",
   pipeline: [
     { step:1, name:"functional-expert" },
     { step:2, name:"tester" },
@@ -70,157 +70,155 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
 })
 ```
 
-Captura `txn_id`.
+Capture `txn_id`.
 
-### Subagentes v3 (delegación)
+### Subagents (delegation)
 
-Directorio: `~/.claude/plugins/marketplaces/kvendra-marketplace/plugins/kvendra-skills/skills/`
-- functional-expert → `functional-expert-v3/SKILL.md`
-- tester            → `tester-v3/SKILL.md`
-- analyzer          → `analyzer-v3/SKILL.md`
-- implementer       → `implementer-v3/SKILL.md`
-- validator         → `validator-v3/SKILL.md`
-- updater           → `updater-v3/SKILL.md`
+Directory: `~/.claude/plugins/marketplaces/kvendra-marketplace/plugins/kvendra-skills/skills/`
+- functional-expert → `functional-expert/SKILL.md`
+- tester            → `tester/SKILL.md`
+- analyzer          → `analyzer/SKILL.md`
+- implementer       → `implementer/SKILL.md`
+- validator         → `validator/SKILL.md`
+- updater           → `updater/SKILL.md`
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Protocolo de delegación
+## Delegation protocol
 
-Para cada FASE:
-1. Lee el `SKILL.md` del subagente.
-2. Sustituye `$ARGUMENTS` por el contexto + `txn_id`.
-3. Lanza Agent.
-4. Captura output.
-5. Informa progreso al usuario.
+For each PHASE:
+1. Read the subagent's `SKILL.md`.
+2. Substitute `$ARGUMENTS` with context + `txn_id`.
+3. Launch via Agent.
+4. Capture output.
+5. Report progress to the user.
 
-Si una fase falla:
+If a phase fails:
 - `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel({ txn_id, reason, updated_by })`.
-- Drafts → cancelled automáticamente.
-- Informa al usuario.
+- Drafts → cancelled automatically.
+- Notify the user.
 
 ---
 
-## FASE 1 — Plan de test
+## PHASE 1 — Test plan
 
-Lanza `functional-expert` con el objetivo. Captura **PLAN_DE_TEST**.
+Launch `functional-expert` with the target. Capture **TEST_PLAN**.
 
-Si 0 flujos a probar → `txn_activate` (caso degenerate sin drafts).
+If 0 flows to test → `txn_activate` (degenerate case, no drafts).
 
-## FASE 2 — Ejecución y creación de TEST entries
+## PHASE 2 — Execution and TEST entry creation
 
-Lanza `tester` con el PLAN_DE_TEST + `txn_id`. Crea entries TEST como
-**draft** (asociadas al TXN).
+Launch `tester` with the TEST_PLAN + `txn_id`. Creates TEST entries as
+**draft** (associated to the TXN).
 
-Captura **INFORME_BUGS** + lista de TEST IDs creados.
+Capture **BUG_REPORT** + list of created TEST IDs.
 
-Si 0 bugs → saltar a FASE 5b (sin nuevos ISSUE), luego activar TXN.
+If 0 bugs → jump to PHASE 5b (no new ISSUE), then activate the TXN.
 
-## FASE 3 — Análisis por bug (paralelo)
+## PHASE 3 — Per-bug analysis (parallel)
 
-Para cada bug, lanza `analyzer` independiente en paralelo. Consolida
-en **ANALISIS_BUGS**.
+For each bug, launch an independent `analyzer` in parallel. Consolidate
+into **BUG_ANALYSIS**.
 
-## FASE 4 — Corrección
+## PHASE 4 — Fix
 
-Lanza `implementer` con ANALISIS_BUGS + `txn_id`. El skill verifica
-naming contra IF y GLO. Captura **RESUMEN_FIXES**.
+Launch `implementer` with BUG_ANALYSIS + `txn_id`. The skill verifies
+naming against IF and GLO. Capture **FIX_SUMMARY**.
 
-## FASE 5 — Validación en bucle
+## PHASE 5 — Validation loop
 
-### 5a — Validación
+### 5a — Validation
 
-Nivel automático (basico/profesional/exhaustivo) según severidad.
+Auto level (basic / professional / exhaustive) based on severity.
 
-Lanza `validator`. Bucle max 3 iteraciones por bug. Si validation falla,
-re-iterar con analyzer + implementer.
+Launch `validator`. Loop up to 3 iterations per bug. If validation fails,
+re-iterate with analyzer + implementer.
 
-Captura **BUGS_VALIDADOS** y **BUGS_BLOQUEADOS**.
+Capture **VALIDATED_BUGS** and **BLOCKED_BUGS**.
 
-(IMPORTANTE: validator NO sugiere /updater — ese paso lo decide ESTE
-orquestador.)
+(IMPORTANT: validator does NOT suggest /updater — that step is decided by
+THIS orchestrator.)
 
-### 5b — Crear ISSUEs por bug encontrado (drafts en el TXN)
+### 5b — Create one ISSUE per confirmed bug (drafts in the TXN)
 
-Para cada bug confirmado, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ..., txn_id })`. Lo emite el server con id auto.
+For each confirmed bug:
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ..., txn_id })`. The server assigns the auto id.
 
-## FASE 6 — Actualización del KB + Activación TXN
+## PHASE 6 — KB update + TXN activation
 
-Lanza `updater` con BUGS_VALIDADOS + RESUMEN_FIXES + lista de TEST IDs.
+Launch `updater` with VALIDATED_BUGS + FIX_SUMMARY + list of TEST IDs.
 
-updater aplica:
-- Relaciones: ISSUE→implements REQ, TEST→fixes ISSUE, IF/CMP→part_of, etc.
-- CMP.fulfills update si es feature.
-- REG.tests update si hay regression-cases.
+updater applies:
+- Relations: ISSUE→implements REQ, TEST→fixes ISSUE, IF/CMP→part_of, etc.
+- CMP.fulfills update if it's a feature.
+- REG.tests update if regression-cases were created.
 
-### Activar TXN
+### Activate TXN
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:bug" })
 ```
 
-Drafts → terminal automáticamente. El server pobla `entity_changelog` por
-cada entidad activada que tenga REL activa.
+Drafts → terminal automatically. The server populates `entity_changelog`
+for every activated entity that has an active REL.
 
 ---
 
-## FASE 7 — Crear tareas pendientes (condicional)
+## PHASE 7 — Create pending tasks (conditional)
 
-Si hay bugs bloqueados (3 iteraciones sin éxito) o trabajo pendiente:
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ... })` con `status:open` o
-`status:blocked`. NOTA: estos ISSUE se crean sin TXN porque la TXN del
-pipeline ya se activó. Crearlos AHORA significa que nacen `active`.
+If there are blocked bugs (3 failed iterations) or pending work:
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ... })` with `status:open` or `status:blocked`. NOTE: these ISSUEs are
+created outside the TXN because the pipeline TXN was already activated.
+Creating them NOW means they are born `active`.
 
 ---
 
-## Formato de progreso
+## Progress format
 
 ```
-Pipeline bug iniciado — Objetivo: <objetivo>
-TXN: TXN-<PROY>-<YYYYMMDD>-<NNN>
+Pipeline bug started — Target: <target>
+TXN: TXN-<PROJ>-<YYYYMMDD>-<NNN>
 
-FASE 1 — Plan: N flujos                    [step 1: completed]
-FASE 2 — N bugs, M TEST entries (draft)    [step 2: completed]
-FASE 3 — N análisis (paralelo)             [step 3: completed]
-FASE 4 — N fixes (IF/GLO verificados)      [step 4: completed]
-FASE 5 — N/M validados, K bloqueados       [step 5: completed]
-         Drafts del TXN → activos
-FASE 6 — KB actualizado                    [step 6: completed]
+PHASE 1 — Plan: N flows                       [step 1: completed]
+PHASE 2 — N bugs, M TEST entries (draft)       [step 2: completed]
+PHASE 3 — N analyses (parallel)                [step 3: completed]
+PHASE 4 — N fixes (IF/GLO verified)            [step 4: completed]
+PHASE 5 — N/M validated, K blocked             [step 5: completed]
+         TXN drafts → active
+PHASE 6 — KB updated                           [step 6: completed]
 
-TXN-<PROY>-<YYYYMMDD>-<NNN>: COMPLETED
+TXN-<PROJ>-<YYYYMMDD>-<NNN>: COMPLETED
 ```
 
-## Reglas de parada
+## Stop rules
 
-Consulta al usuario antes de continuar si:
-- Cambio requiere infraestructura (template.yaml).
-- Fix afecta múltiples componentes críticos.
-- Bug nuevo durante validación no previsto.
+Consult the user before continuing if:
+- A change requires infrastructure work (e.g. template.yaml).
+- The fix affects multiple critical components.
+- A previously-unforeseen new bug surfaces during validation.

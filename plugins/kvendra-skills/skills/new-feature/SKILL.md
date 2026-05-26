@@ -1,57 +1,57 @@
 ---
 name: new-feature
-description: Orquestador de features v3 — coordina 7 subagentes v3 + deploy con TXN y trazabilidad Kvendra
+description: Feature pipeline orchestrator — coordinates 7 subagents + STD-driven deploy with TXN resilience and Kvendra KB traceability
 user_invocable: true
-args: "[descripción de la feature]"
+args: "[feature description]"
 ---
 
-# New Feature Pipeline v3 — Orquestador con resiliencia TXN
+# New Feature Pipeline — Orchestrator with TXN resilience
 
-Eres el **Orquestador del pipeline de features v3**. Coordinas:
-- 7 subagentes v3: requirements-analyst, planner, implementer,
-  tester, validator, updater (más deploy STD-driven).
-- TXN servidora con `txn_create` / `txn_activate`.
-- Kvendra para ROAD/IF/SLA/COST/ADR.
-- Trazabilidad: REQ → ISSUE → TEST → REG → REL.
+You are the **Orchestrator of the feature pipeline**. You coordinate:
+- 7 subagents: requirements-analyst, planner, implementer, deploy
+  (STD-driven), tester, validator, updater.
+- A server-backed TXN with `txn_create` / `txn_activate`.
+- Kvendra KB for ROAD / IF / SLA / COST / ADR consultation.
+- Traceability chain: REQ → ISSUE → TEST → REG → REL.
 
-## Feature a implementar
+## Feature to implement
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra + Check interrupted
+## Step 0 — Kvendra initialization + interrupted check
 
-Identifica `project_id` y `component_id`(s) desde el `CLAUDE.md`.
+Identify `project_id` and `component_id`(s) from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
-### Check interrupted
+### Interrupted check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROY>, component_id:"<PROY>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })
 ```
 
-Si TXN in-progress: Retomar / Cancelar / Ignorar.
+If an in-progress TXN exists: Resume / Cancel / Ignore.
 
-### Crear TXN
+### Open the TXN
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "new-feature",
-  project_id: "<PROY>",
-  component_id: "<PROY>-<COMP>",
-  trigger: "<descripción de la feature>",
+  project_id: "<PROJ>",
+  component_id: "<PROJ>-<COMP>",
+  trigger: "<feature description>",
   pipeline: [
     { step:0, name:"requirements-analyst" },
     { step:1, name:"planner" },
@@ -65,150 +65,149 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
 })
 ```
 
-### Subagentes (delegación)
+### Subagents (delegation)
 
-- requirements-analyst → `requirements-analyst-v3/SKILL.md`
-- planner              → `planner-v3/SKILL.md`
-- implementer          → `implementer-v3/SKILL.md`
-- deploy               → `deploy/SKILL.md` (v2 STD-driven, reads STD-<PROJECT>-<COMP>-DEPLOY-PROCESS)
-- tester               → `tester-v3/SKILL.md`
-- validator            → `validator-v3/SKILL.md`
-- updater              → `updater-v3/SKILL.md`
+- requirements-analyst → `requirements-analyst/SKILL.md`
+- planner              → `planner/SKILL.md`
+- implementer          → `implementer/SKILL.md`
+- deploy               → `deploy/SKILL.md` (STD-driven; reads STD-<PROJECT>-<COMP>-DEPLOY-PROCESS via tag discovery)
+- tester               → `tester/SKILL.md`
+- validator            → `validator/SKILL.md`
+- updater              → `updater/SKILL.md`
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Protocolo de delegación
+## Delegation protocol
 
-Para cada FASE:
-1. Lee el SKILL.md, sustituye `$ARGUMENTS` por contexto + `txn_id`.
-2. Lanza Agent.
-3. Captura output.
-4. Informa progreso.
+For each PHASE:
+1. Read the subagent SKILL.md, substitute `$ARGUMENTS` with context + `txn_id`.
+2. Launch via Agent.
+3. Capture output.
+4. Report progress.
 
-Si falla:
-- `txn_cancel` con razón. Drafts → cancelled.
+On failure:
+- `txn_cancel` with reason. Drafts → cancelled automatically.
 
 ---
 
-## FASE 0 — Análisis de requisitos (PAUSA OBLIGATORIA)
+## PHASE 0 — Requirements analysis (MANDATORY PAUSE)
 
-Lanza `requirements-analyst` con la descripción + `txn_id`. Captura
-**INFORME_REQUISITOS** y, si crea REQ, su id.
+Launch `requirements-analyst` with the description + `txn_id`. Capture
+**REQUIREMENTS_REPORT** and, if a REQ is created, its id.
 
-**PAUSA**: Mostrar informe. Esperar decisiones del usuario.
+**PAUSE**: Show report. Wait for user decisions.
 
-## FASE 1 — Diseño del spec (PAUSA OBLIGATORIA)
+## PHASE 1 — Spec design (MANDATORY PAUSE)
 
-Lanza `planner` con REQUERIMIENTO ENRIQUECIDO + `txn_id`.
+Launch `planner` with ENRICHED_REQUIREMENT + `txn_id`.
 
-planner consulta:
-- ROAD → alerta conflictos.
-- IF → diseña respetando contratos.
-- SLA → no degrada rendimiento.
-- COST → presenta impacto económico.
-- ADR → no contradice decisiones.
+planner consults:
+- ROAD → flags conflicts.
+- IF → designs respecting contracts.
+- SLA → does not degrade performance.
+- COST → presents economic impact.
+- ADR → does not contradict decisions.
 
-Captura **SPEC** (incluye verificaciones, ISSUEs a crear, TESTes necesarios).
+Capture **SPEC** (includes verifications, ISSUEs to create, required TESTs).
 
-**PAUSA**: Mostrar spec. Esperar confirmación.
+**PAUSE**: Show spec. Wait for confirmation.
 
-## FASE 2 — Implementación backend (condicional)
+## PHASE 2 — Backend implementation (conditional)
 
-Solo si SPEC indica backend.
+Only if the SPEC requires backend work.
 
-Lanza `implementer` con sección Backend del SPEC + `txn_id`.
+Launch `implementer` with the Backend section of the SPEC + `txn_id`.
 
-Captura **IMPL_BACKEND**.
+Capture **IMPL_BACKEND**.
 
-## FASE 3 — Deploy backend (condicional)
+## PHASE 3 — Backend deploy (conditional)
 
-Solo si FASE 2 se ejecutó.
+Only if PHASE 2 executed.
 
-Lanza `deploy` (v2 STD-driven; reads the canonical `STD-<PROJECT>-<COMP>-DEPLOY-PROCESS` playbook via tag discovery and executes its steps via broker primitives).
+Launch `deploy` (STD-driven; reads the canonical
+`STD-<PROJECT>-<COMP>-DEPLOY-PROCESS` playbook via tag discovery and executes
+its steps via broker primitives).
 
-Si falla: `txn_cancel`, detener pipeline.
+On failure: `txn_cancel`, stop pipeline.
 
-## FASE 4 — Implementación frontend + Tests
+## PHASE 4 — Frontend implementation + Tests
 
-### 4a — Frontend (si aplica)
+### 4a — Frontend (if applicable)
 
-Lanza `implementer` con sección Frontend del SPEC + `txn_id`.
-Captura **IMPL_FRONTEND**.
+Launch `implementer` with the Frontend section of the SPEC + `txn_id`.
+Capture **IMPL_FRONTEND**.
 
 ### 4b — Tests
 
-Lanza `tester` con los TEST cases del SPEC + `txn_id`. Crea entries TEST
-**draft** (asociadas al TXN).
+Launch `tester` with the TEST cases from the SPEC + `txn_id`. Creates TEST
+entries as **draft** (associated to the TXN).
 
-## FASE 5 — Validación + Activación
+## PHASE 5 — Validation + Activation
 
-### 5a — Validación
+### 5a — Validation
 
-Nivel auto (basico|profesional|exhaustivo). Lanza `validator`. Bucle max
-3 iteraciones por criterio.
+Auto level (basic | professional | exhaustive). Launch `validator`. Loop
+up to 3 iterations per criterion.
 
-(IMPORTANTE: validator NO sugiere /updater.)
+(IMPORTANT: validator does NOT suggest /updater.)
 
-### 5b — Crear ISSUE type:task (draft del TXN)
+### 5b — Create ISSUE type:task (TXN draft)
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
-  project_id: <PROY>,
-  component_id: "<PROY>-<COMP>",
-  title: "<título derivado del SPEC>",
+  project_id: <PROJ>,
+  component_id: "<PROJ>-<COMP>",
+  title: "<title derived from SPEC>",
   content: <markdown>,
   metadata: { type:"task", status:"draft" },
   tags: ["type:task"],
   relations: [
-    { type:"implements", target:"REQ-<PROY>-<NN>" }
+    { type:"implements", target:"REQ-<PROJ>-<NN>" }
   ],
   txn_id: "<txn_id>",
   updated_by: "skill:new-feature"
 })
 ```
 
-## FASE 6 — Actualización KB + Cierre TXN
+## PHASE 6 — KB update + TXN close
 
-Lanza `updater` con resumen completo de cambios + `txn_id`.
+Launch `updater` with the full summary of changes + `txn_id`.
 
 updater:
-- Aplica relaciones (implements, fixes, part_of, fulfills).
-- Si REL activa, el server pobla `entity_changelog` automáticamente.
-- Update de REG si hay regression-cases.
-- Update de CMP si se modificaron interfaces o `fulfills`.
-- Update de IF si el spec las creó/modificó.
+- Applies relations (implements, fixes, part_of, fulfills).
+- If an active REL exists, the server populates `entity_changelog` automatically.
+- Updates REG if regression-cases were touched.
+- Updates CMP if interfaces or `fulfills` were modified.
+- Updates IF if the spec created/modified them.
 
-### Activar TXN
+### Activate TXN
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:new-feature" })
@@ -218,38 +217,38 @@ Drafts → terminal.
 
 ---
 
-## FASE 7 — Tareas pendientes (condicional)
+## PHASE 7 — Pending tasks (conditional)
 
-Para criterios no validados, deploy frontend pendiente, tests adicionales:
-crear ISSUE type:task fuera del TXN (nacen `active`).
+For unvalidated criteria, pending frontend deploys, or additional tests:
+create ISSUE type:task outside the TXN (born `active`).
 
 ---
 
-## Formato de progreso
+## Progress format
 
 ```
-Pipeline new-feature — <nombre>
-TXN: TXN-<PROY>-<YYYYMMDD>-<NNN>
+Pipeline new-feature — <name>
+TXN: TXN-<PROJ>-<YYYYMMDD>-<NNN>
 
-FASE 0 — Requisitos: N alarmas, N mejoras    [step 0: completed]
-  PAUSA — Esperando decisiones...
-FASE 1 — Spec: ROAD OK, ADR OK, COST $X/mes  [step 1: completed]
-  PAUSA — Esperando confirmación...
-FASE 2 — Backend: N ficheros, IF verificado  [step 2: completed]
-FASE 3 — Deploy: UPDATE_COMPLETE             [step 3: completed]
-FASE 4 — Frontend: N ficheros, M TESTes      [step 4: completed]
-FASE 5 — N/M validados, drafts → activos     [step 5: completed]
-FASE 6 — Kvendra: ISSUE + REL changelog + REG  [step 6: completed]
+PHASE 0 — Requirements: N alarms, N improvements  [step 0: completed]
+  PAUSE — Waiting for decisions...
+PHASE 1 — Spec: ROAD OK, ADR OK, COST $X/mo       [step 1: completed]
+  PAUSE — Waiting for confirmation...
+PHASE 2 — Backend: N files, IF verified           [step 2: completed]
+PHASE 3 — Deploy: UPDATE_COMPLETE                 [step 3: completed]
+PHASE 4 — Frontend: N files, M TESTs              [step 4: completed]
+PHASE 5 — N/M validated, drafts → active          [step 5: completed]
+PHASE 6 — KB: ISSUE + REL changelog + REG         [step 6: completed]
 
-TXN-<PROY>-<YYYYMMDD>-<NNN>: COMPLETED
-REL-<PROY>-0.1.0 changelog: +N entries (vía entity_changelog)
+TXN-<PROJ>-<YYYYMMDD>-<NNN>: COMPLETED
+REL-<PROJ>-0.1.0 changelog: +N entries (via entity_changelog)
 ```
 
-## Reglas de parada
+## Stop rules
 
-Consulta al usuario antes de continuar si:
-- FASE 0 detecta alarmas bloqueantes.
-- ROAD conflict en FASE 1.
-- Impacto en coste > 20% del presupuesto actual.
-- Cambios en modelo de datos o endpoints existentes.
-- Criterio de validación falla 3 veces.
+Consult the user before continuing if:
+- PHASE 0 detects blocking alarms.
+- ROAD conflict in PHASE 1.
+- Cost impact > 20% of current budget.
+- Changes to data model or existing endpoints.
+- A validation criterion fails 3 times.

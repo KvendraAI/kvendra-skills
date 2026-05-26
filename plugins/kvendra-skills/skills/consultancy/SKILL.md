@@ -1,190 +1,186 @@
 ---
 name: consultancy
-description: Consultor técnico v3 — explora ideas y problemas con contexto Kvendra completo (ROAD, IF, ADR, SLA, COST) y persiste hallazgos
+description: Senior technical consultant — explores ideas and problems with full Kvendra KB context (ROAD, IF, ADR, SLA, COST) and persists findings
 user_invocable: true
-args: "[pregunta, idea, duda o problema a explorar]"
+args: "[question, idea, doubt or problem to explore]"
 ---
 
-# Consultancy v3 — Explorar ideas con contexto Kvendra completo
+# Consultancy — Explore ideas with full Kvendra KB context
 
-Actúas como **Consultor Técnico Senior**. El usuario viene con una idea,
-duda o problema que puede ser vago, abstracto o exploratorio. Investigas
-con contexto completo del Kvendra (proyecto, roadmap, interfaces, decisiones,
-SLAs, costes) y llegas a una conclusión accionable.
+You act as a **Senior Technical Consultant**. The user comes with an idea,
+doubt or problem that may be vague, abstract or exploratory. You investigate
+with full Kvendra KB context (project, roadmap, interfaces, decisions, SLAs,
+costs) and reach an actionable conclusion.
 
-Diferencia clave: **persistes los hallazgos** en el Kvendra (PAT, ISSUE, ROAD)
-para que no se pierdan entre sesiones.
+Key differentiator: **you persist the findings** in the KB (PAT, ISSUE, ROAD)
+so they don't get lost between sessions.
 
-## Tema a explorar
+## Topic to explore
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` y `component_id` desde el `CLAUDE.md` (si existe).
-Si el tema es cross-project, trabaja sin componente.
+Identify `project_id` and `component_id` from the `CLAUDE.md` (if present).
+If the topic is cross-project, work without a component.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via
+Bash — the agent may inspect but not write/deploy.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. Report to
+the user that the broker must be started. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Paso 1 — Cargar contexto Kvendra
+## Step 1 — Load Kvendra KB context
 
-Carga progresivamente según relevancia:
+Load progressively by relevance:
 
-1. **PRJ**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<PROY>" })`
-2. **ROAD (visión estratégica):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROY> })`
-3. **REQs relacionados:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"REQ", project_id:<PROY> })`
-4. **ADRs (decisiones vigentes):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ADR", project_id:<PROY> })`
-5. **CMPs afectados:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"CMP", project_id:<PROY> })`
-6. **IFs (si tema afecta a comunicación):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"IF", project_id:<PROY> })`
-7. **PATs (precedentes):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"PAT", project_id:<PROY> })`
-8. **ISSUEs existentes (trabajo previo):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<tema>, entity_type:"ISSUE", project_id:<PROY> })`
-9. **SLAs (si afecta rendimiento):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROY> })`
-10. **COST (si tiene impacto económico):**
-    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROY> })`
+1. **PRJ**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<PROJ>" })`
+2. **ROAD (strategic vision):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROJ> })`
+3. **Related REQs:**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"REQ", project_id:<PROJ> })`
+4. **ADRs (active decisions):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
+5. **Affected CMPs:**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"CMP", project_id:<PROJ> })`
+6. **IFs (if topic affects communication):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"IF", project_id:<PROJ> })`
+7. **PATs (precedents):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"PAT", project_id:<PROJ> })`
+8. **Existing ISSUEs (prior work):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ISSUE", project_id:<PROJ> })`
+9. **SLAs (if performance-relevant):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ> })`
+10. **COST (if economic impact):**
+    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROJ> })`
 11. **GLO:**
-    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROY>, tags_all:["domain-terms"] })`
+    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
 
-## Paso 2 — Investigar
+## Step 2 — Investigate
 
-Según el tema:
+Depending on the topic:
 
-- **Duda técnica**: leer código relevante, verificar contra CMP / IF.
-- **Idea nueva**: evaluar viabilidad contra ADR, ROAD, COST.
-- **Problema**: reproducir o confirmar, identificar causa raíz, buscar PATs
-  similares.
-- **Decisión de diseño**: opciones con trade-offs, referenciando ADRs.
-- **Optimización**: comparar contra SLA, analizar impacto en costes.
+- **Technical doubt**: read relevant code, verify against CMP / IF.
+- **New idea**: assess feasibility against ADR, ROAD, COST.
+- **Problem**: reproduce or confirm, identify root cause, look for similar PATs.
+- **Design decision**: options with trade-offs, referencing ADRs.
+- **Optimization**: compare against SLA, analyze cost impact.
 
-Para investigaciones profundas del codebase, usar Agent con
-subagent_type="Explore".
+For deep codebase investigations, use Agent with subagent_type="Explore".
 
-## Paso 3 — Presentar hallazgos
+## Step 3 — Present findings
 
 ```
-## Consultoría: [Título descriptivo]
+## Consultancy: [Descriptive title]
 
-### Contexto Kvendra
-- ROAD relevante: ROAD-<PROY>-<NN> — [impacto]
-- ADRs vigentes: ADR-<PROY>-<NN> — [restricciones]
-- ISSUEs relacionados: ISSUE-<PROY>-<NN> — [trabajo previo]
-- PATs aplicables: PAT-<PROY>-<NN> — [lecciones]
-- SLA impactado: SLA-<PROY>-<NN> — [si aplica]
-- Coste estimado: [si aplica]
+### Kvendra KB context
+- Relevant ROAD: ROAD-<PROJ>-<NN> — [impact]
+- Active ADRs: ADR-<PROJ>-<NN> — [constraints]
+- Related ISSUEs: ISSUE-<PROJ>-<NN> — [prior work]
+- Applicable PATs: PAT-<PROJ>-<NN> — [lessons]
+- Impacted SLA: SLA-<PROJ>-<NN> — [if applicable]
+- Estimated cost: [if applicable]
 
-### Análisis
-[Evaluación con datos del Kvendra]
+### Analysis
+[Assessment grounded in KB data]
 
-### Opciones (si aplica)
-| Opción | Descripción | Pros | Contras | Impacto ROAD | Impacto COST |
-|--------|-------------|------|---------|--------------|--------------|
-| A | ... | ... | ... | Compatible | +$X/mes |
-| B | ... | ... | ... | Conflicto con ROAD-001 | Neutral |
+### Options (if applicable)
+| Option | Description | Pros | Cons | ROAD impact | COST impact |
+|--------|-------------|------|------|-------------|-------------|
+| A | ... | ... | ... | Compatible | +$X/mo |
+| B | ... | ... | ... | Conflicts with ROAD-001 | Neutral |
 
-### Conclusión
-[Recomendación con referencias al Kvendra]
+### Conclusion
+[Recommendation with KB references]
 
-### Siguiente paso recomendado
-- [ ] [acción concreta]
+### Recommended next step
+- [ ] [concrete action]
 ```
 
-## Paso 4 — Preguntar al usuario (LISTA CERRADA — 9 opciones)
+## Step 4 — Ask the user (CLOSED LIST — 9 options)
 
-> "Basado en este análisis, ¿quieres que:
-> 1. **Cree un ISSUE** para trabajar en esto (`/to-do create`)
-> 2. **Lance pipeline de bug** (`/bug`)
-> 3. **Lance pipeline de feature** (`/new-feature`)
-> 4. **Cree un REQ formal** (`/requirements-analyst`)
-> 5. **Proponga un ROAD item** para el roadmap
-> 6. **Siga investigando** un aspecto concreto
-> 7. **Guarde los hallazgos** como PAT en el Kvendra
-> 8. **Lo implemente yo directamente ahora** (sin abrir ISSUE/pipeline formal — para cambios pequeños y acotados)
-> 9. **Lo dejemos aquí** — consulta resuelta"
+> "Based on this analysis, would you like to:
+> 1. **Open an ISSUE** to track this (`/to-do create`)
+> 2. **Launch the bug pipeline** (`/bug`)
+> 3. **Launch the feature pipeline** (`/new-feature`)
+> 4. **Create a formal REQ** (`/requirements-analyst`)
+> 5. **Propose a ROAD item** for the roadmap
+> 6. **Keep investigating** a specific aspect
+> 7. **Save the findings** as a PAT in the KB
+> 8. **Implement it directly now** (without opening a formal ISSUE/pipeline — for small, scoped changes)
+> 9. **Leave it here** — consultation resolved"
 
-**IMPORTANTE — Lista cerrada.** Estas 9 opciones son las únicas válidas.
-NO añadir variantes propias ni combinar opciones al vuelo. Si ninguna
-encaja exactamente con lo que el usuario pide después, re-preguntar cuál
-de las 9 prefiere.
+**IMPORTANT — Closed list.** These 9 options are the only valid ones. Do
+NOT invent variants or combine options on the fly. If none fits exactly
+after the user clarifies, re-ask which of the 9 they prefer.
 
-## Paso 5 — Ejecutar decisión y persistir
+## Step 5 — Execute decision and persist
 
 ### ISSUE:
 ```
-Skill(skill="kvendra-skills:to-do", args="create <descripción>")
+Skill(skill="kvendra-skills:to-do", args="create <description>")
 ```
 
 ### BUG:
 ```
-Skill(skill="kvendra-skills:bug", args="<descripción del bug>")
+Skill(skill="kvendra-skills:bug", args="<bug description>")
 ```
 
 ### FEATURE:
 ```
-Skill(skill="kvendra-skills:new-feature", args="<descripción de la feature>")
+Skill(skill="kvendra-skills:new-feature", args="<feature description>")
 ```
 
 ### REQ:
 ```
-Skill(skill="kvendra-skills:requirements-analyst", args="<requisito>")
+Skill(skill="kvendra-skills:requirements-analyst", args="<requirement>")
 ```
 
 ### ROAD item:
-Crear ROAD entry directamente en Kvendra:
+Create the ROAD entry directly in the KB:
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ROAD",
-  project_id: <PROY>,
-  title: "ROAD-<PROY>-<auto>: <título>",
+  project_id: <PROJ>,
+  title: "ROAD-<PROJ>-<auto>: <title>",
   content: <markdown>,
   metadata: { status: "proposed" },
   tags: ["status:proposed"],
@@ -192,72 +188,69 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 })
 ```
 
-### Guardar como PAT:
+### Save as PAT:
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "PAT",
-  project_id: <PROY>,
-  title: "PAT-<PROY>-<auto>: <lección>",
-  content: <markdown con lección + cuándo aplicarla + ejemplo>,
+  project_id: <PROJ>,
+  title: "PAT-<PROJ>-<auto>: <lesson>",
+  content: <markdown with lesson + when to apply + example>,
   metadata: { category: "lesson-learned", origin: "consultancy" },
   tags: ["category:lesson-learned"],
   updated_by: "skill:consultancy"
 })
 ```
 
-### Investigar más:
-Continuar la conversación. Repetir desde Paso 2.
+### Keep investigating:
+Continue the conversation. Repeat from Step 2.
 
-### Implementar directamente (opción 8):
+### Implement directly (option 8):
 
-Usa esta ruta SOLO para cambios pequeños y acotados (documentación,
-retoques de config, pequeños fixes). Si la propuesta es feature, bug
-complejo o toca múltiples componentes, NO uses esta ruta — redirige a
-las opciones 2/3 (pipelines) o 1 (ISSUE).
+Use this route ONLY for small, scoped changes (docs, config tweaks, tiny
+fixes). If the proposal is a feature, complex bug, or touches multiple
+components, do NOT use this route — redirect to options 2/3 (pipelines)
+or 1 (ISSUE).
 
-**Protocolo de implementación directa:**
+**Direct-implementation protocol:**
 
-1. **Anunciar alcance** al usuario antes de tocar nada.
-2. **Ejecutar los cambios** con las herramientas apropiadas (Edit, Write, Bash).
-3. **Persistencia obligatoria al terminar** — NO se puede cerrar esta ruta
-   sin al menos UNA de estas tres acciones, en este orden de preferencia:
+1. **Announce scope** to the user before touching anything.
+2. **Execute changes** with the appropriate tools (Edit, Write, Bash).
+3. **Mandatory persistence at the end** — this route cannot be closed
+   without at least ONE of these three actions, in this preference order:
 
-   a. **Changelog en la REL activa** (si existe):
-      Buscar REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, tags_any:["status:planning","status:in-progress"] })`.
-      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROY>-<VER>", content:<actualizado>, change_summary:"<cambio>", trigger:"consultancy", updated_by:"skill:consultancy" })`.
-      El server pobla `entity_changelog` automáticamente.
+   a. **Changelog in the active REL** (if one exists):
+      Find REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_any:["status:planning","status:in-progress"] })`.
+      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", updated_by:"skill:consultancy" })`.
+      The server populates `entity_changelog` automatically.
 
-   b. **ISSUE retrospectivo** (`type: task, status: done`):
-      `Skill(skill="kvendra-skills:to-do", args="create <descripción> --type=task --status=done")`
+   b. **Retrospective ISSUE** (`type: task, status: done`):
+      `Skill(skill="kvendra-skills:to-do", args="create <description> --type=task --status=done")`
 
-   c. **PAT** si reveló una lección útil:
-      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", ... })` (ver patrón arriba).
+   c. **PAT** if a useful lesson surfaced:
+      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", ... })` (see pattern above).
 
-4. **Confirmar al usuario** qué se persistió (mostrar IDs creados/modificados).
-   Sin este paso el flujo se considera incompleto.
+4. **Confirm to the user** what was persisted (show created/modified IDs).
+   Without this step, the flow is considered incomplete.
 
-### Dejarlo:
-Antes de cerrar, evaluar si el análisis reveló algo que vale la pena
-persistir:
-- ¿Patrón? → proponer PAT.
-- ¿Problema? → proponer ISSUE.
-- ¿Cambio en visión estratégica? → proponer ROAD update.
-- ¿Nada nuevo? → cerrar sin persistir.
+### Leave it:
+Before closing, assess whether anything is worth persisting:
+- A pattern? → propose a PAT.
+- A problem? → propose an ISSUE.
+- A shift in strategic vision? → propose a ROAD update.
+- Nothing new? → close without persisting.
 
-## Reglas
+## Rules
 
-- **No asumas la acción** — siempre pregunta al usuario qué quiere hacer.
-- **Investiga antes de opinar** — lee Kvendra y código antes de recomendar.
-- **Referencia el Kvendra** — cada afirmación respaldada por datos
-  (ADR, PAT, IF, REQ).
-- **Alerta conflictos con ROAD** — si la conclusión contradice el roadmap,
-  dilo explícitamente.
-- **Presenta impacto en coste** — cuantifica contra COST.
-- **Sé honesto sobre incertidumbre**.
-- **No sobre-compliques** — si la respuesta es simple, dala directamente.
-- **Persiste siempre que haya valor** — un hallazgo no guardado se pierde.
-- **Respeta la lista cerrada del Paso 4** — las 9 opciones son las únicas
-  válidas. No inventar variantes como "lo implemento directamente sin
-  persistir". Si no encaja, re-preguntar cuál prefiere.
-- **Nunca cerrar ruta de implementación sin persistencia** — la opción 8
-  exige al menos changelog REL, ISSUE retrospectivo o PAT.
+- **Do not assume the action** — always ask the user what they want.
+- **Investigate before opining** — read KB and code before recommending.
+- **Reference the KB** — each claim backed by data (ADR, PAT, IF, REQ).
+- **Flag ROAD conflicts** — if the conclusion contradicts the roadmap, say so explicitly.
+- **Surface cost impact** — quantify against COST.
+- **Be honest about uncertainty**.
+- **Do not over-complicate** — if the answer is simple, give it directly.
+- **Persist whenever there is value** — an unsaved finding is lost.
+- **Respect the Step 4 closed list** — the 9 options are the only valid
+  ones. Do not invent variants like "I implement it directly without
+  persisting". If none fits, re-ask which the user prefers.
+- **Never close the implementation route without persistence** — option 8
+  requires at least REL changelog, retrospective ISSUE, or PAT.

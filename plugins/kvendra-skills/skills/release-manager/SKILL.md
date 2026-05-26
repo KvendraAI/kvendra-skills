@@ -1,206 +1,205 @@
 ---
 name: release-manager
-description: Gestor de releases v3 — crea, gestiona y cierra REL con changelog automático, regression gates y trazabilidad Kvendra
+description: Release manager — creates, manages and closes REL entities with automatic changelog, regression gates and Kvendra KB traceability
 user_invocable: true
-args: "[acción: create|status|add|gate-check|close] [argumentos]"
+args: "[action: create|status|add|gate-check|close] [arguments]"
 ---
 
-# Release Manager v3 — Gestión de releases Kvendra
+# Release Manager — Kvendra release lifecycle
 
-Gestionas el ciclo de vida de releases (REL): creación, adición de
-ISSUEs/componentes, regression gates, changelog automático (poblado por el
-server cuando hay REL activa), y cierre.
+You manage the lifecycle of releases (REL): creation, attaching
+ISSUEs/components, regression gates, automatic changelog (populated by the
+server when an active REL exists), and closure.
 
-## Acción
+## Action
 
 $ARGUMENTS
 
-## Paso 0 — Inicialización Kvendra
+## Step 0 — Kvendra initialization
 
-Identifica `project_id` desde el `CLAUDE.md`.
+Identify `project_id` from the `CLAUDE.md`.
 
-## Reglas Kvendra (resumen)
+## Kvendra rules (summary)
 
-- Identifícate en cada write: `updated_by: "skill:<este-skill>"`. El header
-  `X-Kvendra-Skill` lo añade el cliente MCP automáticamente.
-- Orquestador → `txn_create` antes de crear entities, ciérrala con
-  `txn_activate` (éxito) o `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (fallo).
-  Subagente → recibe `txn_id` por args y NO abre/cierra TXN.
-- Antes de abrir TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
-  Si hay TXN in-progress: Retomar / Cancelar / Ignorar.
-- IDs los emite el server. Excepción: `PRJ`/`CMP`/`REL` requieren `force_id`.
-- Si un error trae `error.help.topic`, llama `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
+  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Orchestrator → `txn_create` before creating entities, close with
+  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 
+## External-execution rules (MANDATORY)
 
-## Reglas de ejecución externa (OBLIGATORIO)
+Any operation that uses credentials or leaves the local machine (git, github,
+aws, npm, pypi, http with auth, shell commands) MUST be invoked via primitives
+of the `kvendra` broker (local stdio MCP). NO direct Bash.
 
-Cualquier operación que use credenciales o salga de la máquina (git, github,
-aws, npm, pypi, http con auth, comandos shell) DEBE invocarse vía primitives
-del broker `kvendra` (MCP local stdio). NO hacer Bash directo.
-
-| Op deseada | Primitive |
+| Desired op | Primitive |
 |---|---|
 | git clone/push/pull/commit/tag | `kvendra.git` |
 | GitHub REST/GraphQL | `kvendra.github` |
 | AWS s3/cloudfront/lambda | `kvendra.aws` |
 | npm publish/deprecate/read_metadata | `kvendra.npm` |
 | PyPI upload/read_metadata | `kvendra.pypi` |
-| HTTP con auth | `kvendra.http` |
-| Shell con binario allowlisted (NO `sh -c`) | `kvendra.shell` |
+| HTTP with auth | `kvendra.http` |
+| Shell with allowlisted binary (NOT `sh -c`) | `kvendra.shell` |
 
-Cada call requiere `profile_id` (credencial vault workspace-bound). No improvisar.
+Each call requires a `profile_id` (workspace-bound vault credential). Do not improvise.
 
-**PROHIBIDO via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
+**FORBIDDEN via Bash**: `git commit/push/tag/merge/reset --hard/checkout --`,
 `gh release/pr create/api`, `aws s3 (sync|cp)/cloudfront/lambda`, `npm publish`,
-`cargo publish`, `pip upload`/`twine upload`. Lecturas read-only (`git status`,
-`git log`, `gh issue view`, `aws sts get-caller-identity`) sí están permitidas
-via Bash — el agente puede inspeccionar pero no escribir/desplegar.
+`cargo publish`, `pip upload`/`twine upload`. Read-only inspections (`git status`,
+`git log`, `gh issue view`, `aws sts get-caller-identity`) ARE allowed via Bash.
 
-Si el broker `kvendra` no está disponible (failed to connect): PARAR. Reportar
-al usuario que arranque el broker. NO fallback a Bash.
+If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to Bash.
 
-Enforzado adicionalmente por hook PreToolUse del plugin (activo solo dentro de
-workspaces con marker `.kvendra-workspace`).
+Additionally enforced by the plugin's PreToolUse hook (active only inside
+workspaces with a `.kvendra-workspace` marker).
 
-## Nota sobre IDs de REL — ADR-JRV-008 (regex SemVer)
+## Note on REL IDs — SemVer regex
 
-REL usa **`force_id`** porque su entity_id no es secuencial sino SemVer.
+REL uses **`force_id`** because its entity_id is SemVer, not sequential.
 
-Formato regex (ADR-JRV-008): `^REL-[A-Z]+(-[A-Z0-9]+)?-[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$`
+Regex format (project convention): `^REL-[A-Z]+(-[A-Z0-9]+)?-[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$`
 
-Ejemplos válidos:
-- `REL-WO-0.1.0` (project release minor)
-- `REL-WO-IVR-0.1.0` (component hotfix)
-- `REL-PRM-1.0.0`
-- `REL-JRV-1.0.0.1` (4 segmentos para hotfix)
+Valid examples:
+- `REL-KVD-0.1.0` (project minor release)
+- `REL-KVD-WEB-0.1.0` (component hotfix)
+- `REL-KVD-SKILLS-1.0.0`
+- `REL-KVD-CLI-1.0.0.1` (4 segments for hotfix)
 
-Antes de crear, valida el formato a mano. Si no cumple, el server rechazará
-con `INTEGRITY` + constraint `entities_entity_id_format`.
+Validate the format manually before creating. If it does not comply, the
+server will reject with `INTEGRITY` + constraint `entities_entity_id_format`.
 
-## Acciones disponibles
+## Available actions
 
-### CREATE — Crear nueva release
+### CREATE — Create a new release
 
-1. Determinar versión (SemVer): leer última REL para calcular siguiente:
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROY>, order_by:"updated_at_desc", limit:5 })`
-2. Tipo: major | minor | patch | hotfix.
-3. Si hotfix de componente: `REL-<PROY>-<COMP>-<VER>`.
-4. Si release de proyecto: `REL-<PROY>-<VER>`.
-5. Validar el id contra regex de ADR-JRV-008. Si OK, crear:
+1. Determine the version (SemVer): read latest RELs to compute next:
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, order_by:"updated_at_desc", limit:5 })`
+2. Type: major | minor | patch | hotfix.
+3. Component hotfix: `REL-<PROJ>-<COMP>-<VER>`.
+4. Project release: `REL-<PROJ>-<VER>`.
+5. Validate the id against the regex. If OK, create:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REL",
-  project_id: "<PROY>",
-  component_id: "<si hotfix de componente>",
-  force_id: "REL-<PROY>-<VER>",            // o REL-<PROY>-<COMP>-<VER>
-  title: "REL-<PROY>-<VER>: <descripción>",
-  content: <markdown con descripción, alcance, target_date, regression_gate:pendiente>,
+  project_id: "<PROJ>",
+  component_id: "<if component hotfix>",
+  force_id: "REL-<PROJ>-<VER>",            // or REL-<PROJ>-<COMP>-<VER>
+  title: "REL-<PROJ>-<VER>: <description>",
+  content: <markdown with description, scope, target_date, regression_gate:pending>,
   version: "<VER>",
   tags: ["status:planning", "type:<minor|major|patch|hotfix>"],
   updated_by: "skill:release-manager"
 })
 ```
 
-### STATUS — Ver estado de una release
+### STATUS — View the state of a release
 
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-<PROY>-<VER>" })`.
-2. Listar ISSUEs incluidos: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ISSUE", project_id:<PROY>, tags_all:["REL-<PROY>-<VER>"] })`.
-3. Verificar regression gates: para cada componente con ISSUE en la REL,
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`.
-4. Mostrar changelog (viene en `entity_get` automáticamente — el server pobla
-   `entity_changelog` cuando hay REL activa).
-5. Mostrar bloqueadores: ISSUEs con `relations_outbound: blocks → REL-<PROY>-<VER>`.
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-<PROJ>-<VER>" })`.
+2. List included ISSUEs: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`.
+3. Verify regression gates: for each component with an ISSUE in the REL,
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`.
+4. Show the changelog (returned automatically by `entity_get` — the server
+   populates `entity_changelog` whenever there is an active REL).
+5. Show blockers: ISSUEs with `relations_outbound: blocks → REL-<PROJ>-<VER>`.
 
-### ADD — Añadir ISSUE/componente a release
+### ADD — Add ISSUE/component to a release
 
-1. Leer REL.
-2. Verificar que el ISSUE existe y está en status adecuado (`entity_get`).
-3. Añadir relación `part_of` desde ISSUE a REL:
+1. Read the REL.
+2. Verify the ISSUE exists and is in an appropriate status (`entity_get`).
+3. Add the `part_of` relation from ISSUE to REL:
    ```
    mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
-     entity_id: "ISSUE-<PROY>-<COMP>-<NN>",
-     relations_add: [{ type:"part_of", target:"REL-<PROY>-<VER>" }],
-     tags_add: ["REL-<PROY>-<VER>"],
-     change_summary: "Añadido a REL-<PROY>-<VER>",
+     entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",
+     relations_add: [{ type:"part_of", target:"REL-<PROJ>-<VER>" }],
+     tags_add: ["REL-<PROJ>-<VER>"],
+     change_summary: "Added to REL-<PROJ>-<VER>",
      updated_by: "skill:release-manager"
    })
    ```
-4. El server registra automáticamente la entrada en `entity_changelog`
-   asociada a la REL.
+4. The server automatically records the entry in `entity_changelog`
+   associated to the REL.
 
-### GATE-CHECK — Verificar regression gates
+### GATE-CHECK — Verify regression gates
 
-Para cada componente incluido:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROY>, component_id:"<PROY>-<COMP>" })`.
-2. Verificar última ejecución (en `metadata.execution_history` o leer la
-   última RUN asociada vía `entity_related`).
-3. Resultado por componente: PASS / BLOCKED (listar bugs) / PENDING.
-4. Resultado global: READY solo si todos los gates OK.
+For each included component:
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`.
+2. Verify the last run (in `metadata.execution_history` or read the latest
+   associated RUN via `entity_related`).
+3. Per-component result: PASS / BLOCKED (list bugs) / PENDING.
+4. Global result: READY only if all gates are OK.
 
-### CLOSE — Cerrar release
+### CLOSE — Close the release
 
-Prerrequisitos:
-1. Todos los regression gates PASS.
-2. Todos los ISSUEs incluidos cerrados.
+Prerequisites:
+1. All regression gates PASS.
+2. All included ISSUEs closed.
 
-Proceso:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROY>-<VER>", status:"closed", change_summary:"Release cerrada", updated_by })`. (REL admite cambio de status directo via update porque NO está en TXN.)
-2. **Congelar changelog**: `entity_update` con `metadata.frozen: true` (server respeta `frozen` en `entity_changelog` para evitar edits posteriores).
-3. Para cada ISSUE incluido con status `done`/`closed`: verificar que tiene TEST regression-case.
-4. Actualizar ROAD si alguno se completó: `entity_update` sobre el ROAD con `status:done`.
-5. Set `metadata.deployed_date` en la REL.
+Process:
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"closed", change_summary:"Release closed", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
+2. **Freeze the changelog**: `entity_update` with `metadata.frozen: true`
+   (the server honors `frozen` on `entity_changelog` to block later edits).
+3. For each included ISSUE with status `done`/`closed`: verify it has a
+   regression-case TEST.
+4. Update ROAD if any item was completed: `entity_update` on the ROAD with `status:done`.
+5. Set `metadata.deployed_date` on the REL.
 
-## Output (varía por acción)
+## Output (varies per action)
 
 ### CREATE:
 ```
-## Release creada
-- ID: REL-<PROY>-<VER>
-- Tipo: minor
-- Estado: planning
-- Target: <fecha>
-- Kvendra: creado (force_id, validado contra regex ADR-JRV-008)
+## Release created
+- ID: REL-<PROJ>-<VER>
+- Type: minor
+- Status: planning
+- Target: <date>
+- Kvendra: created (force_id, validated against SemVer regex)
 ```
 
 ### STATUS:
 ```
-## Release REL-<PROY>-<VER>
-- Estado: <status>
-- Target: <fecha>
-- ISSUEs incluidos: N (M abiertos, K cerrados)
+## Release REL-<PROJ>-<VER>
+- Status: <status>
+- Target: <date>
+- Included ISSUEs: N (M open, K closed)
 - Regression gates: N/M pass
 
 ### Changelog
-| Fecha | Autor | Entidad | Cambio | Trigger |
-|-------|-------|---------|--------|---------|
+| Date | Author | Entity | Change | Trigger |
+|------|--------|--------|--------|---------|
 
 ### Gates
-| Componente | REG | Última ejecución | Resultado |
-|-----------|-----|-----------------|-----------|
+| Component | REG | Last run | Result |
+|-----------|-----|----------|--------|
 
-### Bloqueadores
-- ISSUE-<PROY>-<COMP>-<NN> (bug) bloquea esta release
+### Blockers
+- ISSUE-<PROJ>-<COMP>-<NN> (bug) blocks this release
 ```
 
 ### GATE-CHECK:
 ```
-## Regression Gate Check — REL-<PROY>-<VER>
-- Resultado: READY / BLOCKED / PENDING
+## Regression Gate Check — REL-<PROJ>-<VER>
+- Result: READY / BLOCKED / PENDING
 
-| Componente | Gate | Estado |
+| Component | Gate | Status |
 |-----------|------|--------|
 ```
 
 ### CLOSE:
 ```
-## Release cerrada
-- ID: REL-<PROY>-<VER>
-- Fecha cierre: <fecha>
-- ISSUEs cerrados: N
-- Tests regression verificados: N
-- ROAD actualizados: [lista]
-- Changelog: congelado
+## Release closed
+- ID: REL-<PROJ>-<VER>
+- Close date: <date>
+- ISSUEs closed: N
+- Regression TESTs verified: N
+- ROADs updated: [list]
+- Changelog: frozen
 ```
