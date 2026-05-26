@@ -40,10 +40,31 @@ Missing or mis-ordered markers → ERROR with the specific defect.
 Extract the version string from `<!-- manual_version: X.Y -->`.
 
 - Must match regex `^\d+\.\d+$`. Otherwise ERROR.
-- Compare with canonical version (`STD-KVD-CLAUDEMD-TEMPLATE.metadata.manual_version` from the KB).
-  - Equal → OK.
-  - Local < canonical → WARNING ("canonical template has evolved — run `/sync-claudemd` to upgrade").
-  - Local > canonical → ERROR (shouldn't happen; suggests local edits to the marker — Manual is meant to be regenerated, not hand-edited).
+
+Compare against the canonical version. The canonical source is the **plugin's bundled `CLAUDE.md.template`** at `<plugin-root>/CLAUDE.md.template` (read its first HTML comment for `manual_version`). The KB STD entity is an optional mirror.
+
+- Local file (in workspace) `manual_version` == plugin template `manual_version` → OK.
+- Local < plugin → WARNING ("canonical template has evolved — run `/sync-claudemd` to upgrade").
+- Local > plugin → ERROR (shouldn't happen; suggests local edits to the marker — Manual is meant to be regenerated, not hand-edited).
+
+### Optional — KB STD mirror cross-check (best-effort)
+
+Look up the canonical STD by **tags** (not literal id — `force_id` is reserved for PRJ/CMP/REL, the entity id is server-generated):
+
+```
+entity_query({
+  entity_type: "STD",
+  project_id: "KVD",
+  tags_all: ["scope:claudemd", "scope:template"],
+  status: "active",
+  order_by: "updated_at_desc",
+  limit: 1
+})
+```
+
+- If 1 result and its `metadata.manual_version` matches the plugin file → OK.
+- If 1 result but version differs from plugin file → INFO ("KB mirror is out of sync with plugin distribution — usually means the plugin was just updated and the KB mirror update is pending").
+- If 0 results / broker offline → INFO ("KB mirror not found; lint uses plugin file as canonical"). NOT an error — local plugin file is the canonical source by design.
 
 ## Step 4 — Validate Project section
 

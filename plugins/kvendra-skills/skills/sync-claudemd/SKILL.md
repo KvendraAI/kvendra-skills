@@ -30,17 +30,36 @@ Standard rules apply (see `help({topic:"bootstrap"})` + `help({topic:"naming"})`
 
 ## Step 1 — Load canonical template
 
+The canonical template ships **bundled with the plugin** at `<plugin-root>/CLAUDE.md.template`. The KB STD entity is an optional discoverable mirror used for cross-session/cross-project audit and version comparison.
+
+### Primary — local plugin file
+
+Read `<plugin-root>/CLAUDE.md.template` (resolved via the cwd of the agent or the plugin cache path). This is the canonical source: ships atomically with the plugin version, never out-of-sync with itself.
+
+Extract from the file:
+- First HTML comment `<!-- manual_version: X.Y -->` → canonical version.
+- Body content (everything after the version comment) → template body with placeholders.
+
+If the file is missing or malformed: STOP and tell the user the plugin install is corrupted. Recommend `/plugin update kvendra-skills` to repair.
+
+### Optional — KB STD mirror (best-effort)
+
+Look up the canonical STD by **tags** (not by literal id — `force_id` is reserved for PRJ/CMP/REL in the KB, so the entity id is server-generated). Well-known coordinate:
+
 ```
-entity_get({ entity_id: "STD-KVD-CLAUDEMD-TEMPLATE" })
+entity_query({
+  entity_type: "STD",
+  project_id: "KVD",
+  tags_all: ["scope:claudemd", "scope:template"],
+  status: "active",
+  order_by: "updated_at_desc",
+  limit: 1
+})
 ```
 
-If `not_found`: STOP. Either the project's KB does not have the canonical template (`onboard-project` must have run there before), or there's a typo. Tell the user.
-
-Extract from the entity:
-- `metadata.manual_version` → canonical version (e.g. `"1.0"`).
-- `content` → extract the verbatim template content between the `\`\`\`markdown ... \`\`\`` fence in the "Template content" section.
-
-Alternative: if `kvendra-skills/plugins/kvendra-skills/CLAUDE.md.template` exists locally (offline against Platform self-host), prefer the file (faster, no round-trip).
+- If 1 result → compare `metadata.manual_version` with the local file's version (drift detection in Step 3).
+- If 0 results → degraded mode. Continue using the local file alone. Log INFO ("canonical KB mirror not found; using local plugin file"), do NOT block.
+- If broker / MCP unreachable → same degraded mode, continue.
 
 ## Step 2 — Read the current CLAUDE.md
 
