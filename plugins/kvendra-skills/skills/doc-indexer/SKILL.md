@@ -1,25 +1,28 @@
 ---
 name: doc-indexer
-description: Documentation indexer — reads existing manuals and creates DOC entries in the Kvendra KB to guarantee consistency
-user_invocable: false
-args: "[project and docs directory to index]"
+description: Documentation indexer — reads .md files under a project's docs/ directory and creates DOC entries in the Kvendra KB (one entry per file)
+user_invocable: true
+args: "[optional path under docs/ to limit the scope, e.g. docs/onboarding/]"
 ---
 
-# Doc Indexer — Index existing documentation
+# Doc Indexer — Index project documentation into the Kvendra KB
 
-You act as a **Documentation Archivist**. You read all the existing manuals
-of a project and create/update DOC entries in the Kvendra KB that summarise
-what each section says, what facts it states, what terminology it uses and
-where the original file lives. This allows `manual-writer` to consult prior
-documentation before writing anything new.
+You read all the Markdown files under a project's `docs/` directory and
+create or update DOC entries in the Kvendra KB, one entry per file. Each
+entry captures a short summary, the key facts the file states, the
+domain terminology it uses, and the relative file path so that
+`manual-writer` and any future skill can consult prior documentation for
+consistency before writing new content.
 
-## Objective
+## Optional path scope
 
 $ARGUMENTS
 
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` from the `CLAUDE.md`.
+Identify `project_id` from the `CLAUDE.md`. If the user passed a path
+(e.g. `docs/onboarding/`), use it as the scope; otherwise index every
+`.md` under `<project root>/docs/`.
 
 ## Kvendra rules (summary)
 
@@ -63,76 +66,77 @@ If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to
 Additionally enforced by the plugin's PreToolUse hook (active only inside
 workspaces with a `.kvendra-workspace` marker).
 
-## Note on doc-portal conventions
+## Step 1 — Locate the Markdown files
 
-The directory layout and file conventions used in Step 1 and Step 4 below
-(e.g. `docs/manual-*`, `info.json`, `sections/<locale>/`) are project-level
-conventions. When a project formalises its doc-portal as a CMP in the
-Kvendra KB, the canonical recipe should live in
-`STD-<DOC_PROJECT>-DOC-PORTAL-FORMAT` per ADR-KVD-SKILLS-BB0E8A. While that
-STD playbook does not yet exist, these conventions remain inline as
-sensible defaults — the skill consumes whatever `info.json` / `index.json`
-schema the project actually uses.
+Find every `.md` under the scope:
 
-## Step 1 — Locate existing manuals
+```bash
+find docs -name '*.md' -type f
+```
 
-Look for:
-1. `docs/` at the project root.
-2. Subdirectories matching `manual-*` inside `docs/`.
-3. Manuals in a doc-portal workspace (e.g. `<doc-portal-cmp>/manuals/`) if applicable.
+If a path scope is passed via args (e.g. `docs/onboarding/`), restrict
+the search to that subtree. Skip hidden directories. List the files and
+report the total; ask the user to confirm if the count is unexpectedly
+large (> 50 files).
 
-If the user specifies a directory, use it directly.
-
-List the `.md` files by name. Report the total and ask the user to confirm.
-
-## Step 2 — Read and analyze each section
+## Step 2 — Read and analyze each file
 
 For each `.md`:
-1. **Read** the file fully.
+
+1. Read the file fully.
 2. Extract:
-   - **Summary**: 2-3 sentences.
-   - **Key facts**: concrete claims (entities, flows, states, roles, URLs, configs, rules).
-   - **Terminology**: domain-specific terms with the definition as used here.
-   - **Cross-references**: mentions of other manuals / sections.
-   - **Audience**: user / developer / operations / functional.
+   - **Summary** — 2-3 sentences.
+   - **Key facts** — concrete statements (entities, flows, states, roles, URLs, configs, rules).
+   - **Terminology** — domain-specific terms with the definition as used in this file.
+   - **Cross-references** — mentions of other files / sections (relative links inside `docs/`).
+   - **Audience** — one of `user | technical | operations | functional`.
 
-## Step 3 — Check existing entries
+## Step 3 — Check for existing entries
 
-Before creating: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<section title>, entity_type:"DOC", project_id:<PROJ>, limit:5 })`.
+Before creating, look up by path:
 
-If you find a DOC with the same `file_path` in metadata → `entity_update`.
-Otherwise, `entity_create`.
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
+  query: "<file path>",
+  entity_type: "DOC",
+  project_id: <PROJ>,
+  limit: 5
+})
+```
 
-## Step 4 — Create/update DOC entries
+If a DOC entry exists with the same `file_path` in metadata → use
+`entity_update`. Otherwise → `entity_create`. Idempotent: re-running the
+skill on the same `docs/` directory updates in place rather than
+duplicating.
+
+## Step 4 — Create or update the DOC entry
+
+One entry per `.md` file:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "DOC",
   project_id: <PROJ>,
-  title: "DOC-<manual_id>-<NN>: <section title>",
+  title: "DOC: <relative file path>",
   content: <see format below>,
   metadata: {
-    manual_id: "<manual-id>",
-    section_number: "<NN>",
-    file_path: "<path RELATIVE to the project>",
+    file_path: "<path relative to project root, e.g. docs/onboarding/01-intro.md>",
     audience: "<user|technical|operations|functional>",
-    last_indexed: "<date>"
+    last_indexed: "<ISO date>"
   },
-  tags: ["<manual-type>", "<topic>", "<audience>"],
+  tags: ["<audience>", "<top-level topic>"],
   updated_by: "skill:doc-indexer"
 })
 ```
 
-(DOC in the Kvendra KB does NOT accept relations — `relations=no` in ENTITY_CONFIG.
-Cross-references go in `metadata.crossrefs` or in tags.)
+(DOC in the Kvendra KB does NOT accept relations — `relations=no` in
+ENTITY_CONFIG. Cross-references go in `metadata.crossrefs` or in tags.)
 
 ### Content format
 
 ```markdown
-## Manual: <name>
-## Section: <title>
-## Audience: <audience>
 ## File: <relative path>
+## Audience: <audience>
 
 ### Summary
 <2-3 sentences>
@@ -145,40 +149,31 @@ Cross-references go in `metadata.crossrefs` or in tags.)
 - **<term>**: <definition>
 
 ### Cross-references
-- Related to: <sections>
-- Depends on: <prerequisites>
+- Related: <relative file path or section>
+- Depends on: <relative file path or section>
 ```
-
-### Tags
-
-| Tag | When |
-|-----|------|
-| `manual-user` | End-user manual |
-| `manual-technical` | Developer manual |
-| `manual-operations` | DevOps / SRE manual |
-| `manual-functional` | PO / QA manual |
-| `<topic>` | Main topic |
-| `<audience>` | Audience |
 
 ## Step 5 — Consistency report
 
-1. Terms with divergent definitions.
+After all files are processed, report:
+
+1. Terms with divergent definitions across files.
 2. Potentially contradictory facts.
-3. Detected gaps.
-4. Duplications.
+3. Detected gaps (e.g. a referenced cross-link that has no target file).
+4. Duplications (two files covering the same topic for the same audience).
 
 ## Output
 
 ```
 ### INDEXED DOCUMENTATION
 - Project: <project_id>
-- Manuals processed: N
-- Sections indexed: N (new: X, updated: Y)
-- DOC entries created in Kvendra: N
+- Scope: docs/ (or `<path>` if scoped)
+- Files processed: N
+- DOC entries: N (new: X, updated: Y)
 
-### MANUALS PROCESSED
-| Manual | Type | Sections | Tags |
-|--------|------|----------|------|
+### FILES PROCESSED
+| Path | Audience | Tags |
+|------|----------|------|
 
 ### CONSISTENCY ANALYSIS
 #### Divergent terms
@@ -196,9 +191,14 @@ Cross-references go in `metadata.crossrefs` or in tags.)
 
 ## Rules
 
-- **Read the actual content** — do not assume what a document says.
-- **Do not modify the manuals** — only create DOC entries.
+- **Read the actual content** — do not assume what a file says.
+- **Do not modify the Markdown files** — only create / update DOC entries.
 - **Be conservative with facts** — only verifiable statements.
-- **Granularity by section** — one DOC entry per section.
-- **Idempotent** — update if it already exists (same file_path).
-- **NEVER absolute paths** — always relative to the repo.
+- **One DOC entry per `.md` file** — no sub-section splitting; that is a
+  Jarvis-era convention and adds complexity without value for Kvendra.
+- **Idempotent** — update if a DOC with the same `file_path` already
+  exists. Re-running is safe.
+- **Always relative paths** — `file_path` is relative to the project root.
+- **English only** — the source files in `docs/` are English (per
+  ADR-KVD-SKILLS-244215). DOC entries' content is English. The runtime
+  agent translates output to the project's CLAUDE.md language.

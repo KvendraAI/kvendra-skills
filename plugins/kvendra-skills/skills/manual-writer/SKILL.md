@@ -1,19 +1,22 @@
 ---
 name: manual-writer
-description: Manual writer — generates technical and user manuals with screenshots and diagrams, using the Kvendra KB for consistency
+description: Manual writer — generates Markdown documentation under docs/<topic>/ of a project (English source), consulting Kvendra DOC entries for consistency; optional Mermaid diagrams and screenshots
 user_invocable: true
-args: "[manual topic and destination project]"
+args: "[manual topic and target project]"
 ---
 
-# Manual Writer — Technical and user manual writer
+# Manual Writer — Write project documentation as Markdown
 
-You act as a **Senior Technical Writer**. You create complete, well-structured
-and visually enriched manuals for Kvendra-related projects. You use the
-browser (Playwright MCP) to capture screenshots and you generate Mermaid
-diagrams to illustrate flows and architectures.
+You act as a **Senior Technical Writer**. Given a topic, you generate a
+complete, well-structured Markdown manual under the project's `docs/`
+directory. You consult existing DOC entries in the Kvendra KB to keep
+the new manual consistent with prior documentation. Optionally you
+embed Mermaid diagrams and capture screenshots via Playwright.
 
-**FUNDAMENTAL PRINCIPLE**: Before writing, load ALL the existing
-documentation (DOC entries in the Kvendra KB) to guarantee 100% consistency.
+**FUNDAMENTAL PRINCIPLE — Consistency first**: before writing, load all
+existing DOC entries for this project and build a brief of established
+terminology, facts and cross-references. Never publish content that
+contradicts what is already documented.
 
 ## Manual topic
 
@@ -65,249 +68,130 @@ If the `kvendra` broker is unavailable (failed to connect): STOP. NO fallback to
 Additionally enforced by the plugin's PreToolUse hook (active only inside
 workspaces with a `.kvendra-workspace` marker).
 
-## Note on doc-portal conventions
-
-The directory layouts, `info.json` / `index.json` schemas, locale folder
-conventions and publishing scripts (e.g. `build-registry.js`,
-`upload-private-content.sh`) referenced below are conventions of the
-kvendra doc-portal stack. When a project formalises its doc-portal as a
-CMP in the Kvendra KB, the authoritative recipe should live in
-`STD-<DOC_PROJECT>-DOC-PORTAL-FORMAT` and
-`STD-<DOC_PROJECT>-DOC-PORTAL-PUBLISH` per ADR-KVD-SKILLS-BB0E8A. Until
-those STDs exist, the conventions remain inline as sensible defaults —
-adapt to the actual project layout if it differs.
-
 ## Step 1 — Load project context
 
-Load from the Kvendra KB:
+Load the relevant entities from the Kvendra KB:
 
-- **Functional / architecture**:
-  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"REQ", project_id:<PROJ> })`
-  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"CMP", project_id:<PROJ> })`
-- **UX (if user manual)**:
-  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"UX", project_id:<PROJ> })`
+- Functional / architectural context:
+  - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"REQ", project_id:<PROJ> })`
+  - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"CMP", project_id:<PROJ> })`
+- UX (if it's a user manual):
+  - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"UX", project_id:<PROJ> })`
 
----
+## Step 2 — Load existing documentation (CONSISTENCY BRIEF)
 
-## Step 2 — Load existing documentation (CONSISTENCY)
-
-This step is **CRITICAL**. Load all already-written documentation.
-
-### 2.1 — Documentation related to the topic (cross-project)
+This step is **critical**. Build a brief from the project's DOC entries:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<manual topic>, entity_type:"DOC", limit:20 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "DOC",
+  project_id: <PROJ>,
+  limit: 100
+})
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
+  query: <topic>,
+  entity_type: "DOC",
+  limit: 20
+})
 ```
-
-### 2.2 — All documentation for the current project
-
-```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROJ>, limit:100 })
-```
-
-### 2.3 — Doc-portal documentation (if it exists)
-
-```
-# When the doc-portal is formalised as its own KB project, query its DOC entries.
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<DOC-PROJECT>, limit:100 })
-```
-
-### 2.4 — CONSISTENCY BRIEF
 
 Build:
 
 ```
 ### CONSISTENCY BRIEF
 #### Existing documentation on this topic
-- [DOC-...]: [summary] — in [manual/section]
+- [DOC-...]: [summary] — at <relative file path>
 
 #### Established facts (DO NOT contradict)
-- [fact 1] — source: DOC-...
+- <fact> — source: DOC-...
 
-#### Official terminology (use these exact terms)
-- **[term]**: [definition] — source: DOC-...
+#### Official terminology (USE THESE EXACT TERMS)
+- **<term>**: <definition> — source: DOC-...
 
 #### Related sections (potential cross-references)
-- DOC-...: [title] — candidate for cross-link
+- DOC-...: <relative file path> — candidate for cross-link
 ```
 
-**RULE**: If there are no (or almost no) DOC entries for this project,
-suggest running `/doc-indexer` before continuing.
+If the project has no DOC entries yet, suggest running `/doc-indexer` to
+catalogue existing `docs/` content before continuing.
 
----
+## Step 3 — Determine manual type
 
-## Step 3 — Determine type, scope and visibility
-
-### 3.1 — Manual type
-
-| Type | Audience | Main content | Screenshots |
-|------|----------|--------------|-------------|
-| **user** | End users of the app | Step-by-step flows with screenshots | Required |
-| **technical** | Developers | Architecture, APIs, code, setup | Diagrams required |
-| **operations** | DevOps / SysAdmin | Deployment, configuration, monitoring | As needed |
+| Type | Audience | Primary content | Screenshots |
+|------|----------|-----------------|-------------|
+| **user** | End users of the app | Step-by-step flows with screenshots | Recommended |
+| **technical** | Developers | Architecture, APIs, code, setup | Mermaid diagrams recommended |
+| **operations** | DevOps / SRE | Deployment, configuration, monitoring | As needed |
 | **functional** | Product owners / QA | Business rules, use cases | Recommended |
 
-### 3.2 — Manual visibility
+## Step 4 — Define the structure (MANDATORY PAUSE)
 
-Ask the user what visibility level the manual has:
+Generate a Table of Contents before writing. Present:
 
-| Visibility | Who can see | Login required | Storage |
-|------------|-------------|----------------|---------|
-| **public** | Anyone, no login | No | `public/manuals/` (CloudFront) |
-| **partners** | Partner users + sales + admins | Yes (auth provider) | Private S3 (API Gateway) |
-| **internal** | Internal staff only | Yes (auth provider) | Private S3 (API Gateway) |
+1. Proposed index (file structure).
+2. The CONSISTENCY BRIEF from Step 2.
+3. Any overlap alerts — if a section covers a topic already documented,
+   propose either a cross-reference or a different angle by audience.
 
-**RULE**: If the user does not indicate visibility, ask explicitly. Do not
-assume `public`.
+**Wait for the user to confirm** before writing any `.md` file.
 
-The visibility is recorded in `info.json`:
+### Base structure
 
-```json
-{
-  "id": "manual-id",
-  "title": "Manual title",
-  "visibility": "public|partners|internal"
-}
+```
+docs/<topic>/
+├── README.md
+├── 01-introduction.md
+├── 02-<section>.md
+├── ...
+├── NN-faq.md
+└── assets/
+    ├── screenshots/
+    └── diagrams/
 ```
 
----
+The structure is flat — no `sections/`, no `info.json`, no `index.json`,
+no `manual-manager/`. Only `.md` files plus `assets/` for images.
 
-## Step 4 — Define the manual structure
+## Step 5 — Capture screenshots (optional, if user-facing)
 
-Generate the table of contents before writing. Present the TOC together
-with the **CONSISTENCY BRIEF** and **wait for confirmation**.
+Only if the manual is `user` type and the project's application is
+available locally. Use Playwright MCP if installed.
 
-In the presentation include:
-1. Proposed index.
-2. Consistency brief (facts, terminology, cross-references).
-3. **Overlap alerts**: if a section covers a topic already documented,
-   propose a cross-reference or a different angle by audience.
+### Load environment
 
-### Base structure per type
-
-**User manual:**
 ```
-docs/
-├── manual-<name>/
-│   ├── README.md
-│   ├── 01-introduction.md
-│   ├── 02-access.md
-│   ├── 03-<section>.md
-│   ├── ...
-│   ├── NN-faq.md
-│   └── assets/
-│       ├── screenshots/
-│       └── diagrams/
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "ENV",
+  project_id: <PROJ>,
+  tags_all: ["env:dev"]
+})
 ```
 
-**Technical manual:**
-```
-docs/
-├── manual-<name>/
-│   ├── README.md
-│   ├── 01-architecture.md
-│   ├── 02-data-model.md
-│   ├── 03-api.md
-│   ├── 04-flows.md
-│   ├── ...
-│   ├── NN-troubleshooting.md
-│   └── assets/
-│       ├── screenshots/
-│       └── diagrams/
-```
-
----
-
-## Step 5 — Identify the destination directory
-
-### 5.1 — Doc-portal manuals (project_id = <DOC-PROJECT>)
-
-1. Source directory: `<workspace>/<doc-portal-root>/manuals/<manual-id>/`
-2. Create: `sections/`, `sections/en/`, `sections/fr/`, `sections/de/`, `assets/screenshots/`
-3. Create `info.json` (with `visibility`), `index.json`, `INDEX.md`
-
-### 5.2 — Manuals from other projects
-
-1. Read `project_id` from the CLAUDE.md.
-2. Look for `docs/` in the repo. If it does not exist, create it.
-3. Create `manual-<name>/` and `manual-<name>/assets/{screenshots,diagrams}/`.
-
-### 5.3 — Publication in the doc-portal (MANDATORY if project_id=<DOC-PROJECT>)
-
-The doc-portal uses **auto-discovery** via the registry script.
-
-#### If the manual is `public`:
-
-1. Copy to the public directory:
-   ```
-   cp -R manuals/<manual-id>/ public/manuals/<manual-id>/
-   ```
-2. Regenerate the registry: `node scripts/build-registry.js`.
-3. Sync after translations (Step 9).
-
-#### If `partners` or `internal`:
-
-1. Do NOT copy to `public/`.
-2. Regenerate the registry (adds metadata to `manuals-registry.json` and `private-content/manifest.json`).
-3. Upload to private S3: `./scripts/upload-private-content.sh <env>`.
-
-> **Warning:** A private manual in `public/` is reachable without auth. ALWAYS verify.
-
-**Rule**: never overwrite existing documentation without confirmation.
-
----
-
-## Step 6 — Capture screenshots (if applicable)
-
-Use **Playwright MCP**. Load credentials from the KB:
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ENV", project_id:<PROJ>, tags_all:["env:dev"] })`
+Use the ENV entry to determine the local URL and any credentials needed.
+If the project does NOT have a generic auth flow, ask the user.
 
 ### Protocol
 
+For each screen:
+
 1. `browser_navigate(url)`.
-2. If login is required, run the flow per the ENV.
-3. For each screen:
-   - Navigate to the section.
-   - `browser_wait_for(state="networkidle")`.
-   - Highlight elements if needed (`browser_evaluate`).
-   - `browser_take_screenshot()`.
-   - Save in `assets/screenshots/<NN>-<description>.png`.
+2. `browser_wait_for(state="networkidle")`.
+3. Optionally highlight an element with `browser_evaluate`.
+4. `browser_take_screenshot()` → save to `docs/<topic>/assets/screenshots/<NN>-<description>.png`.
 
-### Naming conventions
-```
-assets/screenshots/
-├── 01-login-screen.png
-├── 02-dashboard-overview.png
-├── 03-menu-navigation.png
-└── ...
-```
+### Markdown reference
 
-### Markdown reference — ABSOLUTE paths
+Use **relative** paths since the `.md` is co-located with `assets/`:
 
-> **IMPORTANT**: Images must use **absolute** paths from the site root.
-> Relative paths do not resolve correctly when content is loaded via fetch
-> from subdirectories.
-
-**Correct**:
 ```markdown
-![Description](/manuals/<manual-id>/assets/screenshots/01-login-screen.png)
+![Description](./assets/screenshots/01-login-screen.png)
 *Figure 1: Login screen*
 ```
 
-**INCORRECT**:
-```markdown
-![Description](./assets/screenshots/01-login-screen.png)
-```
+## Step 6 — Mermaid diagrams (optional, if architectural)
 
----
+Embed Mermaid blocks directly in the Markdown:
 
-## Step 7 — Create diagrams (if applicable)
-
-Diagrams embedded in markdown via **Mermaid**.
-
-### Types
-
-**User flow / process:**
 ````markdown
 ```mermaid
 flowchart TD
@@ -318,102 +202,47 @@ flowchart TD
 ```
 ````
 
-**Architecture:**
-````markdown
-```mermaid
-graph LR
-    subgraph Frontend
-        A[App]
-    end
-    subgraph Backend
-        B[API Gateway]
-        C[Lambda]
-        D[DynamoDB]
-    end
-    A --> B --> C --> D
-```
-````
+Supported types: `flowchart`, `graph`, `sequenceDiagram`, `erDiagram`,
+`stateDiagram-v2`, `pie`, `gantt`, `classDiagram`.
 
-**Sequence:**
-````markdown
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant F as Frontend
-    participant B as Backend
-    U->>F: Action
-    F->>B: Request
-    B-->>F: Response
-    F-->>U: UI update
-```
-````
-
-**Data model:**
-````markdown
-```mermaid
-erDiagram
-    ENTITY_A ||--o{ ENTITY_B : "relation"
-    ENTITY_A {
-        string id PK
-        string name
-    }
-```
-````
-
-**State:**
-````markdown
-```mermaid
-stateDiagram-v2
-    [*] --> Created
-    Created --> InProgress
-    InProgress --> Completed
-    InProgress --> Error
-    Error --> InProgress: Retry
-    Completed --> [*]
-```
-````
-
-### Conventions
-
-- Embed Mermaid directly (not as a separate image).
-- Descriptive title before each diagram.
-- Sub-diagrams if > 30 nodes.
-- Node and relation labels in the manual's language.
-- Brief explanation underneath.
-
----
-
-## Step 8 — Write the content
+## Step 7 — Write the content
 
 ### Consistency rules (MANDATORY)
 
-Before writing each section, consult the **CONSISTENCY BRIEF**:
+Before writing each section, consult the CONSISTENCY BRIEF:
 
-1. **Terminology**: use EXACTLY the same terms as the existing docs.
-2. **Facts**: do not contradict established facts. If you need to update
-   one, mark it as pending.
-3. **Flows**: if you describe a flow already documented, reference that section.
-4. **States and values**: same values and order.
+1. **Terminology**: use EXACTLY the same terms as the existing DOC entries.
+2. **Facts**: do not contradict established facts. If an update is needed,
+   flag it as pending and ask the user.
+3. **Flows**: if you describe a flow already documented, link to it
+   instead of duplicating.
+4. **States and values**: same names and order across the project.
 5. **Roles and permissions**: same names and descriptions.
 
 ### Per-section check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<section topic>, entity_type:"DOC", limit:10 })
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
+  query: <section topic>,
+  entity_type: "DOC",
+  project_id: <PROJ>,
+  limit: 10
+})
 ```
 
-If you find a DOC that covers the same topic:
-- **Same project, same audience**: cross-reference, do not duplicate.
-- **Same project, different audience**: adapt level but keep facts.
-- **Different project**: verify shared facts are consistent.
+If a DOC entry covers the same topic:
+- Same audience → cross-reference, do not duplicate.
+- Different audience → adapt the level, keep the facts.
 
 ### Style
 
-- **Language**: project default (per CLAUDE.md).
+- **Language**: English only. Do NOT generate translated copies — the
+  runtime agent translates output to the project's CLAUDE.md language
+  per ADR-KVD-SKILLS-244215.
 - **Tone**: professional but accessible.
 - **Voice**: second person formal ("Select…", "Configure…").
 - **Paragraphs**: short (max 4-5 lines).
-- **Lists** preferred over long paragraphs.
+- **Lists**: preferred over long paragraphs.
 
 ### Standard section format
 
@@ -430,7 +259,7 @@ Brief explanation of the purpose (1-2 paragraphs).
 ### Step 1 — Step name
 Description of what must be done.
 
-![Screenshot description](/manuals/<manual-id>/assets/screenshots/XX-name.png)
+![Screenshot description](./assets/screenshots/XX-name.png)
 *Figure N: Description*
 
 ### Step 2 — Next step
@@ -444,7 +273,7 @@ Description of what must be done.
 
 ### Structured-data examples
 
-**Use blockquotes with rich format**, NOT code blocks:
+Use blockquotes with rich format, NOT code blocks:
 
 ```markdown
 > **Field 1:** Field value
@@ -458,203 +287,62 @@ Description of what must be done.
 
 Code blocks ONLY for: commands, source code, URLs/paths, JSON/YAML, Mermaid.
 
-### Elements to include
-
-- **Tables** for comparisons, roles/permissions, configurations.
-- **Blockquotes** with format for structured data.
-- **Code blocks** only for commands/code.
-- **Callouts** (blockquotes with bold) for notes and warnings.
-- **Cross-references** between sections.
-- **Mermaid diagrams** for flows and architecture.
-
----
-
-## Step 9 — Generate the README.md index
+## Step 8 — Generate the README.md index
 
 ```markdown
-# [Manual title] — [Project]
+# <Manual title>
 
-[2-3 line description]
+<2-3 line description>
 
 ## Index
 
-### 1. [Section](./01-section.md)
+### 1. [Introduction](./01-introduction.md)
 Brief description.
 
-### 2. [Section](./02-section.md)
+### 2. [<Section>](./02-section.md)
 Brief description.
 
 ---
 
 ## Audience
-[Who this manual is for]
+<Who this manual is for>
 
 ## Prerequisites
-[What is needed before]
+<What is needed before>
 
 ## Related documentation
-[Links to other manuals]
+<Links to other manuals under docs/>
 
 ---
 
-*Last updated: <date>*
+*Last updated: <ISO date>*
 ```
 
----
-
-## Step 10 — Review and validation
+## Step 9 — Review and validation
 
 Checklist:
 
 1. Relative links between documents work.
-2. Images exist in `assets/screenshots/` and use absolute paths.
+2. Images exist under `assets/screenshots/` and use relative paths.
 3. Mermaid blocks have correct syntax.
-4. Structured-data examples use formatted blockquotes (not code blocks).
-5. Uniform style.
-6. Every section in the index has its file.
+4. Structured-data examples use blockquotes (not code blocks).
+5. Style is uniform.
+6. Every entry in the index has its file.
 7. Consistency with the CONSISTENCY BRIEF.
 
-### Final consistency checklist
+If any inconsistency is detected, inform the user before finishing.
+
+## Step 10 — Index the new manual in the Kvendra KB
+
+After the `.md` files are written, register them as DOC entries by
+invoking `doc-indexer` with the new manual's path:
 
 ```
-- [ ] Terminology: every term matches existing docs
-- [ ] Facts: no fact contradicts existing docs
-- [ ] Flows: shared flows referenced, not duplicated
-- [ ] States/values: same names and order
-- [ ] Roles: same names and descriptions
-- [ ] Cross-references: links to related docs included
+Skill(skill="kvendra-skills:doc-indexer", args="docs/<topic>/")
 ```
 
-If you detect inconsistency, **inform the user** before finishing.
-
----
-
-## Step 11 — Generate multi-locale versions
-
-Supported locales: **en, es, fr, de** (en is default/fallback).
-
-### 11.1 — File structure
-
-**doc-portal** (`manuals/{manual-id}/`):
-```
-manuals/{manual-id}/
-├── info.json              # locale: "es"
-├── info.en.json           # English
-├── info.fr.json           # French
-├── info.de.json           # German
-├── index.json             # base
-├── index.en.json
-├── index.fr.json
-├── index.de.json
-├── sections/
-│   ├── introduction.md    # base
-│   ├── ...
-│   ├── en/
-│   │   └── introduction.md
-│   ├── fr/
-│   │   └── introduction.md
-│   └── de/
-│       └── introduction.md
-```
-
-**Manuals in repos** (`docs/manual-{name}/`):
-```
-docs/manual-{name}/
-├── README.md              # base
-├── README.en.md
-├── README.fr.md
-├── README.de.md
-├── 01-section.md          # base
-├── en/
-│   └── 01-section.md
-├── fr/
-│   └── 01-section.md
-├── de/
-│   └── 01-section.md
-└── assets/                # shared
-```
-
-### 11.2 — Translation rules
-
-1. Translate the content fully to the target language.
-2. Keep the structure of headings, lists and Markdown format.
-3. **Do not translate**:
-   - Proper nouns (product / brand names).
-   - Names of technical entities (Partner, Lead) — use the original with
-     a translation in parentheses on first use: "Partners (socios)".
-   - Code blocks and commands.
-   - URLs and paths.
-   - Names of app fields if the app is not localised in that language.
-4. Adapt Mermaid diagrams: translate labels.
-5. Keep references to screenshots (shared across locales).
-6. **Absolute image paths** intact. Translate only alt text and figure caption.
-7. **Structured-data examples**: keep the same markdown format (formatted blockquotes), do NOT convert to code blocks.
-
-### 11.3 — Generate localised metadata
-
-**info.{locale}.json** — translate `title` and `description`:
-```json
-{
-  "id": "manual-id",
-  "title": "Operations Manual",
-  "description": "Complete operations manual",
-  "category": "SaaS",
-  "version": "1.0.0",
-  "locale": "en",
-  "availableLocales": ["es", "en", "fr", "de"]
-}
-```
-
-**index.{locale}.json** — translate the `title` of each section. `id` and `file` do not change.
-
-**Base info.json** — update `availableLocales`.
-
-### 11.4 — Quality
-
-- Same professional yet accessible tone across all locales.
-- If a per-locale glossary exists in the KB, respect it.
-- All sections translated (no fallback).
-- After translation verify: valid Mermaid, absolute paths, blockquotes
-  preserved, tables with the same structure.
-
-### 11.5 — Generation order
-
-1. Full manual in the base language.
-2. English (en) — fallback, highest priority.
-3. French (fr).
-4. German (de).
-
-```
-Generating multi-locale versions:
-es — Base completed (N sections)
-en — Translation completed
-fr — Translation completed
-de — Translation completed
-```
-
----
-
-## Step 12 — Index the new manual in the Kvendra KB
-
-After writing the manual, index every section in the Kvendra KB (DOC
-entries) so future manuals have it as a reference.
-
-### Subskill doc-indexer
-
-Launch Agent reading `doc-indexer/SKILL.md`, replacing `$ARGUMENTS`:
-
-```
-Project: <project_id>
-Directory: <path to the newly created manual>
-Action: index the sections (base language only, not translations)
-```
-
-This registers the new manual in the Kvendra KB as DOC entries, available
-as a reference for the next manual.
-
-`Manual indexed in Kvendra — N DOC entries created`
-
----
+This guarantees that future runs of `manual-writer` find the new entries
+when building their CONSISTENCY BRIEF.
 
 ## Required output
 
@@ -662,16 +350,16 @@ as a reference for the next manual.
 ### MANUAL GENERATED
 - Project: [project_id]
 - Type: [user/technical/operations/functional]
-- Directory: [path]
-- Sections: N documents
-- Screenshots: N captures
-- Diagrams: N Mermaid diagrams
+- Directory: docs/<topic>/
+- Files: N (README.md + N-1 sections)
+- Screenshots: N (if any)
+- Diagrams: N (if any)
 
-### CREATED FILE STRUCTURE
-[tree]
-
-### MANUAL INDEX
-[README.md content]
+### FILE TREE
+docs/<topic>/
+├── README.md
+├── ...
+└── assets/
 
 ### CONSISTENCY
 - DOC entries consulted: N
@@ -680,33 +368,31 @@ as a reference for the next manual.
 - Cross-references added: N
 - Detected inconsistencies: N (detail if > 0)
 
-### MULTI-LOCALE
-- Generated languages: es, en, fr, de
-- Sections translated per language: N
-- Localised info/index files: N
-- availableLocales updated: OK
-
 ### Kvendra UPDATED
-- DOC entries created: N
+- DOC entries: N created/updated via doc-indexer
 
 ### NOTES
 [Observations, pending sections, items to review]
 ```
 
----
+## Rules
 
-## Important rules
-
-- **MANDATORY PAUSE** after Step 4: do not write until the user approves
-  the index AND the consistency brief.
-- **Do not invent data**: if you need info that is not in the KB or in the
-  code, ask the user.
-- **Real screenshots only**: only captures of the actual application.
-- **Reuse screenshots**: if one already exists in another manual of the
-  same project, reference it.
-- **Verifiable diagrams**: reflect the real architecture / flows.
-- **Versioning**: include the last-updated date at the end.
-- **CONSISTENCY ABOVE ALL**: if writing something new contradicts existing
-  docs, STOP and consult. Never publish inconsistent content.
-- **Suggest /doc-indexer**: if the Kvendra KB has no DOC entries for the
-  project, suggest it before continuing.
+- **Single language: English.** No multi-locale generation. The runtime
+  agent translates to the project's CLAUDE.md language.
+- **Single source of truth: filesystem + KB.** No doc-portal stack
+  (no `info.json`, `index.json`, `sections/<locale>/`, `build-registry`,
+  visibility levels, private-S3 publishing).
+- **Mandatory pause** after Step 4 (TOC + consistency brief). Do not
+  write any `.md` until the user approves.
+- **Do not invent data**. If you need information not in the KB or in
+  the code, ask the user.
+- **Real screenshots only**. Only captures of the actual application.
+- **Reuse screenshots**. If a screenshot already exists for the same
+  view in another manual under `docs/`, reference it via a relative
+  path rather than duplicating.
+- **Verifiable diagrams**. Reflect the real architecture / flows.
+- **Versioning**. Include the last-updated date at the end of the README.
+- **Consistency above all**. If writing something new contradicts existing
+  documentation, STOP and ask the user. Never publish inconsistent content.
+- **Suggest `/doc-indexer`** if the KB is empty of DOC entries for the
+  project — without prior context, the consistency brief is empty.

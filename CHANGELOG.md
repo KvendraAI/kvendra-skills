@@ -4,6 +4,50 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.1.0] — 2026-05-26 — Doc skills simplified (doc-portal heritage removed)
+
+### Highlights
+
+Post-REQ-629F77 cleanup driven by owner consultancy. The three documentation
+skills inherited via `winking-owl-skills` (Jarvis) carried assumptions of a
+custom "doc-portal" stack (multi-locale folders, `info.json`/`index.json`
+schemas, `build-registry.js`, private-S3 visibility flow, Playwright login).
+That stack is out-of-scope for Kvendra. This release strips it out.
+
+### Changed (simplified)
+
+- `doc-indexer` — full rewrite. Walks `<project>/docs/*.md` and writes one DOC
+  entry per file. Idempotent (update when `metadata.file_path` matches).
+  Optional path-scope argument (e.g. `docs/onboarding/`).
+- `manual-writer` — full rewrite. English-source only — no multi-locale folder
+  generation. Output is `docs/<topic>/README.md` + numbered section files +
+  `assets/screenshots/` + Mermaid inline diagrams. Step 4 (TOC + CONSISTENCY
+  BRIEF) is the mandatory pause point. Step 10 invokes `doc-indexer` to register
+  the new files as DOC entries.
+- `user-help` — catalogue updated: `/doc-validator` removed; `/manual-writer`
+  description tightened to "English, docs/<topic>/"; `/doc-indexer` promoted
+  to the DOCUMENTATION section.
+
+### Archived
+
+- `doc-validator` — `plugins/kvendra-skills/skills/doc-validator/` directory
+  deleted. Same precedent as `translator` in REL-0.7.0: without the doc-portal
+  stack the residual checks (markdown validity, DOC-entry presence, no TODOs)
+  are trivially covered by standard tooling and by `doc-indexer` itself.
+  Rationale captured in `PAT-KVD-E9A0E3`.
+
+### Plugin state
+
+- **27 active skills** (down from 28). Two archived total: `translator` (REL-0.7.0)
+  + `doc-validator` (this release). Plugin manifest at `1.1.0`.
+
+### Closed follow-up
+
+- The "3 doc-portal STDs deferred" recorded in `ISSUE-KVD-SKILLS-14043F` (Lot 3
+  tracker) is formally cancelled — the STDs will not be authored under that
+  scope because the doc-portal will never be formalised as a CMP in the Kvendra
+  KB.
+
 ## [1.0.0] — 2026-05-26 — Marketplace v2 (REQ-629F77 Phase 5 closure)
 
 ### Highlights
