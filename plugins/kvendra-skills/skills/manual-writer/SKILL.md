@@ -11,7 +11,8 @@ You act as a **Senior Technical Writer**. Given a topic, you generate a
 complete, well-structured Markdown manual under the project's `docs/`
 directory. You consult existing DOC entries in the Kvendra KB to keep
 the new manual consistent with prior documentation. Optionally you
-embed Mermaid diagrams and capture screenshots via Playwright.
+embed Mermaid diagrams and capture screenshots if a browser MCP is
+available.
 
 **FUNDAMENTAL PRINCIPLE — Consistency first**: before writing, load all
 existing DOC entries for this project and build a brief of established
@@ -134,7 +135,9 @@ The structure is flat — `.md` files plus an `assets/` directory for images.
 ## Step 5 — Capture screenshots (optional, if user-facing)
 
 Only if the manual is `user` type and the project's application is
-available locally. Use Playwright MCP if installed.
+available locally. If a browser MCP is installed (e.g. Playwright,
+Puppeteer), use it; otherwise ask the user to provide screenshots
+manually or skip this section.
 
 ### Load environment
 
@@ -149,14 +152,14 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
 Use the ENV entry to determine the local URL and any credentials needed.
 If the project does NOT have a generic auth flow, ask the user.
 
-### Protocol
+### Protocol (if a browser MCP is available)
 
 For each screen:
 
-1. `browser_navigate(url)`.
-2. `browser_wait_for(state="networkidle")`.
-3. Optionally highlight an element with `browser_evaluate`.
-4. `browser_take_screenshot()` → save to `docs/<topic>/assets/screenshots/<NN>-<description>.png`.
+1. Navigate to the URL.
+2. Wait for the page to be network-idle.
+3. Optionally highlight a specific element.
+4. Take a screenshot → save to `docs/<topic>/assets/screenshots/<NN>-<description>.png`.
 
 ### Markdown reference
 
