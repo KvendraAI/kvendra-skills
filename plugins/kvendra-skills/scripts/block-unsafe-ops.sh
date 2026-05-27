@@ -16,13 +16,12 @@
 #   permissive — block_bash hit → exit 2 ONLY if no allow_bash override.
 #   hybrid     — block_bash hit; allow_bash overrides a block hit.
 #
-# Transition (1 release window):
+# Legacy marker:
 #   If only the legacy `.kvendra-workspace` marker is present (no
-#   `.kvendra-protected`), the hook applies a hardcoded seed STRICT
-#   policy equivalent to the v1 blocklist + emits a one-line deprecation
-#   warning on every invocation. After 1 release the seed is removed and
-#   the legacy marker triggers a hard error pointing to
-#   `/sync-claudemd --policy-only`.
+#   `.kvendra-protected`), the hook exits 2 with a hard error pointing
+#   to `/sync-claudemd --policy-only`. The hardcoded seed strict policy
+#   that previously covered the transition window was removed in
+#   v1.2.0-alpha.2.
 #
 # Fail-safe:
 #   - stdin malformed / `tool_name` != Bash / no marker found → exit 0.
@@ -86,13 +85,6 @@ fi
 [[ -z "$MARKER_DIR" ]] && exit 0
 
 # ------------------------------------------------------------------
-# Seed strict policy (hardcoded transition fallback — identical to v1)
-# ------------------------------------------------------------------
-SEED_BLOCK_RE='(^|[[:space:];&|]|/)((git[[:space:]]+(commit|push|tag|merge|reset[[:space:]]+--hard|checkout[[:space:]]+--|branch[[:space:]]+-D|rebase|cherry-pick|am|filter-branch)([[:space:]]|$))|(git[[:space:]]+stash[[:space:]]+drop([[:space:]]|$))|(gh[[:space:]]+(release[[:space:]]+(create|delete|edit)|pr[[:space:]]+(create|close|merge|edit|comment)|issue[[:space:]]+(create|close|edit|comment))([[:space:]]|$))|(aws[[:space:]]+(s3[[:space:]]+(sync|cp|rm|mv|mb|rb)|s3api[[:space:]]+(put|delete|create)[[:alnum:]_-]*|cloudfront[[:space:]]+(create|update|delete)[[:alnum:]_-]*|lambda[[:space:]]+(invoke|update|delete|create)([[:alnum:]_-]*)?|cloudformation[[:space:]]+(deploy|create|update|delete)[[:alnum:]_-]*)([[:space:]]|$))|(sam[[:space:]]+deploy([[:space:]]|$))|(npm[[:space:]]+(publish|deprecate|unpublish|owner)([[:space:]]|$))|(cargo[[:space:]]+(publish|yank|owner)([[:space:]]|$))|((pip|twine)[[:space:]]+(upload|publish)([[:space:]]|$)))'
-SEED_INSTALL_HINT="Install kvendra-cli: cargo install kvendra (or see https://github.com/KvendraAI/kvendra-cli)"
-SEED_STD_ID="STD-KVD-BROKER-POLICY"
-
-# ------------------------------------------------------------------
 # Helper: emit canonical [KVD-PROTECTED] error to stderr + exit 2.
 # Args: $1=matched_pattern, $2=std_id, $3=version, $4=mode, $5=primitive, $6=install_hint
 # ------------------------------------------------------------------
@@ -147,31 +139,15 @@ lookup_primitive() {
 }
 
 # ------------------------------------------------------------------
-# Path A — legacy .kvendra-workspace only (transition fallback)
+# Path A — legacy .kvendra-workspace only (hard error, no fallback)
 # ------------------------------------------------------------------
 if [[ "$MARKER_KIND" == ".kvendra-workspace" ]]; then
-  echo "[kvendra-skills hook] WARN: legacy marker .kvendra-workspace detected at ${MARKER_DIR}. This marker is deprecated and will trigger a hard error in the next release. Run /sync-claudemd --policy-only to materialise .kvendra-protected." >&2
+  cat >&2 <<EOF
+[KVD-PROTECTED] legacy marker .kvendra-workspace at ${MARKER_DIR} is no longer supported. Run /sync-claudemd --policy-only to materialise .kvendra-protected from STD-KVD-BROKER-POLICY, then retry. The hardcoded seed strict policy that covered the v1.2.0-alpha.1 transition window was removed in v1.2.0-alpha.2.
 
-  # gh api write special case (matches v1 behaviour)
-  if printf '%s' "$COMMAND" | grep -qE '\bgh[[:space:]]+api\b' && \
-     printf '%s' "$COMMAND" | grep -qE '(\-\-method[[:space:]]+|-X[[:space:]]+)(POST|PUT|PATCH|DELETE)'; then
-    emit_block "gh api write (POST/PUT/PATCH/DELETE)" "$SEED_STD_ID" "seed" "strict" "kvendra.github" "$SEED_INSTALL_HINT"
-  fi
-
-  if MATCHED="$(printf '%s' "$COMMAND" | grep -oE "$SEED_BLOCK_RE" | head -1 | tr -d '\n' | sed 's/^[[:space:];&|/]*//')" && [[ -n "$MATCHED" ]]; then
-    # Identify primitive heuristically
-    case "$MATCHED" in
-      git*)    PRIM="kvendra.git" ;;
-      gh*)     PRIM="kvendra.github" ;;
-      aws*|sam*) PRIM="kvendra.aws" ;;
-      npm*)    PRIM="kvendra.npm" ;;
-      cargo*)  PRIM="kvendra.shell" ;;
-      pip*|twine*) PRIM="kvendra.pypi" ;;
-      *)       PRIM="kvendra.shell" ;;
-    esac
-    emit_block "$MATCHED" "$SEED_STD_ID" "seed" "strict" "$PRIM" "$SEED_INSTALL_HINT"
-  fi
-  exit 0
+Command: ${COMMAND}
+EOF
+  exit 2
 fi
 
 # ------------------------------------------------------------------

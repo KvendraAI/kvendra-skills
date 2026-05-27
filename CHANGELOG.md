@@ -4,6 +4,86 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.2.0-alpha.2] — 2026-05-28 — Legacy marker drop + manual-writer agnostic (REQ-48062A second incremental alpha)
+
+### Highlights
+
+Second incremental alpha of `REQ-KVD-SKILLS-48062A`. Removes the
+hardcoded seed strict policy + legacy marker transition fallback that
+v1.2.0-alpha.1 carried for one release window. From this release the
+PreToolUse hook v2 is exclusively policy-driven via `.kvendra-protected`
+materialised from `STD-KVD-BROKER-POLICY`. Also folds in a small
+cosmetic chore on the `manual-writer` skill to align it with the
+toolchain-agnostic design used by every other skill in the catalog.
+
+### ⚠️ Breaking advisory (legacy marker)
+
+Workspaces that still carry only the legacy `.kvendra-workspace` empty
+marker (no `.kvendra-protected`) **no longer get any enforcement
+fallback**. The hook now exits 2 with a canonical `[KVD-PROTECTED]`
+hard error pointing to `/sync-claudemd --policy-only`.
+
+**Migration**: run `/sync-claudemd --policy-only` from any project root
+that still relies on the legacy marker. The skill reads
+`STD-<PROJECT>-BROKER-POLICY` from the Kvendra KB and writes a valid
+`.kvendra-protected` to the workspace root. Verified empirically on
+2026-05-26 via `ISSUE-KVD-SKILLS-571C2F` (SYNC-4, 9/9 validations PASS).
+
+Workspaces that never carried any marker (`.kvendra-workspace` or
+`.kvendra-protected`) are unaffected — the hook continues to exit 0
+when no marker is found anywhere up the path.
+
+### Changed
+
+- **Hook v2** — removed the seed strict policy block (`SEED_BLOCK_RE`,
+  `SEED_INSTALL_HINT`, `SEED_STD_ID`) and the entire Path A legacy
+  transition branch. Replaced with a single 5-line hard-error path that
+  emits the canonical `[KVD-PROTECTED]` message + `/sync-claudemd
+  --policy-only` migration hint when only `.kvendra-workspace` is
+  found. Net diff: ~−33 / +12 LoC.
+- **`manual-writer` SKILL.md** — generalized the browser-MCP reference
+  in Step 5: "Use Playwright MCP if installed" → "If a browser MCP is
+  installed (e.g. Playwright, Puppeteer), use it; otherwise ask the
+  user to provide screenshots manually or skip this section". Protocol
+  rewritten in neutral prose (navigate → wait → highlight → screenshot)
+  rather than `browser_*` tool-specific commands. Frontmatter intro
+  description aligned the same way. Refs: `ISSUE-KVD-SKILLS-2D377E`.
+
+### Tests
+
+- Fixture `missing-policy-but-legacy-marker/expected.json` updated to
+  assert the new hard-error stderr (`[KVD-PROTECTED] legacy marker .*
+  no longer supported.*/sync-claudemd --policy-only`).
+- **`run-fixtures.sh` isolation fix**: each fixture is now executed
+  inside a fresh tmpdir into which the fixture's marker files are
+  copied, so the hook's walk-up cannot escape into the surrounding
+  workspace's own `.kvendra-protected`. Pre-fix, the test suite was
+  silently fragile in any environment where the runner happened to live
+  inside a Kvendra-protected workspace (which is now the canonical
+  setup post-SYNC-4). No behavioural change for end users.
+- All 8 fixtures + latency benchmark continue to pass (p95 = 1 ms).
+
+### Acceptance criteria closed (this alpha)
+
+- **AC-MARKER-4** (`REQ-48062A` Item 2) — hook reads ONLY
+  `.kvendra-protected`; legacy marker triggers hard error pointing to
+  the sync skill. ✅
+- **AC-CLEAN-4** (`REQ-48062A` Item 6) — smoke without `kvendra-cli`
+  still applies: workspaces without `.kvendra-protected` get hard error
+  with broker install hint embedded by the sync skill at materialisation
+  time (not hardcoded in the hook). ✅
+
+### Traceability
+
+- **REQ**: `REQ-KVD-SKILLS-48062A` v2 (Items 2 + 6 incremental closure).
+- **ROAD anchor**: `ROAD-KVD-SKILLS-C20D24` M1.
+- **Predecessor REL**: `REL-KVD-SKILLS-1.2.0.1` (broker-policy foundation).
+- **Empirical pre-requisite**: `ISSUE-KVD-SKILLS-571C2F` (SYNC-4) done
+  2026-05-26 — `.kvendra-protected` materialisation verified live on
+  workspace KVD before the seed removal.
+
+---
+
 ## [1.2.0-alpha.1] — 2026-05-26 — Broker-policy foundation (REQ-48062A — first incremental alpha)
 
 ### Highlights

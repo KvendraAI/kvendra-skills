@@ -55,10 +55,17 @@ run_one() {
   expected_re="$(jq -r '.expected_stderr_regex // empty' "$fdir/expected.json")"
   override_cwd="$(jq -r '.cwd_override // empty' "$fdir/expected.json")"
 
+  # Isolate fixture in a tmpdir so the hook's walk-up does NOT escape
+  # into the test runner's surrounding workspace (which may itself be a
+  # Kvendra-protected workspace with `.kvendra-protected` upstream).
+  local fixture_tmpdir=""
   if [[ -n "$override_cwd" ]]; then
     cwd="$override_cwd"
   else
-    cwd="$fdir"
+    fixture_tmpdir="$(mktemp -d -t kvendra_hook_fixture.XXXXXX)"
+    [[ -f "$fdir/.kvendra-protected" ]] && cp "$fdir/.kvendra-protected" "$fixture_tmpdir/"
+    [[ -f "$fdir/.kvendra-workspace" ]] && cp "$fdir/.kvendra-workspace" "$fixture_tmpdir/"
+    cwd="$fixture_tmpdir"
   fi
 
   # Build the stdin JSON the harness would send.
@@ -75,6 +82,8 @@ run_one() {
   printf '%s' "$stdin_json" | bash "$HOOK" 2> "$actual_stderr_file" >/dev/null
   actual_exit=$?
   set -e
+
+  [[ -n "$fixture_tmpdir" && -d "$fixture_tmpdir" ]] && rm -rf "$fixture_tmpdir"
 
   local ok=1
   if [[ "$actual_exit" != "$expected_exit" ]]; then
@@ -108,11 +117,14 @@ run_latency_benchmark() {
   if [[ ! -d "$fdir" ]]; then
     echo "MISS  $fixture (no fixture dir)"; FAIL=$((FAIL+1)); FAILED_NAMES+=("$fixture"); return
   fi
-  local command stdin_json
+  local command stdin_json fixture_tmpdir
   command="$(jq -r '.command' "$fdir/expected.json")"
+  fixture_tmpdir="$(mktemp -d -t kvendra_hook_fixture.XXXXXX)"
+  [[ -f "$fdir/.kvendra-protected" ]] && cp "$fdir/.kvendra-protected" "$fixture_tmpdir/"
+  [[ -f "$fdir/.kvendra-workspace" ]] && cp "$fdir/.kvendra-workspace" "$fixture_tmpdir/"
   stdin_json="$(jq -nc \
     --arg cmd "$command" \
-    --arg cwd "$fdir" \
+    --arg cwd "$fixture_tmpdir" \
     '{tool_name:"Bash", tool_input:{command:$cmd}, cwd:$cwd}')"
 
   # Warm-up.
@@ -139,6 +151,7 @@ run_latency_benchmark() {
   local p95
   p95=$(sort -n "$times_file" | awk -v n="$n" 'BEGIN{idx=int(n*0.95)} NR==idx {print; exit}')
   rm -f "$times_file"
+  [[ -d "$fixture_tmpdir" ]] && rm -rf "$fixture_tmpdir"
 
   if [[ "$p95" -le 50 ]]; then
     echo "PASS  $fixture  (p95=${p95}ms ≤ 50ms target)"

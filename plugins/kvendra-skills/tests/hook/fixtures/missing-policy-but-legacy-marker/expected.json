@@ -2,5 +2,5 @@
   "tool_name": "Bash",
   "command": "git push origin main",
   "expected_exit": 2,
-  "expected_stderr_regex": "\\[KVD-PROTECTED\\].*policy 'STD-KVD-BROKER-POLICY'"
+  "expected_stderr_regex": "\\[KVD-PROTECTED\\] legacy marker .*\\.kvendra-workspace.* no longer supported.*/sync-claudemd --policy-only"
 }
