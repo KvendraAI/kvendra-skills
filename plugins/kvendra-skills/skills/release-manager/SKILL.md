@@ -3,6 +3,7 @@ name: release-manager
 description: Release manager — creates, manages and closes REL entities with automatic changelog, regression gates and Kvendra KB traceability
 user_invocable: true
 args: "[action: create|status|add|gate-check|close] [arguments]"
+writes_entity_types: [REL, IF, ISSUE]
 ---
 
 # Release Manager — Kvendra release lifecycle
@@ -183,3 +184,108 @@ Process:
 - ROADs updated: [list]
 - Changelog: frozen
 ```
+
+## CLI capabilities manifest sync (post-release hook)
+
+Per `REQ-KVD-ECDAE9` (Piece B'): when a release is closed for a CLI-type
+component, refresh the per-project `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST`
+entity in the KB from the freshly-built broker binary. The manifest is
+the runtime discovery surface consumed by `onboard-project` Step 1.5 and
+`lint-claudemd` primitive cross-check.
+
+This step is **best-effort**: a failure here does NOT block the release.
+Release publishing is the primary job — manifest sync is a secondary
+synchronisation.
+
+### When to run
+
+Triggered as part of the CLOSE action when the released component
+matches a CLI-type component, detected by either of:
+
+- `CMP.metadata.component_type == "cli-binary"`, or
+- `CMP.tags` contains `type:cli-binary`, or
+- The REL `entity_id` matches the regex `^REL-[A-Z]+-CLI(-[A-Z]+)?-` and the
+  released CMP exposes the `kvendra capabilities` subcommand.
+
+For the KVD project this means `CMP-KVD-CLI` (today the only CLI-type
+component). The hook is generic by design — adding a new CLI component
+in any project will trigger it automatically.
+
+### Steps
+
+1. **Locate the binary**: resolve the workspace path from
+   `CMP-<PROJ>-CLI.metadata.local_path` (or the equivalent monorepo
+   subdir from `metadata.workspace_subdir` joined with the project
+   workspace root). Append `target/release/<binary-name>` — for KVD,
+   `kvendra`.
+2. **Pre-check**: if the binary file does not exist or is not
+   executable, log a structured warning and stop the hook (best-effort;
+   release CLOSE already succeeded). Suggested follow-up: open an
+   ISSUE with `type:task` so the owner can refresh the manifest
+   manually.
+3. **Run `kvendra capabilities --pretty`** via Bash (read-only,
+   auth-less, no vault, no network — per AC-CLI-3 of REQ-KVD-ECDAE9).
+   Capture stdout. This op does NOT need a broker primitive — it is
+   already declared `allow_bash` in `STD-KVD-BROKER-POLICY` because it
+   has no privileged side effects.
+4. **Parse JSON to memory**. On parse error: log a structured warning
+   with the raw stdout (truncated to 2 KB), do NOT abort the release.
+5. **Validate schema_version**: assert `schema_version == 1`. If the
+   binary reports a different schema_version, log a warning and stop
+   (cross-version drift — needs a major REQ + IF-MANIFEST schema bump
+   per AC-CLI-8). Do NOT write a manifest with an unrecognised
+   schema_version.
+6. **Look up existing IF-MANIFEST** for this project:
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+     entity_type: "IF",
+     project_id: "<PROJ>",
+     tags_all: ["playbook-style:if-manifest","cmp:CLI"]
+   })
+   ```
+7. **Upsert**:
+   - If 0 results → `entity_create` a new IF-MANIFEST. Content:
+     schema-doc preamble (mirror of `IF-KVD-CLI-PRIMITIVES-MANIFEST`
+     reference) + the JSON payload in a fenced block. Metadata:
+     `{ if_version:"1.0", schema_version: <observed>, broker_version_observed: <observed>, scope:"per-project-replicated", wire_public:true, synced_by:"skill:release-manager", synced_at:"<ISO8601>", primitives_count:<n>, ops_count_total:<n> }`.
+     Tags: `["scope:if","scope:cli-capabilities","scope:per-project","version:1.0","status:active","playbook-style:if-manifest","cmp:CLI","source:capabilities-command","wire-public"]`.
+     Relations: `derives_from → REQ-KVD-ECDAE9`, `affects → CMP-<PROJ>-CLI`, `part_of → PRJ-<PROJ>`.
+     `updated_by: "skill:release-manager"`.
+   - If 1 result → `entity_update` with new content + metadata,
+     additive-merge any owner-added annotations (do NOT overwrite
+     content sections marked `<!-- preserved -->`). `change_summary`:
+     `"Updated by release-manager post REL-<PROJ>-<COMP>-<VER>: broker <X.Y.Z>, <P> primitives, <O> ops"`. Bump
+     `metadata.synced_at` + `metadata.broker_version_observed`.
+   - If >1 results → log a structured warning (duplicate manifests
+     violate per-project replication invariant); do NOT pick one
+     blindly. Suggest manual reconciliation.
+8. **Append CHANGELOG entry to the REL**: `entity_update` the REL with a
+   `change_summary` line: `"IF-MANIFEST refreshed to broker version <X.Y.Z> (<P> primitives, <O> ops)"`.
+   The server records this in `entity_changelog`.
+9. **Idempotence**: re-running on the same broker version is a no-op
+   at the wire level — `entity_update` only changes
+   `metadata.synced_at` (and re-embeds because content+JSON payload
+   are byte-identical except for the synced_at marker if it is
+   embedded in content; keep `synced_at` in metadata only to preserve
+   idempotence).
+
+### Failure modes (all best-effort)
+
+| Failure | Behaviour |
+|---------|-----------|
+| Binary missing / not executable | Log warning + skip; release CLOSE remains successful. |
+| `capabilities` subcommand absent (binary older than REL-CLI-0.5.0) | Log warning + skip; expected during the chained-REL transition window. |
+| JSON parse error | Log warning with truncated stdout; skip; release CLOSE remains successful. |
+| `schema_version != 1` | Log warning; skip; needs major-REQ reconciliation. |
+| KB write error (`entity_create` / `entity_update`) | Log structured error + retry once; if still failing, skip; release CLOSE remains successful. Surface as suggested follow-up ISSUE. |
+| Multiple IF-MANIFEST entities for the project | Log warning; skip (do not pick one blindly). |
+
+### Trazabilidad
+
+- Implementa: `REQ-KVD-ECDAE9` Piece B' + AC-REL-1..4.
+- Ships in REL.1 of the 3-chained REL plan (the extension is dormant
+  until the first CLI release post-0.5.0 triggers it).
+- The first KVD instance — `IF-KVD-CLI-PRIMITIVES-MANIFEST` — is created
+  in PHASE 2 (implementer, REL.1) as the schema-doc entity; the first
+  per-project auto-populated content lands when `REL-KVD-CLI-0.5.0`
+  closes via this hook.

@@ -4,6 +4,27 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.3.0-alpha.1] — 2026-05-28 — release-manager CLI capabilities sync hook + IF-MANIFEST schema-doc (REQ-ECDAE9 alpha.1)
+
+### Highlights
+
+First incremental alpha of `REQ-KVD-SKILLS-ECDAE9` (Capabilities discovery system). Extends the `release-manager` skill with a post-release hook that detects releases of CLI-type components, runs `kvendra capabilities` locally, and upserts the per-project `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST` entity in the Kvendra KB. Also declares the canonical IF schema-doc (`IF-KVD-CLI-PRIMITIVES-MANIFEST v1.0`, wire_public, per-project replicated) that consumers reference.
+
+Closes the architectural loop for `ADR-KVD-SKILLS-BB0E8A`: skills can now reason at runtime about which broker primitives exist without touching the binary. The matching CLI 0.5.0 release (with the `kvendra capabilities` subcommand) ships separately as `REL-KVD-CLI-0.5.0`.
+
+### Added
+
+- **`release-manager` SKILL.md** — new section "CLI capabilities manifest sync (post-release hook)" (lines 188–291). On any release of a `CMP-KVD-CLI` (or component with `component_type: cli-binary`), the skill runs `kvendra capabilities --pretty`, parses the JSON, and upserts `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST` per-project. Best-effort: failures are logged as warnings and do not block the release.
+- **`writes_entity_types: [REL, IF, ISSUE]`** added to `release-manager` SKILL.md frontmatter so `updater` picks up the new write surface.
+- **KB schema-doc**: `IF-KVD-SKILLS-108EDC` (canonical title `IF-KVD-CLI-PRIMITIVES-MANIFEST v1.0`) declared as wire-public, per-project replicated. Validates the contract `STD-<PROJ>-BROKER-POLICY.require_broker[].primitive ⊆ primitives[].id`.
+
+### Refs
+
+- REQ: `REQ-KVD-ECDAE9`
+- ROAD: `ROAD-KVD-SKILLS-C20D24` M2 (first tracked item)
+- ADR: `ADR-KVD-SKILLS-BB0E8A` (STD playbook schema extends to capabilities discovery)
+- TXN: `TXN-KVD-20260528-005`
+
 ## [1.2.0-alpha.2] — 2026-05-28 — Legacy marker drop + manual-writer agnostic (REQ-48062A second incremental alpha)
 
 ### Highlights
