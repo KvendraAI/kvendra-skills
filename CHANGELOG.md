@@ -4,6 +4,18 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.3.0-alpha.2] — 2026-05-28 — version skill query fix: capture status:released RELs + drop status:active filter (REQ-ECDAE9 alpha.2)
+
+### Fixed
+
+- **`version` skill query** — replaced `tags_all: ["release", "scope:skills"]` + `status: "active"` filter with `tags_any: ["release", "status:released"]`. Captures RELs that follow the newer `status:released` tag convention (used by `release-manager`'s post-1.2.0 RELs) in addition to the legacy `release` tag convention. Also drops the `status: "active"` filter that was hiding RELs whose `status` field is `released` (the canonical post-publish state). Side fix: `component_id: "KVD-SKILLS"` → `"SKILLS"` (server normalises the project prefix; passing it explicitly was a no-op or warning depending on the server release).
+- **KB hygiene**: 3 existing RELs (`REL-KVD-SKILLS-1.2.0.1`, `1.2.0.2`, `1.3.0-alpha.1`) backfilled with the canonical `release` tag so the broader ecosystem (any tool filtering by `tags_all: ["release"]`) sees them too.
+
+### Refs
+
+- Origin: owner consultancy 2026-05-28 (other-session `/version` listing missed the 1.2.0.x + 1.3.0-alpha.1 RELs).
+- REQ: `REQ-KVD-ECDAE9` (alpha.2 — pulido cosmético, no AC formal pendiente; mejora DX del propio skill `version`).
+
 ## [1.3.0-alpha.1] — 2026-05-28 — release-manager CLI capabilities sync hook + IF-MANIFEST schema-doc (REQ-ECDAE9 alpha.1)
 
 ### Highlights

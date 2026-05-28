@@ -52,9 +52,8 @@ If the file is missing or malformed: surface an ERROR with the file path tried. 
 entity_query({
   entity_type: "REL",
   project_id: "KVD",
-  component_id: "KVD-SKILLS",
-  tags_all: ["release", "scope:skills"],
-  status: "active",
+  component_id: "SKILLS",
+  tags_any: ["release", "status:released"],
   order_by: "entity_id_asc",
   limit: 50
 })
