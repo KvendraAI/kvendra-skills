@@ -4,6 +4,38 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.3.0] — 2026-05-28 — Capabilities discovery stable: onboard-project Step 1.5 + Step 3.x + STD-TPL library activated (REQ-ECDAE9 complete)
+
+### Highlights
+
+Stable consolidation of the `REQ-KVD-ECDAE9` (Capabilities discovery system) alpha line. Ships the runtime-consumer side of the architectural loop: the `onboard-project` skill now performs broker discovery (Step 1.5) and asks per-component archetype questions (Step 3.x D1/D2/D3) to drive deploy/test/publish playbook generation from the new STD-TPL library.
+
+Combined with the alpha line (1.3.0-alpha.1 release-manager hook + IF-MANIFEST schema-doc; 1.3.0-alpha.2 version skill query fix), this REL closes the MVP scope of REQ-ECDAE9: any future Kvendra project can be onboarded with deploy/test archetype playbooks (S3+CDN, SAM-Lambda, Docker-Registry, Playwright, Cargo) without touching the plugin.
+
+### Added
+
+- **`onboard-project` Step 1.5 — broker discovery** (lines ~60-130, +90 LoC): runs `kvendra --version` to detect CLI presence; if installed, invokes `kvendra capabilities` and compares with the project's `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST`. Persists the snapshot to `.kvendra-protected.broker_capabilities_seen` (new YAML section, additive — backwards-compat with hook v2's NFR-POL-7 "ignore unknown top-level keys"). Three-option fail-safe when CLI is absent (install / continue broker-less / cancel).
+- **`onboard-project` Step 3.x — archetype questionnaire** (lines ~225-380, +152 LoC): per-component D1 deploy target (8 enum), D2 test framework (8 enum), D3 publish channels (9 multi-select). Mapping tables D1/D2 → `STD-TPL-*` for automated playbook clone substitution. Stubs documented for archetypes without templates yet (k8s, package-publish, vps-ssh).
+- **5 MVP STD-TPL entities** (previously created as drafts in TXN-005, now active in KB):
+  - `STD-KVD-FF7978` — STD-TPL-DEPLOY-STATIC-S3-CDN (extracted from `STD-KVD-WEB-A52498`)
+  - `STD-KVD-21C211` — STD-TPL-DEPLOY-SAM-LAMBDA (extracted from `STD-KVD-ENTERPRISE-CD2D7A`)
+  - `STD-KVD-8C9365` — STD-TPL-DEPLOY-DOCKER-REGISTRY (extracted from kvendra-platform GHA workflow)
+  - `STD-KVD-AD2507` — STD-TPL-TEST-PLAYWRIGHT
+  - `STD-KVD-78D18B` — STD-TPL-TEST-CARGO
+
+### Consolidation (from the alpha line)
+
+- **alpha.1**: release-manager skill extended with the post-release hook that auto-populates `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST` after every CLI release.
+- **alpha.2**: `version` skill query corrected (`tags_any: ["release","status:released"]` + drop `status: "active"` filter).
+- **alpha.1 + alpha.2 + 1.3.0** together cover all MVP ACs of REQ-ECDAE9 (29/29). STRETCH (4 additional STD-TPLs + AC-LINT-2 + AC-IF-4) deferred to a follow-up REQ.
+
+### Refs
+
+- REQ: `REQ-KVD-ECDAE9` (MVP complete)
+- ROAD: `ROAD-KVD-SKILLS-C20D24` M2 (first tracked item DONE)
+- Predecessor stable: `REL-KVD-SKILLS-1.2.0` line (REQ-48062A broker-policy foundation)
+- Sibling release: `REL-KVD-CLI-0.5.0` (the producer-side `kvendra capabilities` subcommand on crates.io)
+
 ## [1.3.0-alpha.2] — 2026-05-28 — version skill query fix: capture status:released RELs + drop status:active filter (REQ-ECDAE9 alpha.2)
 
 ### Fixed

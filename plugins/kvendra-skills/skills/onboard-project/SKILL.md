@@ -58,6 +58,137 @@ Record the resolved tier — it will be written to `CLAUDE.md` (section Project,
 
 If `whoami` does not return — or if the broker / MCP is unreachable — apply the fail-safe per `PAT-KVD-2CBB6D` L3: STOP and notify the user with the canonical message. Do NOT attempt to onboard without a live KB connection.
 
+## Step 1.5 — Broker discovery (capabilities snapshot)
+
+Empirically discover the local broker primitive surface so the onboarding can:
+- Surface drift between local CLI and the KB-canonical `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST`.
+- Warn early if the broker is missing, outdated, or pointing at a non-GitHub VCS.
+- Persist a `broker_capabilities_seen` snapshot for future drift detection.
+
+This step is **read-only**: zero broker calls beyond `kvendra --version` + `kvendra capabilities`, zero KB writes. The actual `.kvendra-protected` write happens in sub-step 1.5.f, and the STD metadata update in 1.5.g — both additive.
+
+### 1.5.a — Detect CLI presence
+
+Run `kvendra --version` via Bash (read-only, allowlisted by the hook). Capture stdout + exit code.
+
+- **Exit 0**: parse semver from stdout (regex `kvendra (\d+\.\d+\.\d+)`). Continue to 1.5.b.
+- **Non-zero / not found**: CLI is not installed. Go to 1.5.b option-set "not installed".
+
+### 1.5.b — Branch on CLI presence
+
+**If CLI installed → continue to 1.5.c**.
+
+**If CLI NOT installed → present 3 explicit options to the owner**:
+
+1. **Install now** (recommended for cloud tier). Print: `cargo install kvendra` (or point to the GitHub releases binary if cargo is unavailable). Wait for owner to confirm install, then re-run sub-step 1.5.a.
+2. **Continue broker-less** (acceptable for `tier:free` local / docs-only projects). The onboarding proceeds but the resulting `STD-<PROJ>-BROKER-POLICY` will be seeded in `mode: "off"` and no `broker_capabilities_seen` block is written. Persist `metadata.broker_install_skipped: true` on the STD-BROKER-POLICY.
+3. **Cancel onboarding**. Owner aborts; orchestrator calls `txn_cancel` if a TXN is already open (which at Step 1.5 it should NOT be — TXN opens at Step 4).
+
+### 1.5.c — Detect GitHub remote (informational)
+
+Run `git remote -v` and `git config --get remote.origin.url` via Bash (read-only). Capture output.
+
+- If origin URL contains `github.com` → set local flag `non_github_vcs = false`.
+- If origin URL exists but lacks `github.com` (gitlab.com / bitbucket.org / self-hosted) → set `non_github_vcs = true`.
+- If `git remote -v` returns empty → set `no_remote = true`.
+
+This flag drives the warnings in 1.5.h. Do NOT block the onboarding on either condition.
+
+### 1.5.d — Run `kvendra capabilities`
+
+Invoke `kvendra capabilities --pretty` via Bash (read-only, no vault unlock, no Cognito session needed per `AC-CLI-3` of REQ-KVD-ECDAE9). Capture stdout JSON.
+
+- **Parse JSON** to memory. Expected root keys: `broker_version`, `schema_version`, `primitives[]`.
+- **If parse fails** (malformed JSON, missing keys, schema_version != 1) → surface a structured error to the owner:
+  ```
+  ⚠ kvendra capabilities returned unparseable output.
+     broker_version observed: <best-effort>
+     stderr: <captured>
+     Possible causes:
+       (a) Broker too old (pre-0.5.0) — upgrade with `cargo install kvendra --force`.
+       (b) Schema version mismatch (capabilities schema_version != 1) — orchestrator needs update.
+       (c) Local fork drift.
+     Onboarding will continue but `broker_capabilities_seen` will NOT be written.
+  ```
+  Set `capabilities_parse_failed = true`. Skip 1.5.e and 1.5.f. Continue to 1.5.g/1.5.h warnings.
+
+### 1.5.e — Cloud-mode KB diff (Pro+ only)
+
+If `tier ∈ {pro, team, enterprise}` from Step 1:
+
+1. Query the KB for the existing per-project IF-MANIFEST:
+   ```
+   entity_query({
+     entity_type: "IF",
+     project_id: "<PROJECT_ID>",
+     tags_all: ["scope:cli-capabilities-instance", "scope:per-project"]
+   })
+   ```
+2. Branch:
+   - **0 results** → first onboard for this project. Print: `ℹ No IF-MANIFEST yet for PRJ-<PROJ>. It will be auto-populated by release-manager on the next CMP-<PROJ>-CLI release.` (No write — that's `release-manager`'s job.)
+   - **1 result** → diff the KB-stored `primitives[]` against the local `kvendra capabilities` output. Print a structured diff summary:
+     ```
+     KB IF-MANIFEST:    broker_version <KB_VER>, <N> primitives
+     local capabilities: broker_version <LOCAL_VER>, <M> primitives
+     Diff: <list added/removed/changed primitives>
+     ```
+     Do NOT block. Diff is informational — the owner decides if they upgrade or proceed.
+   - **>1 results** → KB invariant violation. Surface error pointing to ISSUE-KVD-SKILLS-DUP-IF-MANIFEST (created on-demand). Continue with the most recent result.
+
+If `tier == free` (local mode): skip the KB diff entirely (no MCP query needed; the IF-MANIFEST lives only in the Pro+ cloud KB or in the local Platform KB).
+
+### 1.5.f — Persist `broker_capabilities_seen` to `.kvendra-protected`
+
+**Pre-condition**: `capabilities_parse_failed == false` AND Step 6.5 has materialised `.kvendra-protected` (so the file exists). If `.kvendra-protected` does NOT yet exist at this point in the pipeline (Step 1.5 runs BEFORE Step 6.5 — that's the ordering), buffer the snapshot in memory and write it during Step 6.5 right after the marker is materialised.
+
+Add (or update, if already present) the following YAML block additively — do NOT rewrite the whole file from scratch. Load, merge, write atomically:
+
+```yaml
+broker_capabilities_seen:
+  broker_version: "<from kvendra capabilities>"
+  schema_version: <from kvendra capabilities>
+  seen_at: "<ISO8601 UTC>"
+  primitives_count: <int>
+  ops_count_total: <int>
+  checksum: "<sha256 of the JSON payload>"
+```
+
+Idempotency: if the existing block has the same `broker_version` + `checksum`, only update `seen_at` (no other field change). Per `NFR-CAP-7` (REQ-ECDAE9): adding this block does NOT break existing schema; hook v2 with defensive parser ignores unknown top-level keys.
+
+**Note**: in **add-component mode** this step is SKIPPED — `.kvendra-protected` belongs to the workspace root, not the component subdir. Re-syncing is the job of `/sync-claudemd --policy-only`.
+
+### 1.5.g — Update `STD-<PROJ>-BROKER-POLICY.metadata.capabilities_seen_version`
+
+After 1.5.f succeeds (or after Step 6.5 deferred write), `entity_update` the `STD-<PROJ>-BROKER-POLICY` with:
+```
+metadata: { capabilities_seen_version: "<broker_version from capabilities>" }
+```
+`change_summary`: `"[skill:onboard-project] Record broker capabilities snapshot v<X.Y.Z>"`.
+
+This closes the loop — both the workspace marker (`.kvendra-protected`) and the canonical KB STD reflect the observed broker surface.
+
+### 1.5.h — Warnings (always surfaced, non-blocking)
+
+Emit, in order, only the warnings that apply:
+
+- If `non_github_vcs == true`:
+  ```
+  ⚠ Non-GitHub remote detected (gitlab/bitbucket/other).
+    Only `github-*` primitives are available in the current broker (v<X.Y.Z>).
+    Track future REQ for multi-host VCS support: ISSUE-KVD-SKILLS-REQ-FOLLOWUP-MULTI-VCS.
+    Onboarding continues.
+  ```
+- If `no_remote == true`:
+  ```
+  ℹ No git remote detected. The `kvendra.github` primitive will be inert for this
+    project until you run `git remote add origin <github-url>`. Onboarding continues.
+  ```
+- If `capabilities_parse_failed == true`:
+  ```
+  ⚠ capabilities snapshot was NOT written. Re-run /sync-claudemd --policy-only
+    after fixing the broker to populate broker_capabilities_seen.
+  ```
+
 ## Step 2 — Determine scope
 
 Read `$ARGUMENTS`:
@@ -90,6 +221,118 @@ For each component to create:
 - `repo_url`: canonical Git remote of the component repo.
 - License (Apache-2.0 / MIT / AGPL-3.0 / Proprietary / other).
 - `tech_stack`: from auto-detection of `package.json`/`Cargo.toml`/`requirements.txt`/etc, plus confirmation.
+
+### Per-component archetype questions (D1/D2/D3)
+
+For EACH component declared, ask three orthogonal-axis questions (per `PAT-KVD-819856` L1). These answers drive Step 5's STD-TPL clone flow — they decide WHICH canonical playbook to seed for the new component.
+
+The three axes are kept independent. Asking D1 does not change D2's prompt; asking D2 does not gate D3 (with one exception: D3 is skipped if D1 = `none`).
+
+#### D1 — Deploy target (single-select)
+
+```
+Where will CMP-<PROJ>-<COMP> deploy to?
+  1. static-cdn         (S3 + CloudFront, like kvendra.com)
+  2. serverless-aws     (SAM Lambda + API Gateway)
+  3. container-registry (Docker push to Docker Hub / GHCR with cosign signing)
+  4. k8s-cluster        (helm upgrade --install)                  [STRETCH — no template yet]
+  5. package-publish    (no deploy — registry-only via D3 channels)
+  6. vps-ssh            (SSH to a VPS, run install script)
+  7. none               (no deploy — docs / library only)
+  8. custom             (free-form steps the owner fills manually)
+```
+
+#### D2 — Test framework (single-select)
+
+```
+What test framework does CMP-<PROJ>-<COMP> use?
+  1. cargo        2. jest         3. vitest       4. pytest
+  5. playwright   6. mixed        7. none         8. custom
+```
+
+#### D3 — Publish channels (multi-select, conditional)
+
+Ask D3 **only if** D1 ∈ {`container-registry`, `package-publish`} OR the orchestrator passed `--include-publish-prompt`. If D1 = `none`, skip D3.
+
+```
+Which channels does CMP-<PROJ>-<COMP> publish to? (multi-select)
+  [ ] crates.io                    [ ] npm
+  [ ] PyPI                         [ ] Docker Hub
+  [ ] GHCR                         [ ] GitHub Releases
+  [ ] Homebrew                     [ ] Claude plugin marketplace
+  [ ] custom (free-form)
+```
+
+#### D1 → STD-TPL clone mapping
+
+| D1 answer | STD-TPL cloned | Target STD ID created |
+|-----------|----------------|------------------------|
+| `static-cdn`         | `STD-TPL-DEPLOY-STATIC-S3-CDN`   | `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` |
+| `serverless-aws`     | `STD-TPL-DEPLOY-SAM-LAMBDA`      | `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` |
+| `container-registry` | `STD-TPL-DEPLOY-DOCKER-REGISTRY` | `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` |
+| `k8s-cluster`        | DEFER — no template yet (STRETCH); inform owner and stub `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` as empty placeholder, tag `status:stub` + open ISSUE-KVD-SKILLS-REQ-FOLLOWUP-K8S-HELM-TPL |
+| `package-publish`    | DEFER — publish templates are STRETCH; stub `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` empty placeholder (publish flow driven by D3 → future per-channel STD-TPL-PUBLISH-* clones) |
+| `vps-ssh`            | Stub `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` empty placeholder + tag `status:stub`, `target:vps-ssh` |
+| `none`               | Skip — do NOT create `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` |
+| `custom`             | Ask owner for free-form steps; create `STD-<PROJ>-<COMP>-DEPLOY-PROCESS` with their content, tag `status:custom` |
+
+#### D2 → STD-TPL clone mapping
+
+| D2 answer | STD-TPL cloned | Target STD ID created |
+|-----------|----------------|------------------------|
+| `playwright`         | `STD-TPL-TEST-PLAYWRIGHT` | `STD-<PROJ>-<COMP>-TEST-PROCESS` |
+| `cargo`              | `STD-TPL-TEST-CARGO`      | `STD-<PROJ>-<COMP>-TEST-PROCESS` |
+| `pytest`             | DEFER — STRETCH; stub `STD-<PROJ>-<COMP>-TEST-PROCESS` empty placeholder |
+| `jest` / `vitest`    | DEFER — no template yet; stub `STD-<PROJ>-<COMP>-TEST-PROCESS` empty placeholder |
+| `mixed` / `custom`   | Stub with comment line listing the frameworks the owner specified |
+| `none`               | Skip — do NOT create `STD-<PROJ>-<COMP>-TEST-PROCESS` |
+
+#### D3 → STD-TPL clone mapping (multi)
+
+For each channel selected, clone the corresponding `STD-TPL-PUBLISH-<CHANNEL>` if it exists; otherwise stub. As of REL.3 only `STD-TPL-PUBLISH-CARGO` and `STD-TPL-PUBLISH-CLAUDE-PLUGIN` are STRETCH targets and may NOT exist. If a publish channel is selected without a backing TPL: create `STD-<PROJ>-<COMP>-PUBLISH-<CHANNEL>` as an empty placeholder + ISSUE follow-up.
+
+#### Clone substitution flow (per cloned STD-TPL)
+
+This is the deterministic transform applied at Step 5 once the answers are known:
+
+1. **Read the template**: `entity_get({entity_id: "STD-TPL-<NAME>"})` → capture `content`, `metadata`, `tags`.
+2. **Extract `{PLACEHOLDER}` variables**: parse the `## Variables` table of the template. Each row defines a `{VAR}` token, a description, and (optionally) a default.
+3. **Ask the owner for each `{VAR}`'s value**: prefer auto-fill from `CMP.metadata` (e.g. `{AWS_PROFILE}` → `PRJ-<PROJ>.metadata.aws_profile`, `{WORKSPACE_SUBDIR}` → `CMP.metadata.workspace_subdir`). For unfilled vars, prompt the owner with the default offered.
+4. **Render the template**: string-replace every `{VAR}` token in the `content` field. Validate no unresolved `{...}` placeholders remain (regex `\{[A-Z_]+\}`) — if any remain, prompt the owner.
+5. **Create the cloned STD entity**:
+   ```
+   entity_create({
+     entity_type: "STD",
+     project_id: "<PROJ>",
+     component_id: "<PROJ>-<COMP>",
+     title: "STD-<PROJ>-<COMP>-DEPLOY-PROCESS: <derived from D1>",
+     content: <rendered content>,
+     metadata: {
+       cloned_from: "STD-TPL-<NAME>",
+       template_version: <from template metadata>,
+       playbook_type: "deploy" | "test" | "publish",
+       autonomous: <from template, owner may override>,
+       vault_profile_required: <from rendered VAR>,
+       discovery_tags: ["scope:deploy","scope:process","cmp:<COMP>"]  // or test/publish
+     },
+     tags: [...template tags excluding "scope:template", "scope:std-tpl", "template:v*"]
+            + ["scope:deploy","scope:process","cmp:<COMP>","cloned-from:STD-TPL-<NAME>"],
+     relations: [
+       { type: "derives_from", target: "STD-TPL-<NAME>" },
+       { type: "affects",      target: "CMP-<PROJ>-<COMP>" },
+       { type: "part_of",      target: "PRJ-<PROJ>" }
+     ],
+     txn_id, updated_by: "skill:onboard-project"
+   })
+   ```
+6. **Stub case** (no TPL exists): the cloned entity is created with a minimal content placeholder:
+   ```
+   # STD-<PROJ>-<COMP>-DEPLOY-PROCESS — TODO
+   <Auto-generated stub by onboard-project. No STD-TPL backed this archetype (D1=<answer>).
+   Fill in Pre-conditions / Steps / Post-conditions / Variables / Validation / Rollback
+   sections before running /deploy.>
+   ```
+   `metadata.status: "stub"`, `tags: [..., "status:stub"]`. The future `kvendra-skills:deploy` skill refuses to run against stub STDs.
 
 ### Operational policy (only new project)
 
