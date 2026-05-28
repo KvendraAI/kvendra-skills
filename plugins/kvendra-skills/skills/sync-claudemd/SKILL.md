@@ -253,7 +253,7 @@ The file is rewritten atomically: write to `.kvendra-protected.new`, then `mv` o
 
 ### Step 6.7 — Fail-safe
 
-If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*. Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers.
+If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*. Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers. <!-- lint-allow-es -->
 
 ## Reglas operacionales
 
