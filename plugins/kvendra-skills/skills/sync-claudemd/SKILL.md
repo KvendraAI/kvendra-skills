@@ -255,7 +255,7 @@ The file is rewritten atomically: write to `.kvendra-protected.new`, then `mv` o
 
 If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*. Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers. <!-- lint-allow-es -->
 
-## Reglas operacionales
+## Operational rules
 
 - The skill is **idempotent**: running it twice in a row without intervening changes produces no diff (CLAUDE.md unchanged AND `.kvendra-protected` no-op per Step 6.4).
 - The skill is **read-write-local-only**: it does NOT touch the KB. NO TXN required, NO entity_create/update.

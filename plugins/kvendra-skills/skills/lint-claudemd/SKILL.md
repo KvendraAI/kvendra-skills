@@ -159,7 +159,7 @@ The Particularidades section is free-form by design. Validate only:
 - WARN → drift smell, size exceeded, or recoverable inconsistency. Skill returns OK output but flags the warning.
 - PASS → fully conformant.
 
-## Reglas operacionales
+## Operational rules
 
 - **Read-only**: never modifies the file under inspection or any KB entity.
 - **Degraded-mode tolerant**: most checks work without a live MCP. Only Step 5 (PRJ existence) is skipped when broker offline — flagged as INFO.

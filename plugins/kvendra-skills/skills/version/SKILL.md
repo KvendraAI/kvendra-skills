@@ -174,7 +174,7 @@ Detailed multi-card output showing every REL in the KB.
 
 Tabular skill enumeration.
 
-## Trazabilidad
+## Traceability
 
 - Origin: owner DX suggestion 2026-05-26.
 - TXN: TXN-KVD-20260526-007 (this release).
