@@ -4,6 +4,30 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.4.0] — 2026-05-29 — Break-glass bypass: hook v2 honors signed, scoped, expiring grants (REQ-KVD-SKILLS-41032D)
+
+### Highlights
+
+Operational break-glass valve for the PreToolUse hook. When a workspace opts in (`break_glass.enabled: true` in `.kvendra-protected`), an operator can grant a **signed, scoped, time-boxed bypass** of the broker enforcement via the CLI (`kvendra bypass --ttl <dur> --ops <prim.op>`), without breaking the zero-knowledge model. The broker remains the normal path for credentialed writes; the bypass is exceptional, cryptographically verifiable, fail-closed and audited.
+
+Backwards-compatible by default: with `break_glass` absent or `enabled: false` the hook behaves **identically to 1.3.0** — zero overhead, no new code path exercised (NFR-COMPAT-1, asserted by the `break-glass-disabled` fixture with `verify-calls=0`).
+
+### Added
+
+- **Hook v2 conditional grant verification** (`scripts/block-unsafe-ops.sh`): after a real block-hit in `strict`/`hybrid` with `break_glass.enabled`, the hook invokes `kvendra verify-grant` (stdin JSON). Exit 0 → allow (with a `[KVD-PROTECTED] break-glass ACTIVE … Audited.` visibility line); exit ≠0 → block with the reason appended (`Break-glass: none|expired|out-of-scope|invalid-signature|unavailable`). **Conditional invocation** keeps the common path at 0ms overhead (p95 1–2ms measured).
+- **Fail-closed when `kvendra` is absent** from PATH at the moment a verify is needed (unlike the `jq`/`awk`-missing transport which stays fail-open).
+- **`break_glass` YAML reader**: the awk policy parser now reads the nested `break_glass: { enabled, pubkey_ed25519, grant_path }` mapping (additive; `schema_version` of the file unchanged — IF-KVD-SKILLS-BROKER-POLICY 1.0→1.1).
+- **`sync-claudemd`**: pins the ed25519 public key into `.kvendra-protected.break_glass.pubkey_ed25519` from `kvendra grant-pubkey` and recomputes the checksum (Step 6.3b).
+- **Hook test fixtures**: `break-glass-scope`, `break-glass-failclosed`, `break-glass-failclosed-nobin`, `break-glass-disabled`, plus a two-leg latency benchmark (TEST-LAT-1) and an opt-in real-binary e2e (`e2e-real-binary.sh`).
+
+### Refs
+
+- REQ: `REQ-KVD-SKILLS-41032D` · ADR: `ADR-KVD-SKILLS-D0CC0A`
+- IFs: `IF-KVD-SKILLS-GRANT-VERIFY` v1.0 (new), `IF-KVD-SKILLS-BROKER-POLICY` 1.1, `IF-KVD-SKILLS-HOOK-CONTRACT` 1.1
+- ROAD: `ROAD-KVD-SKILLS-C20D24` M2
+- Sibling release: `REL-KVD-CLI-0.6.0` (CLI `bypass`/`protect`/`grant-pubkey`/`verify-grant` subcommands)
+- Requires CLI ≥ 0.6.0 installed for the break-glass path; without it, opted-in workspaces fail-closed.
+
 ## [1.3.0] — 2026-05-28 — Capabilities discovery stable: onboard-project Step 1.5 + Step 3.x + STD-TPL library activated (REQ-ECDAE9 complete)
 
 ### Highlights

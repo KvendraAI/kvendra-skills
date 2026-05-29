@@ -8,13 +8,29 @@
 # tool invocation.
 #
 # Wire contract: IF-KVD-SKILLS-HOOK-CONTRACT v1.0.
-# Policy schema:  IF-KVD-SKILLS-BROKER-POLICY v1.0.
+# Policy schema:  IF-KVD-SKILLS-BROKER-POLICY v1.1 (additive break_glass block).
 # Source of truth: STD-KVD-BROKER-POLICY (and additive STD-KVD-<COMP>-BROKER-POLICY overrides).
 #
 # Modes:
 #   strict     — any block_bash hit → exit 2.
 #   permissive — block_bash hit → exit 2 ONLY if no allow_bash override.
 #   hybrid     — block_bash hit; allow_bash overrides a block hit.
+#
+# Break-glass (IF-KVD-SKILLS-BROKER-POLICY 1.0 → 1.1, additive; schema_version
+# NOT bumped — still `1`):
+#   Optional top-level mapping `break_glass:` with keys:
+#     enabled        (bool)   — master switch.
+#     pubkey_ed25519 (string) — base64 ed25519 pubkey pinned by sync-claudemd.
+#     grant_path     (string, optional) — informational; the CLI resolves the
+#                                         grant from the active local session.
+#   On a REAL block-hit, BEFORE emitting the block, if break_glass.enabled==true
+#   and pubkey_ed25519 is present, the hook invokes `kvendra verify-grant`
+#   (stdin JSON {workspace_root, op, pubkey}; exit 0 = grant applies → ALLOW,
+#   exit !=0 = fail-closed → BLOCK with `Break-glass: <reason>` on line 1).
+#   INVOCATION IS CONDITIONAL (NFR-PERF-1): the common read-only / no-break-glass
+#   path NEVER spawns verify → 0ms overhead.
+#   FAIL-CLOSED: if `kvendra` is not on PATH when verify is needed → BLOCK
+#   (NOT fail-open, unlike jq/awk missing).
 #
 # Legacy marker:
 #   If only the legacy `.kvendra-workspace` marker is present (no
@@ -86,12 +102,19 @@ fi
 
 # ------------------------------------------------------------------
 # Helper: emit canonical [KVD-PROTECTED] error to stderr + exit 2.
-# Args: $1=matched_pattern, $2=std_id, $3=version, $4=mode, $5=primitive, $6=install_hint
+# Args: $1=matched_pattern, $2=std_id, $3=version, $4=mode, $5=primitive,
+#       $6=install_hint, $7=break_glass_reason (optional)
+#
+# The first stderr line ALWAYS starts with `[KVD-PROTECTED]` (machine-parseable
+# prefix per IF-KVD-SKILLS-HOOK-CONTRACT). When break-glass was evaluated and
+# did not apply, the reason is appended to line 1 as `Break-glass: <reason>`.
 # ------------------------------------------------------------------
 emit_block() {
-  local pattern="$1" std_id="$2" version="$3" mode="$4" primitive="$5" hint="$6"
+  local pattern="$1" std_id="$2" version="$3" mode="$4" primitive="$5" hint="$6" bg_reason="${7:-}"
+  local bg_suffix=""
+  [[ -n "$bg_reason" ]] && bg_suffix=" Break-glass: ${bg_reason}."
   cat >&2 <<EOF
-[KVD-PROTECTED] Bash op '${pattern}' blocked by policy '${std_id}' v${version} (mode: ${mode}). Use broker primitive '${primitive}' instead. Install hint: ${hint}
+[KVD-PROTECTED] Bash op '${pattern}' blocked by policy '${std_id}' v${version} (mode: ${mode}).${bg_suffix} Use broker primitive '${primitive}' instead. Install hint: ${hint}
 
 Workspace root: ${MARKER_DIR}
 Marker:         ${MARKER_KIND}
@@ -136,6 +159,107 @@ lookup_primitive() {
     fi
   done <<< "$pairs"
   printf '%s' "kvendra.shell"  # default fallback
+}
+
+# ------------------------------------------------------------------
+# Break-glass (IF-KVD-SKILLS-BROKER-POLICY 1.1)
+# ------------------------------------------------------------------
+
+# Derive a concrete `<primitive>.<op>` token for the verify-grant request,
+# matching the `kvendra bypass --ops` vocabulary (e.g. `kvendra.git.push`,
+# `kvendra.aws.s3_sync`, `kvendra.npm.publish`). The op suffix is sniffed from
+# the actual $COMMAND. Unknown verbs fall back to the bare primitive — the CLI's
+# op-in-scope check then fails closed, which is the safe default.
+# Args: $1=primitive (e.g. kvendra.git). Echoes the op token.
+derive_op() {
+  local primitive="$1" suffix=""
+  case "$primitive" in
+    kvendra.git)
+      if   match_re 'git[[:space:]]+push';        then suffix="push"
+      elif match_re 'git[[:space:]]+commit';      then suffix="commit"
+      elif match_re 'git[[:space:]]+tag';         then suffix="tag"
+      elif match_re 'git[[:space:]]+merge';       then suffix="merge"
+      elif match_re 'git[[:space:]]+rebase';      then suffix="rebase"
+      fi
+      ;;
+    kvendra.aws)
+      if   match_re 'aws[[:space:]]+s3[[:space:]]+sync'; then suffix="s3_sync"
+      elif match_re 'aws[[:space:]]+s3[[:space:]]+cp';   then suffix="s3_cp"
+      elif match_re 'aws[[:space:]]+s3[[:space:]]+rm';   then suffix="s3_rm"
+      elif match_re 'aws[[:space:]]+cloudfront';         then suffix="cloudfront"
+      elif match_re 'aws[[:space:]]+lambda';             then suffix="lambda"
+      elif match_re 'aws[[:space:]]+cloudformation';     then suffix="cloudformation"
+      fi
+      ;;
+    kvendra.github)
+      if   match_re 'gh[[:space:]]+release'; then suffix="release"
+      elif match_re 'gh[[:space:]]+pr';      then suffix="pr"
+      elif match_re 'gh[[:space:]]+issue';   then suffix="issue"
+      fi
+      ;;
+    kvendra.npm)   match_re 'npm[[:space:]]+publish'   && suffix="publish" ;;
+    kvendra.pypi)  match_re '(pip|twine)[[:space:]]+(upload|publish)' && suffix="upload" ;;
+  esac
+  if [[ -n "$suffix" ]]; then
+    printf '%s.%s' "$primitive" "$suffix"
+  else
+    printf '%s' "$primitive"
+  fi
+}
+
+# Evaluate break-glass for a real block-hit.
+# Sets global BG_VERDICT to one of: allow | none | <verify-reason> (e.g.
+# expired, out-of-scope, invalid-signature, unavailable, malformed).
+# Returns 0 (ALLOW) only when the grant applies; returns 1 otherwise.
+# CONDITIONAL: only ever called on a confirmed block-hit, and only spawns the
+# `kvendra verify-grant` subprocess when break-glass is enabled + a pubkey is
+# pinned. FAIL-CLOSED: `kvendra` missing on PATH → reason `unavailable`, BLOCK.
+# Args: $1=primitive (resolved via lookup_primitive).
+maybe_break_glass() {
+  local primitive="$1"
+  BG_VERDICT="none"
+
+  # Not opted in → no break-glass, no subprocess (0ms overhead even on block).
+  [[ "$BG_ENABLED" != "true" ]] && return 1
+  [[ -z "$BG_PUBKEY" ]] && return 1
+
+  # Fail-closed: verify is needed but the CLI is absent.
+  if ! command -v kvendra >/dev/null 2>&1; then
+    BG_VERDICT="unavailable"
+    return 1
+  fi
+
+  local op req verdict reason rc
+  op="$(derive_op "$primitive")"
+  req="$(jq -nc \
+    --arg ws "$MARKER_DIR" \
+    --arg op "$op" \
+    --arg pk "$BG_PUBKEY" \
+    '{workspace_root: $ws, op: $op, pubkey: $pk}')"
+
+  set +e
+  verdict="$(printf '%s' "$req" | kvendra verify-grant 2>/dev/null)"
+  rc=$?
+  set -e
+
+  if [[ "$rc" -eq 0 ]]; then
+    BG_VERDICT="allow"
+    return 0
+  fi
+
+  # Map the CLI's machine reason to a stable hook reason, best-effort.
+  reason="$(printf '%s' "$verdict" | jq -r '.reason // empty' 2>/dev/null)"
+  case "$reason" in
+    expired)             BG_VERDICT="expired" ;;
+    out_of_scope|*scope*) BG_VERDICT="out-of-scope" ;;
+    signature_invalid|*signature*) BG_VERDICT="invalid-signature" ;;
+    no_session|*session*) BG_VERDICT="no-session" ;;
+    key_mismatch|*key*)  BG_VERDICT="invalid-signature" ;;
+    workspace*)          BG_VERDICT="workspace-mismatch" ;;
+    "")                  BG_VERDICT="invalid-signature" ;;
+    *)                   BG_VERDICT="$reason" ;;
+  esac
+  return 1
 }
 
 # ------------------------------------------------------------------
@@ -240,7 +364,19 @@ YAML_DUMP="$(awk '
   }
 
   # Continuation key under a sequence-of-mappings (e.g. `primitive: kvendra.git`)
+  # OR a nested key under the `break_glass:` mapping (e.g. `enabled: true`).
   /^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:[[:space:]]/ {
+    # Nested keys under the break_glass mapping (not a sequence item).
+    if (current_list == "break_glass" && !in_pair) {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      pos = index(line, ":")
+      k = substr(line, 1, pos-1)
+      v = trim(substr(line, pos+1))
+      v = strip_quotes(v)
+      print "BG\t" k "\t" v
+      next
+    }
     if (!in_pair) {
       print "ERROR\t" NR ":1:mapping continuation outside sequence item" > "/dev/stderr"
       exit 1
@@ -280,6 +416,10 @@ SCHEMA_VERSION="1"
 BLOCK_RES=""
 ALLOW_RES=""
 REQ_BROKER_PAIRS=""
+# break_glass sub-mapping (IF-KVD-SKILLS-BROKER-POLICY 1.1, additive).
+BG_ENABLED=""
+BG_PUBKEY=""
+BG_GRANT_PATH=""
 
 while IFS=$'\t' read -r kind key val; do
   [[ -z "$kind" ]] && continue
@@ -306,6 +446,13 @@ while IFS=$'\t' read -r kind key val; do
         REQ_BROKER_PAIRS="${REQ_BROKER_PAIRS}${op}"$'\t'"${prim}"$'\n'
       fi
       ;;
+    BG)
+      case "$key" in
+        enabled) BG_ENABLED="$val" ;;
+        pubkey_ed25519) BG_PUBKEY="$val" ;;
+        grant_path) BG_GRANT_PATH="$val" ;;
+      esac
+      ;;
   esac
 done <<< "$YAML_DUMP"
 
@@ -329,13 +476,39 @@ EOF
 esac
 
 # ------------------------------------------------------------------
+# Decide on a confirmed block-hit (after allow-override ruled out):
+# try break-glass first, otherwise emit the block. Shared by all modes so
+# the conditional-verify invariant lives in exactly one place.
+#
+# NFR-PERF-1: maybe_break_glass() only spawns `kvendra verify-grant` when
+# break_glass.enabled==true AND a pubkey is pinned. The common path
+# (read-only / no break-glass) never reaches here at all (no block-hit), and
+# even a block-hit with break-glass disabled does NOT spawn verify.
+# ------------------------------------------------------------------
+decide_block() {
+  local hit="$1"
+  local prim
+  prim="$(lookup_primitive "$REQ_BROKER_PAIRS")"
+  if maybe_break_glass "$prim"; then
+    # Grant applies → ALLOW, with an auditable visibility line.
+    echo "[KVD-PROTECTED] break-glass ACTIVE: '${hit}' permitted under signed grant (op '$(derive_op "$prim")', workspace '${MARKER_DIR}'). Audited." >&2
+    exit 0
+  fi
+  # No grant → block. Only annotate the block with a `Break-glass: <reason>`
+  # when break-glass was actually opted into (enabled). When break-glass is
+  # disabled/absent the output is byte-for-byte identical to today (NFR-COMPAT-1).
+  local bg_reason=""
+  [[ "$BG_ENABLED" == "true" ]] && bg_reason="$BG_VERDICT"
+  emit_block "$hit" "$STD_ID" "$SYNCED_VERSION" "$MODE" "$prim" "$INSTALL_HINT" "$bg_reason"
+}
+
+# ------------------------------------------------------------------
 # Mode dispatch
 # ------------------------------------------------------------------
 case "$MODE" in
   strict)
     if HIT="$(first_match "$BLOCK_RES")"; then
-      PRIM="$(lookup_primitive "$REQ_BROKER_PAIRS")"
-      emit_block "$HIT" "$STD_ID" "$SYNCED_VERSION" "$MODE" "$PRIM" "$INSTALL_HINT"
+      decide_block "$HIT"
     fi
     exit 0
     ;;
@@ -345,8 +518,7 @@ case "$MODE" in
       if first_match "$ALLOW_RES" >/dev/null; then
         exit 0
       fi
-      PRIM="$(lookup_primitive "$REQ_BROKER_PAIRS")"
-      emit_block "$HIT" "$STD_ID" "$SYNCED_VERSION" "$MODE" "$PRIM" "$INSTALL_HINT"
+      decide_block "$HIT"
     fi
     exit 0
     ;;
@@ -356,8 +528,7 @@ case "$MODE" in
       if first_match "$ALLOW_RES" >/dev/null; then
         exit 0
       fi
-      PRIM="$(lookup_primitive "$REQ_BROKER_PAIRS")"
-      emit_block "$HIT" "$STD_ID" "$SYNCED_VERSION" "$MODE" "$PRIM" "$INSTALL_HINT"
+      decide_block "$HIT"
     fi
     exit 0
     ;;

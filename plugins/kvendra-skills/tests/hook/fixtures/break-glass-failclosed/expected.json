@@ -1,0 +1,9 @@
+{
+  "_comment": "break_glass enabled but the grant is expired/invalid (verify-grant exits 2). The hook MUST fail-closed: block with `Break-glass: out-of-scope` on line 1 (the stub reports reason out_of_scope). Verify-grant invoked once.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\].*Break-glass: out-of-scope\\..*kvendra\\.git",
+  "stub_kvendra_mode": "block",
+  "assert_verify_calls": 1
+}

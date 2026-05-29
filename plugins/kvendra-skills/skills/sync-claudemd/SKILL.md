@@ -2,7 +2,7 @@
 name: sync-claudemd
 description: Regenerate a project's CLAUDE.md from the canonical template (STD-KVD-CLAUDEMD-TEMPLATE), preserving the Particularidades section. Also materialises the broker policy at .kvendra-protected from STD-<PROJ>-BROKER-POLICY. Detects manual_version + tier drift.
 user_invocable: true
-args: "[<PROJECT_ID> (optional, defaults to project_id from cwd CLAUDE.md)] [--dry-run] [--force] [--policy-only]"
+args: "[<PROJECT_ID> (optional, defaults to project_id from cwd CLAUDE.md)] [--dry-run] [--force] [--policy-only] [--enable-break-glass]"
 ---
 
 # Sync CLAUDE.md v1 — Regenerate from canonical template + materialise broker policy
@@ -26,6 +26,7 @@ pointing to the required broker primitive.
 - `--dry-run` → show the diff vs the would-be regenerated CLAUDE.md AND `.kvendra-protected`, do NOT write.
 - `--force` → overwrite the Particularidades section too (DESTRUCTIVE).
 - `--policy-only` → write only `.kvendra-protected` (broker policy), leave `CLAUDE.md` untouched. Useful when the policy STD evolves independently of the CLAUDE.md template.
+- `--enable-break-glass` → opt this project into the additive `break_glass:` block (IF-840EE9 1.1) even if the STD does not set `break_glass.enabled: true`. Pins the local `kvendra grant-pubkey` into `.kvendra-protected` (see Step 6.3b). No-op if the project is already opted in.
 
 ### Default action (no flags)
 
@@ -223,6 +224,73 @@ Extract from the STD `content` the canonical YAML block under `## Steps` step 3 
 - `cmp_overrides_applied` ← list of CMP STD ids merged in Step 6.2.
 - `checksum` ← `sha256` hex of the canonical YAML body (everything below the provenance block, i.e. starting from `mode:`).
 
+### Step 6.3b — Pin the break-glass pubkey (IF-840EE9 1.0 → 1.1)
+
+The broker policy schema is extended **additively** with an optional
+`break_glass:` mapping (IF-KVD-SKILLS-BROKER-POLICY `1.0 → 1.1`). This is a
+purely additive block — **the `schema_version` field of `.kvendra-protected`
+is NOT bumped** (it stays `1`); hook v2 reads `break_glass` when present and
+ignores it when absent, so old and new files remain mutually compatible
+(NFR-COMPAT-1).
+
+A project **opts into break-glass** when its `STD-<PROJECT>-BROKER-POLICY`
+declares `break_glass.enabled: true` in its canonical YAML payload (Step 6.3),
+OR when the operator passes `--enable-break-glass` to this skill. If the
+project does NOT opt in, skip this sub-step entirely and write the file with
+no `break_glass:` block (byte-for-byte identical to the pre-1.1 output).
+
+When the project opts in:
+
+1. Obtain the local grant-signing **public** key (auth-less, no vault unlock,
+   no master password):
+
+   ```
+   kvendra grant-pubkey
+   ```
+
+   - Stdout is the base64 ed25519 public key (44 chars). This is the key the
+     hook pins and the CLI's `verify-grant` checks signatures against.
+   - If `kvendra` is **not on PATH** → WARN and write the file with
+     `break_glass.enabled: false` and an empty `pubkey_ed25519`. Do NOT block
+     the whole sync; the hook fail-closes on a missing/empty pubkey anyway.
+   - If `kvendra grant-pubkey` errors with *"no grant signing key — run
+     `kvendra bypass …` once to generate it"*: the signing keypair has not been
+     created yet. Surface that message to the operator (they must run a
+     `kvendra bypass` once, from their own terminal, to generate it), and write
+     `enabled: true` with an empty `pubkey_ed25519` so the hook fail-closes
+     until the key exists. Re-run `/sync-claudemd --policy-only` after the first
+     bypass to fill in the pubkey.
+
+2. Populate the `break_glass:` block in the rendered YAML payload:
+
+   ```yaml
+   break_glass:
+     enabled: true
+     pubkey_ed25519: "<output of kvendra grant-pubkey>"
+     grant_path: ".kvendra-grant"   # informational; the CLI resolves the
+                                     # active grant from the local session.
+   ```
+
+   Place the block as a top-level mapping (siblings: `mode`, `block_bash`,
+   `allow_bash`, `require_broker`). Keep `enabled` a bare YAML bool
+   (`true`/`false`), `pubkey_ed25519` a double-quoted string.
+
+3. **Idempotency**: pinning the pubkey is idempotent — `kvendra grant-pubkey`
+   returns the same key across runs (it only changes if the operator runs
+   `kvendra bypass --rotate-key`). Re-running the skill with an unchanged key
+   produces no diff.
+
+4. **Recompute the `checksum`** (Step 6.3) over the canonical YAML body
+   INCLUDING the newly added `break_glass:` block, so Step 6.4's idempotency
+   check stays accurate. The `break_glass` block is part of the body hashed by
+   the checksum (everything from `mode:` down).
+
+> Schema-change record (IF-KVD-SKILLS-BROKER-POLICY): version `1.0 → 1.1`,
+> additive `break_glass: { enabled: bool, pubkey_ed25519: string, grant_path:
+> string? }`. `schema_version` (file field) stays `1`. Consumers that predate
+> 1.1 ignore the block; hook v2 honours it. Documented here per the change to
+> ISSUE-KVD-SKILLS-924CAF.
+
 ### Step 6.4 — Idempotency check
 
 Read existing `.kvendra-protected` if present. If:
@@ -238,6 +306,7 @@ then **NO write** is performed (no-op). Report `policy: no-op (up to date)`.
 - `block_bash`, `allow_bash`, `require_broker` must be arrays (possibly empty).
 - Every regex in `block_bash` / `allow_bash` / `require_broker[].op_pattern` must compile under `grep -E` without error. Validate each pattern individually; on first failure, STOP and surface the offending pattern.
 - `require_broker[].primitive` must be one of `kvendra.git|kvendra.github|kvendra.aws|kvendra.npm|kvendra.pypi|kvendra.http|kvendra.shell`.
+- If a `break_glass:` block is present (IF-840EE9 1.1): `enabled` must be a bool; when `enabled: true`, `pubkey_ed25519` must be a non-empty base64 string (44 chars for ed25519) OR explicitly empty only in the deferred-key case of Step 6.3b (hook fail-closes on empty). `grant_path` is an optional string.
 
 If any validation fails, STOP — do NOT write a broken policy file.
 

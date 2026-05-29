@@ -1,0 +1,8 @@
+{
+  "_comment": "break_glass enabled + a block-hit, but `kvendra` is NOT on PATH. The hook MUST fail-CLOSED (NOT fail-open like jq/awk missing): block with `Break-glass: unavailable` on line 1.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\].*Break-glass: unavailable\\..*kvendra\\.git",
+  "stub_kvendra_mode": "absent"
+}

@@ -1,0 +1,9 @@
+{
+  "_comment": "NFR-COMPAT-1: break_glass.enabled=false -> behaviour identical to today. git push -> blocked (exit 2), NO `Break-glass:` annotation on line 1, and verify-grant is NEVER invoked (0 overhead) even though a stub is on PATH. assert_verify_calls=0 proves the conditional-invocation guard.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] Bash op .*blocked by policy 'STD-KVD-BROKER-POLICY'.*mode: strict\\)\\. Use broker primitive 'kvendra\\.git'",
+  "stub_kvendra_mode": "block",
+  "assert_verify_calls": 0
+}

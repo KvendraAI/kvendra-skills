@@ -1,0 +1,29 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture — break-glass scope)
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 2
+synced_at: 2026-05-29T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: strict
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+broker_min_version: "0.4.0"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+(commit|push|tag)([[:space:]]|$)'
+  - '(^|[[:space:];&|]|/)aws[[:space:]]+s3[[:space:]]+(sync|cp)([[:space:]]|$)'
+
+allow_bash: []
+
+break_glass:
+  enabled: true
+  pubkey_ed25519: "TESTPUBKEYb64AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  grant_path: ".kvendra-grant"
+
+require_broker:
+  - op_pattern: 'git[[:space:]]+(commit|push|tag)'
+    primitive: kvendra.git
+  - op_pattern: 'aws[[:space:]]+s3'
+    primitive: kvendra.aws

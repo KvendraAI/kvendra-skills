@@ -1,0 +1,16 @@
+{
+  "_comment": "Grant covers kvendra.git.push only. git push -> ALLOWED (exit 0, break-glass ACTIVE audit line). aws s3 sync -> still BLOCKED (out-of-scope). Verify-grant invoked once per block-hit (2x total) since break_glass is enabled.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 0,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] break-glass ACTIVE:.*kvendra\\.git\\.push.*Audited\\.",
+  "stub_kvendra_mode": "scope-git-push",
+  "assert_verify_calls": 2,
+  "extra_cases": [
+    {
+      "command": "aws s3 sync ./dist s3://bucket",
+      "expected_exit": 2,
+      "expected_stderr_regex": "^\\[KVD-PROTECTED\\].*Break-glass: out-of-scope\\..*kvendra\\.aws"
+    }
+  ]
+}
