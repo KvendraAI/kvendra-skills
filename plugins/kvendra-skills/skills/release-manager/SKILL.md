@@ -59,6 +59,33 @@ server will reject with `INTEGRITY` + constraint `entities_entity_id_format`.
 
 ## Available actions
 
+### Pre-release CI gate (required before CREATE and CLOSE)
+
+A release must never be cut or closed off a red default branch. Before running
+CREATE or CLOSE, verify that the latest CI workflow run on the default branch
+(e.g. `main`) finished successfully:
+
+```sh
+gh run list --branch main --limit 1 --json status,conclusion,workflowName
+```
+
+- If the latest run's `conclusion` is `success`, proceed.
+- If it is `failure`, `cancelled`, `timed_out`, or the run is still in
+  progress, STOP and tell the user the default branch is not green. Do NOT
+  create or close the release.
+- If the `gh` CLI is unavailable or the project does not use a CI provider that
+  `gh` can read, log a warning, treat the gate as inconclusive, and ask the
+  user to confirm before proceeding.
+
+Bypass: if the user explicitly requests `--force-ci-red`, proceed anyway, emit
+a prominent audit warning in the action output, and record
+`metadata.ci_red_bypass: true` plus the stated reason on the REL. The bypass is
+always audited; it is never silent.
+
+This gate complements the repository branch-protection required status check
+(configured by the repository owner): branch protection blocks the merge, this
+gate blocks the release action.
+
 ### CREATE — Create a new release
 
 1. Determine the version (SemVer): read latest RELs to compute next:
@@ -123,6 +150,8 @@ For each included component:
 Prerequisites:
 1. All regression gates PASS.
 2. All included ISSUEs closed.
+3. Pre-release CI gate green (see "Pre-release CI gate" above), unless
+   `--force-ci-red` was explicitly requested and audited.
 
 Process:
 1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"closed", change_summary:"Release closed", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
