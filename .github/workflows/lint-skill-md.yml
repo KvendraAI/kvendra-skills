@@ -15,7 +15,7 @@ jobs:
     name: SKILL.md lint (EN-only + no-tech-specifics)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: EN-only check
         id: en_only
