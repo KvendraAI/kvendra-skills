@@ -22,6 +22,49 @@ $ARGUMENTS
 
 Identify `project_id` and `component_id`(s) from the `CLAUDE.md`.
 
+## Step 0.5 — Pipeline-autonomy policy (single query)
+
+Discover the project's pipeline-autonomy policy with ONE tag query:
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "STD",
+  project_id: <PROJ>,
+  tags_all: ["scope:pipeline-autonomy"],
+  status: "active",
+  order_by: "updated_at_desc",
+  limit: 10
+})
+```
+
+**0 results** → use the defaults: `gates.new-feature: dual`,
+`parallelize.frontend_with_deploy: false`, `context_pack: false`,
+`sla_report: false`, validator level `auto`. This is the byte-identical
+legacy path — no error, no retry.
+
+**1+ results** → take the PROJ-level row plus the optional CMP-scoped row
+(when one matches the affected component) and merge per key with
+most-conservative-wins: `dual` beats `single`, `false` beats `true` in
+`parallelize.*`, and the heavier validator level wins.
+
+Report the resolved mode in the progress header:
+
+```
+autonomy: single-gate | dual-gate (policy: <STD-id> v<N> | defaults)
+```
+
+### CONTEXT_PACK (only when the resolved policy has context_pack: true)
+
+Build one CONTEXT_PACK and prepend it to EVERY subagent launch. The pack
+is a fenced block containing: `loaded_at` (ISO8601) + `txn_id` + digests
+of PRJ / CMP (including `workspace_subdir`) / IF field tables verbatim /
+GLO canonical terms verbatim / the resolved STD values, plus a `Sources:`
+line of `entity_id@version` pairs. Introduce it with this exact sentence:
+
+"A CONTEXT_PACK is included below. Treat it as your pre-loaded KB context:
+skip your context-loading queries when the pack covers them; re-query only
+what is missing or suspect — the pack is an optimization, not a cage."
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
@@ -96,16 +139,28 @@ On failure:
 
 ---
 
-## PHASE 0 — Requirements analysis (MANDATORY PAUSE)
+## PHASE 0 — Requirements analysis
 
-Launch `requirements-analyst` with the description + `txn_id`. Capture
-**REQUIREMENTS_REPORT** and, if a REQ is created, its id.
+Launch `requirements-analyst` with the description + `txn_id` (+ the
+CONTEXT_PACK when enabled). Capture **REQUIREMENTS_REPORT** and, if a REQ
+is created, its id.
 
+**Early-escalation check (always, both gate modes)**: if the report
+contains blocking alarms, a ROAD conflict, cost impact > 20% of current
+budget, or data-model / existing-endpoint changes → PAUSE NOW (do NOT
+launch the planner), show the report and wait for user decisions —
+identical to today's behaviour.
+
+**Gate mode `dual` (default — no policy STD, or `gates.new-feature: dual`)**:
 **PAUSE**: Show report. Wait for user decisions.
 
-## PHASE 1 — Spec design (MANDATORY PAUSE)
+**Gate mode `single`**: do NOT pause here. Proceed to PHASE 1 and present
+both reports at the consolidated gate.
 
-Launch `planner` with ENRICHED_REQUIREMENT + `txn_id`.
+## PHASE 1 — Spec design
+
+Launch `planner` with ENRICHED_REQUIREMENT + `txn_id` (+ the CONTEXT_PACK
+when enabled).
 
 planner consults:
 - ROAD → flags conflicts.
@@ -114,9 +169,24 @@ planner consults:
 - COST → presents economic impact.
 - ADR → does not contradict decisions.
 
-Capture **SPEC** (includes verifications, ISSUEs to create, required TESTs).
+Capture **SPEC** (includes verifications, ISSUEs to create, required
+TESTs, and the `frontend_deploy_independent` flag from its "Execution
+constraints" section).
 
-**PAUSE**: Show spec. Wait for confirmation.
+**Gate mode `dual`**: **PAUSE**: Show spec. Wait for confirmation.
+
+**Gate mode `single` — CONSOLIDATED GATE (the only mandatory pause)**:
+present, in this exact order:
+1. REQUIREMENTS_REPORT (alarms and improvements FIRST).
+2. SPEC (verifications, scope, implementation plan, TESTs).
+3. Recommendation LAST — PROCEED only if ALL hold: zero blocking alarms,
+   ROAD OK, ADR OK (no new ADR required), cost impact <= 20%, no
+   data-model or existing-endpoint changes; otherwise REVIEW listing the
+   exact signals.
+
+**PAUSE**: wait for one user decision covering REQ + SPEC together. If
+the REQ is rejected, discard the SPEC (accepted trade-off) and
+`txn_cancel`.
 
 ## PHASE 2 — Backend implementation (conditional)
 
@@ -136,9 +206,20 @@ its steps via broker primitives).
 
 On failure: `txn_cancel`, stop pipeline.
 
+**Parallel mode**: when the resolved policy has
+`parallelize.frontend_with_deploy: true` AND the SPEC declares
+`frontend_deploy_independent: yes`, launch `deploy` and the frontend
+`implementer` (PHASE 4a) in ONE single message with two Agent calls. If
+either condition is absent → serial (current behaviour). On deploy
+failure in parallel mode: `txn_cancel` as usual — the frontend output is
+kept locally but no KB drafts survive.
+
 ## PHASE 4 — Frontend implementation + Tests
 
 ### 4a — Frontend (if applicable)
+
+(Skip if already launched in parallel with PHASE 3 — consume its captured
+output instead.)
 
 Launch `implementer` with the Frontend section of the SPEC + `txn_id`.
 Capture **IMPL_FRONTEND**.
@@ -152,7 +233,11 @@ entries as **draft** (associated to the TXN).
 
 ### 5a — Validation
 
-Auto level (basic | professional | exhaustive). Launch `validator`. Loop
+Resolve the validator level with this precedence: explicit user override >
+policy `validator_level_by_type` keyed by the change type from the
+REQ/ISSUE type tags (hotfix → basic, feature → professional, security →
+exhaustive) > `validator_level_default` (`auto` = current heuristic).
+Pass the resolved level in the validator args. Launch `validator`. Loop
 up to 3 iterations per criterion.
 
 (IMPORTANT: validator does NOT suggest /updater.)
@@ -195,6 +280,28 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"ski
 
 Drafts → terminal.
 
+### SLA report (non-blocking — only when the policy has sla_report: true)
+
+After `txn_activate`, compute the wall-clock duration = activation time
+minus TXN creation time. Query the pipeline SLAs once:
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "SLA",
+  project_id: <PROJ>,
+  tags_all: ["scope:pipeline"]
+})
+```
+
+If 0 results and <PROJ> is not KVD, retry once with `project_id: "KVD"`.
+Append one line to the progress output:
+
+```
+SLA: <duration> vs target <N> min — OK | EXCEEDED (informational)
+```
+
+Still 0 results, or query error → skip silently.
+
 ---
 
 ## PHASE 7 — Pending tasks (conditional)
@@ -209,6 +316,7 @@ create ISSUE type:task outside the TXN (born `active`).
 ```
 Pipeline new-feature — <name>
 TXN: TXN-<PROJ>-<YYYYMMDD>-<NNN>
+autonomy: <mode> (policy: <source>)
 
 PHASE 0 — Requirements: N alarms, N improvements  [step 0: completed]
   PAUSE — Waiting for decisions...
@@ -222,7 +330,13 @@ PHASE 6 — KB: ISSUE + REL changelog + REG         [step 6: completed]
 
 TXN-<PROJ>-<YYYYMMDD>-<NNN>: COMPLETED
 REL-<PROJ>-0.1.0 changelog: +N entries (via entity_changelog)
+SLA: <duration> vs target <N> min — OK (optional, sla_report: true only)
 ```
+
+The two PAUSE lines appear only in dual mode. In single mode a single
+`CONSOLIDATED GATE — Waiting for decision...` line (after PHASE 1)
+replaces them. The final `SLA:` line is optional (only when the policy
+has `sla_report: true`).
 
 ## Stop rules
 
@@ -232,3 +346,6 @@ Consult the user before continuing if:
 - Cost impact > 20% of current budget.
 - Changes to data model or existing endpoints.
 - A validation criterion fails 3 times.
+
+In single-gate mode, the first four rules are evaluated at the end of
+PHASE 0 and fire BEFORE the planner launches (early escalation).

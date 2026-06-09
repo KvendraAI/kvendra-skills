@@ -58,8 +58,14 @@ Load from the Kvendra KB:
 
 ## Step 2 — Determine the level
 
-Look in the arguments for `basic`, `professional`, `exhaustive`. If not
-specified, default to `professional`.
+Resolve the level with this precedence:
+
+1. An explicit `basic` / `professional` / `exhaustive` in the arguments
+   (user override always wins).
+2. A level resolved by the orchestrator from the project's
+   pipeline-autonomy policy (`validator_level_by_type` keyed by change
+   type), passed via args.
+3. Default `professional`.
 
 ## BASIC level
 

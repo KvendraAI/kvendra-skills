@@ -4,6 +4,31 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.5.0] — 2026-06-09 — Declarative pipeline-autonomy mode
+
+### Highlights
+
+Declarative pipeline-autonomy mode for the orchestrators. A project can now opt in — via a `STD-<PROJ>-PIPELINE-AUTONOMY` policy entity discovered by tag (`scope:pipeline-autonomy`) — to a faster pipeline shape: a single consolidated gate for `/new-feature`, parallel execution lanes, pre-loaded subagent context (CONTEXT_PACK) and informational SLA reporting.
+
+Opt-in semantics: **no STD = byte-identical 1.4.0 behaviour**. The Step 0.5 discovery query returning 0 results selects the legacy defaults (dual gate, serial frontend/deploy, no context pack, no SLA report, validator level `auto`) with no error and no retry.
+
+### Added
+
+- **Single consolidated gate for `/new-feature`** via `gates.new-feature: single`: PHASE 0 no longer pauses (early-escalation signals still fire BEFORE the planner launches), and PHASE 1 presents REQUIREMENTS_REPORT + SPEC + a PROCEED/REVIEW recommendation in one mandatory pause covered by a single user decision.
+- **STD-PIPELINE-AUTONOMY policy discovery (Step 0.5)** in `/new-feature` and `/bug`: one tag query, PROJ-level row + optional CMP-scoped row merged per key with most-conservative-wins.
+- **Enforced multi-Agent parallel analyzers in `/bug` PHASE 3**: N bugs = N Agent calls in ONE single message; sequential launches are a protocol violation. `parallelize.analyzer_per_bug: false` forces serial execution (debug aid).
+- **Optional frontend-parallel-to-deploy** in `/new-feature` PHASE 3/4a, gated by `parallelize.frontend_with_deploy: true` AND the planner's new `frontend_deploy_independent: yes` flag (new "Execution constraints" block in the SPEC output).
+- **Context pack for subagents** (`context_pack: true`): one CONTEXT_PACK (loaded_at + txn_id + PRJ/CMP/IF/GLO/STD digests + Sources line of `entity_id@version` pairs) prepended to every subagent launch as pre-loaded KB context.
+- **Validator level by change type**: precedence explicit user override > `validator_level_by_type` keyed by REQ/ISSUE type tags (hotfix → basic, feature → professional, security → exhaustive) > `validator_level_default` (`auto` = current heuristic). The `validator` skill honours the orchestrator-resolved level passed via args.
+- **Non-blocking pipeline SLA report** (`sla_report: true`): wall-clock duration vs the pipeline SLA target after `txn_activate`, informational only; skips silently when no `scope:pipeline` SLA is found.
+
+### Refs
+
+- REQ: `REQ-KVD-SKILLS-3C218A` · ADRs: `ADR-KVD-SKILLS-BB0E8A`, `ADR-KVD-SKILLS-D0CC0A`
+- ROAD: `ROAD-KVD-SKILLS-C20D24` M2.x
+- STD: `STD-KVD-18F1EB` (STD-KVD-PIPELINE-AUTONOMY)
+- SLAs: `SLA-KVD-SKILLS-27FE18` (/new-feature ≤45 min single-gate), `SLA-KVD-SKILLS-907E53` (/bug ≤30 min)
+
 ## [1.4.0] — 2026-05-29 — Break-glass bypass: hook v2 honors signed, scoped, expiring grants (REQ-KVD-SKILLS-41032D)
 
 ### Highlights

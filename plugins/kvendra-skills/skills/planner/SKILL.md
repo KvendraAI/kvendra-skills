@@ -122,6 +122,14 @@ complete format.
 ### Design decisions
 [Referencing ADRs and STD patterns]
 
+### Execution constraints
+- frontend_deploy_independent: yes | no — may the frontend
+  implementation run in parallel with the backend deploy? Declare
+  `yes` ONLY when the frontend work neither reads deploy outputs
+  (endpoints, env values, generated clients) nor needs the deployed
+  backend while being implemented. Default and safe answer: no
+  (serial).
+
 ### API contract (if applicable)
 
 #### [VERB] [path]
