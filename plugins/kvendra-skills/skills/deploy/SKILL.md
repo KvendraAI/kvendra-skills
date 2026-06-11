@@ -169,6 +169,7 @@ N. <step name>: ✅ <durationMs>ms
 ## Operational notes
 
 - The skill is **idempotent** in spirit: re-running it after a failed step (after the user fixes the issue) should pick up correctly. The playbook's Pre-conditions section is checked at every invocation.
+- **Long-running waits (patient polling)**: when a step or post-condition waits on slow external convergence (CloudFormation `UPDATE_COMPLETE`, CloudFront invalidation `Completed`, DNS/cert propagation), do NOT abort early and do NOT busy-wait with tight sleeps. Poll the read-only status check with a sensible interval (≥30s, backing off), report each poll as one progress line, and respect the playbook's `estimated_duration_minutes` before suspecting failure. When the harness offers recurring scheduling (e.g. a `/loop` session or wake-up scheduling), prefer delegating the pacing to the harness over in-band sleeping — the deploy step is resumable per the idempotency note above.
 - The skill is **dual-mode**: works in cloud (tier:pro+, MCP `kvendra-cloud`) and local (tier:free, MCP Platform). The STD lookup uses the project's KB regardless.
 - The skill is **modeloagnostic**: no LLM-specific assumptions. Any LLM that Claude Code supports can run it.
 - The skill **does NOT publish** to public registries (`cargo publish`, `npm publish`, `pypi upload`) — those are explicit NO-GO per `STD-KVD-57DAE1` and require owner-only manual execution. <!-- lint-allow-tech -->

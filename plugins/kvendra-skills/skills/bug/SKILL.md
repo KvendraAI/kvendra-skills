@@ -43,19 +43,43 @@ is the byte-identical legacy path — no error, no retry.
 
 **1+ results** → take the PROJ-level row plus the optional CMP-scoped row
 (when one matches the affected component) and merge per key with
-most-conservative-wins: `false` beats `true` in `parallelize.*`, and the
-heavier validator level wins.
+most-conservative-wins: `default` beats `none` in `gates.bug`, `false`
+beats `true` in `parallelize.*`, and the heavier validator level wins.
+An unknown `gates.*` value resolves to `default` (most conservative —
+forward compatibility).
 
-Gates are not applicable to /bug in v1 (`gates.bug: default` is
-reserved). Keys consumed here: `parallelize.analyzer_per_bug`,
-`validator_level_default` / `validator_level_by_type`, `context_pack`,
-`sla_report`.
+In a v1 payload `gates.bug: default` is the only accepted value. Schema
+v2 (`schema_version: 2`) adds `gates.bug: none` — zero-gate mode for the
+stop rules (see below). Keys consumed here: `gates.bug`,
+`parallelize.analyzer_per_bug`, `validator_level_default` /
+`validator_level_by_type`, `context_pack`, `sla_report`, and (v2)
+`autonomy_log`.
 
 Report the resolved mode in the progress header:
 
 ```
-autonomy: default (policy: <STD-id> v<N> | defaults)
+autonomy: default | zero-gate (policy: <STD-id> v<N> | defaults)
 ```
+
+### Zero-gate mode (gates.bug: none — schema v2 only)
+
+With `gates.bug: none` the stop rules at the bottom of this skill stop
+consulting the user: each signal is auto-resolved with the most
+conservative viable option and logged as one AUTONOMY_LOG line
+(`<signal> → <resolution> — <one-line rationale>`), shown in the
+progress output and persisted into the PHASE 5b ISSUE content under
+`## Autonomy log (zero-gate)` (or the `txn_cancel` reason when the TXN
+dies first).
+
+**Hard floor (never configurable — pauses even in zero-gate mode):** an
+op on the deploy-policy no-go list (production deploy, real registry
+publish, vault/allowlist mutation, destructive git/AWS op), recurring
+cost impact > 20% of current budget, or a security-tagged fix failing
+exhaustive validation.
+
+This policy governs conversation gates ONLY (NFR-SAFE-1): broker
+enforcement, the STD no-go list and hook fail-closed paths stay out of
+its reach in every mode.
 
 ### CONTEXT_PACK (only when the resolved policy has context_pack: true)
 
@@ -282,7 +306,14 @@ SLA: <duration> vs target <N> min — OK (optional, sla_report: true only)
 
 ## Stop rules
 
-Consult the user before continuing if:
+**Default mode** — consult the user before continuing if:
 - A change requires infrastructure work (e.g. template.yaml).
 - The fix affects multiple critical components.
 - A previously-unforeseen new bug surfaces during validation.
+
+**Zero-gate mode** (`gates.bug: none`, schema v2) — only the hard floor
+consults the user; the three signals above auto-resolve and log: prefer
+deferring infrastructure work to a blocked ISSUE over improvising it,
+fix multi-component bugs component by component with per-component
+validation, and fold newly-surfaced bugs into the pipeline as additional
+PHASE 3 analyzer items (or a follow-up ISSUE when out of scope).

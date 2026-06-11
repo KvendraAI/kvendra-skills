@@ -196,6 +196,21 @@ FEATURE PIPELINE (/new-feature)
   PHASE 5  validator              Verify (max 3 iter)
   PHASE 6  updater + activate TXN
 
+  Gates are policy-driven (STD-<PROJ>-PIPELINE-AUTONOMY, tag
+  scope:pipeline-autonomy): dual (2 pauses, default) | single
+  (1 consolidated pause) | none (zero-gate: auto-resolve + audit
+  AUTONOMY_LOG; hard floor still pauses: no-go ops, recurring
+  cost >20%, security failing exhaustive validation).
+
+AUTONOMOUS SESSIONS (zero-gate + /loop)
+  With gates:none + backlog_chaining:true, /new-feature chains the
+  next open backlog item of a declared scope (milestone tag, ROAD,
+  or ISSUE list) after each txn_activate. Pair it with the harness
+  /loop (self-paced) to work through a milestone unattended: the
+  skill chains items inside a session; /loop re-invokes the prompt
+  across sessions. Stops on: empty scope, hard-floor pause, 2
+  consecutive blocked items, or budget exhaustion.
+
 INCIDENTS (/incident-manager)
   Creates ISSUE type:incident with embedding ON (documented exception).
   Lifecycle: detected → investigating → mitigating → resolved →

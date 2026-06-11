@@ -44,14 +44,48 @@ legacy path — no error, no retry.
 
 **1+ results** → take the PROJ-level row plus the optional CMP-scoped row
 (when one matches the affected component) and merge per key with
-most-conservative-wins: `dual` beats `single`, `false` beats `true` in
-`parallelize.*`, and the heavier validator level wins.
+most-conservative-wins: `dual` beats `single` beats `none`, `false`
+beats `true` in `parallelize.*` and `backlog_chaining`, and the heavier
+validator level wins. An unknown `gates.*` value resolves to `dual`
+(most conservative — forward compatibility).
+
+Schema v2 payloads (`schema_version: 2`) add: `gates.new-feature: none`,
+`gates.bug: none`, `autonomy_log`, `backlog_chaining`. A v1 payload is
+consumed unchanged with v1 semantics — absent v2 keys default to
+`autonomy_log: true`, `backlog_chaining: false`.
 
 Report the resolved mode in the progress header:
 
 ```
-autonomy: single-gate | dual-gate (policy: <STD-id> v<N> | defaults)
+autonomy: zero-gate | single-gate | dual-gate (policy: <STD-id> v<N> | defaults)
 ```
+
+### Zero-gate mode (gates.new-feature: none — schema v2 only)
+
+With `gates.new-feature: none` the pipeline runs with ZERO mandatory
+conversation pauses. The consolidated gate is replaced by an **AUTONOMY
+GATE RECORD**: evaluate exactly the same PROCEED/REVIEW criteria as the
+single-gate recommendation; on PROCEED continue silently; on REVIEW
+auto-resolve each signal with the most conservative viable option and
+log it instead of pausing.
+
+**Hard floor (never configurable — pauses even in zero-gate mode):**
+1. The pipeline would need an op on the deploy-policy no-go list
+   (production deploy, real registry publish, vault/allowlist mutation,
+   destructive git/AWS op) → show the consolidated report and wait.
+2. Estimated recurring cost impact > 20% of the current budget.
+3. A security-tagged change fails exhaustive validation.
+
+This policy governs conversation gates ONLY (NFR-SAFE-1): broker
+enforcement, the STD no-go list and hook fail-closed paths stay out of
+its reach in every mode.
+
+**AUTONOMY_LOG** (when `autonomy_log: true`, the v2 default): record
+every auto-resolved signal as one line —
+`<signal> → <resolution> — <one-line rationale>` — show the lines in
+the progress output and persist them verbatim into the PHASE 5b ISSUE
+content under `## Autonomy log (zero-gate)`. If the TXN is cancelled
+before PHASE 5b, persist the log in the `txn_cancel` reason instead.
 
 ### CONTEXT_PACK (only when the resolved policy has context_pack: true)
 
@@ -145,7 +179,7 @@ Launch `requirements-analyst` with the description + `txn_id` (+ the
 CONTEXT_PACK when enabled). Capture **REQUIREMENTS_REPORT** and, if a REQ
 is created, its id.
 
-**Early-escalation check (always, both gate modes)**: if the report
+**Early-escalation check (dual and single modes)**: if the report
 contains blocking alarms, a ROAD conflict, cost impact > 20% of current
 budget, or data-model / existing-endpoint changes → PAUSE NOW (do NOT
 launch the planner), show the report and wait for user decisions —
@@ -156,6 +190,11 @@ identical to today's behaviour.
 
 **Gate mode `single`**: do NOT pause here. Proceed to PHASE 1 and present
 both reports at the consolidated gate.
+
+**Gate mode `none`**: do NOT pause. Run the same early-escalation
+evaluation; only hard-floor signals pause (see Zero-gate mode). Every
+other signal is auto-resolved with the most conservative viable option
+and logged to the AUTONOMY_LOG before launching the planner.
 
 ## PHASE 1 — Spec design
 
@@ -187,6 +226,17 @@ present, in this exact order:
 **PAUSE**: wait for one user decision covering REQ + SPEC together. If
 the REQ is rejected, discard the SPEC (accepted trade-off) and
 `txn_cancel`.
+
+**Gate mode `none` — AUTONOMY GATE RECORD (no pause)**: build the same
+three-part summary internally and evaluate the same criteria. On
+PROCEED: continue without pausing. On REVIEW: auto-resolve each signal
+(most conservative viable option) and log it — unless a hard-floor
+signal fires, in which case show the consolidated gate and wait exactly
+as in single mode. Emit one progress line:
+
+```
+AUTONOMY GATE — auto-approved | auto-resolved: N signals | HARD FLOOR pause: <reason>
+```
 
 ## PHASE 2 — Backend implementation (conditional)
 
@@ -261,6 +311,9 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 })
 ```
 
+In zero-gate mode with a non-empty AUTONOMY_LOG, append the log verbatim
+to the ISSUE content under `## Autonomy log (zero-gate)`.
+
 ## PHASE 6 — KB update + TXN close
 
 Launch `updater` with the full summary of changes + `txn_id`.
@@ -302,6 +355,32 @@ SLA: <duration> vs target <N> min — OK | EXCEEDED (informational)
 
 Still 0 results, or query error → skip silently.
 
+### Backlog chaining (zero-gate + backlog_chaining: true only)
+
+After `txn_activate` (and the optional SLA line), when the resolved
+policy has `gates.new-feature: none` AND `backlog_chaining: true` AND
+the invocation declared a backlog scope (e.g. "work through milestone
+M2.5", a ROAD id, or an explicit ISSUE/REQ list in $ARGUMENTS): query
+the next open item —
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "ISSUE",   // and/or REQ, per the declared scope
+  project_id: <PROJ>,
+  tags_any: ["status:open"],
+  tags_all: [<declared milestone/scope tags>],
+  order_by: "updated_at_desc"
+})
+```
+
+— announce it in one line and start the next pipeline iteration from
+Step 0.5 (fresh policy read, fresh TXN). Stop chaining when: no items
+remain in scope, a hard-floor pause fires, two consecutive items end
+blocked, or the session/loop budget is exhausted. Pacing belongs to the
+harness (`/loop` or wake-up scheduling), not to this skill: never
+busy-wait between items, and let a recurring harness loop re-invoke the
+pipeline when the scope outlives the session.
+
 ---
 
 ## PHASE 7 — Pending tasks (conditional)
@@ -335,12 +414,14 @@ SLA: <duration> vs target <N> min — OK (optional, sla_report: true only)
 
 The two PAUSE lines appear only in dual mode. In single mode a single
 `CONSOLIDATED GATE — Waiting for decision...` line (after PHASE 1)
-replaces them. The final `SLA:` line is optional (only when the policy
-has `sla_report: true`).
+replaces them. In zero-gate mode a single `AUTONOMY GATE — ...` line
+(after PHASE 1) replaces them, plus one line per AUTONOMY_LOG entry.
+The final `SLA:` line is optional (only when the policy has
+`sla_report: true`).
 
 ## Stop rules
 
-Consult the user before continuing if:
+**Dual / single mode** — consult the user before continuing if:
 - PHASE 0 detects blocking alarms.
 - ROAD conflict in PHASE 1.
 - Cost impact > 20% of current budget.
@@ -349,3 +430,11 @@ Consult the user before continuing if:
 
 In single-gate mode, the first four rules are evaluated at the end of
 PHASE 0 and fire BEFORE the planner launches (early escalation).
+
+**Zero-gate mode** — only the hard floor consults the user (no-go-list
+op required, recurring cost impact > 20%, security-tagged change failing
+exhaustive validation). Every other signal auto-resolves and logs. A
+validation criterion failing 3 times does not consult: record it as a
+blocked ISSUE (PHASE 7) and continue when it does not block the SPEC's
+core acceptance criteria; `txn_cancel` (persisting the AUTONOMY_LOG in
+the reason) when it does.

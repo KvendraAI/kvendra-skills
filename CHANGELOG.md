@@ -4,6 +4,37 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.6.0] — 2026-06-11 — Pipeline-autonomy schema v2: zero-gate mode + /loop integration
+
+### Highlights
+
+Pipeline-autonomy **schema_version 2**: a project can now declare `gates.new-feature: none` and `gates.bug: none` (**zero-gate mode**) — zero mandatory conversation pauses. The orchestrator still runs the exact same gate evaluation as single-gate, but auto-resolves every REVIEW signal with the most conservative viable option and records it in an auditable **AUTONOMY_LOG** (progress output + PHASE 5b ISSUE under `## Autonomy log (zero-gate)`, or the `txn_cancel` reason). An **inviolable hard floor** pauses even in zero-gate mode: no-go-list ops (production deploy, real registry publish, vault/allowlist mutation, destructive git/AWS), recurring cost impact > 20% of budget, and security-tagged changes failing exhaustive validation.
+
+New `backlog_chaining` key: with zero-gate + a declared backlog scope (milestone tag, ROAD id or ISSUE list), `/new-feature` chains the next open backlog item after each `txn_activate` — pairing with the harness `/loop` for unattended milestone sessions. Pacing belongs to the harness; the skill never busy-waits.
+
+Opt-in and backwards compatible: v1 payloads are consumed unchanged; absent STD = dual-gate legacy behaviour; an unknown `gates.*` value resolves to the most conservative mode (forward compatibility).
+
+### Added
+
+- **Zero-gate mode** (`gates.new-feature: none`, schema v2) in `/new-feature`: AUTONOMY GATE RECORD replaces the consolidated gate (same PROCEED/REVIEW criteria, auto-resolve-and-log), early-escalation signals auto-resolve except the hard floor, `AUTONOMY GATE — auto-approved | auto-resolved: N signals | HARD FLOOR pause: <reason>` progress line.
+- **Zero-gate mode for `/bug`** (`gates.bug: none`, schema v2): the three stop rules auto-resolve with documented conservative strategies (infra work → blocked ISSUE; multi-component fixes → component-by-component; newly-surfaced bugs → extra PHASE 3 analyzer items or follow-up ISSUE).
+- **AUTONOMY_LOG** (`autonomy_log: true`, v2 default): one line per auto-resolved signal (`<signal> → <resolution> — <rationale>`), shown in progress output and persisted into the PHASE 5b ISSUE (or `txn_cancel` reason).
+- **Hard floor (never configurable)**: no-go-list op required / recurring cost > 20% / security-tagged change failing exhaustive validation — pauses in every mode. Validation criterion failing 3× in zero-gate: blocked ISSUE + continue when non-core, `txn_cancel` when core.
+- **`backlog_chaining`** in `/new-feature`: chain the next open item of the declared scope after `txn_activate` (fresh policy read, fresh TXN). Stops on empty scope, hard-floor pause, 2 consecutive blocked items, or budget exhaustion.
+- **Patient-polling guidance in `/deploy`**: long external convergence waits (CloudFormation, CloudFront, DNS/cert) poll read-only with ≥30s backoff, never abort early, and delegate pacing to the harness when recurring scheduling (e.g. `/loop`) is available.
+- **Autonomous-sessions section in `/user-help`**: zero-gate + `/loop` pattern documented (chaining inside a session, harness re-invocation across sessions).
+
+### Changed
+
+- Most-conservative-wins merge extended: `dual` beats `single` beats `none`; `default` beats `none` in `gates.bug`; `false` beats `true` in `backlog_chaining`; unknown gate values resolve to the most conservative mode.
+- Progress header now reports `autonomy: zero-gate | single-gate | dual-gate (policy: <STD-id> v<N> | defaults)`.
+
+### Refs
+
+- REQ: `REQ-KVD-SKILLS-CB8D16` (sibling of `REQ-KVD-SKILLS-3C218A`) · ADR: `ADR-KVD-SKILLS-5B6BBD`
+- ROAD: `ROAD-KVD-SKILLS-C20D24` · STD: `STD-KVD-18F1EB` v2 (STD-KVD-PIPELINE-AUTONOMY)
+- TXN: `TXN-KVD-20260611-001` · First use case: M2.5 Team workspace views unattended test session
+
 ## [1.5.0] — 2026-06-09 — Declarative pipeline-autonomy mode
 
 ### Highlights
