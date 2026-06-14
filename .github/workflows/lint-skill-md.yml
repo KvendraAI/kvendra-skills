@@ -193,3 +193,35 @@ jobs:
           fi
 
           echo "No-mandatory-broker-block check passed: legacy block absent, canonical pointer present in all SKILL.md files."
+
+      - name: Guarded-update CAS adoption check
+        id: cas_adoption
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Every SKILL.md that issues an entity_update CALL (matched by the
+          # call-syntax `entity_update(`, which excludes tool-catalogue prose
+          # listings like user-help/env-check) MUST carry the canonical
+          # guarded-update (CAS) rule, so the optimistic lock is sent on every
+          # write (REQ-KVD-ENTERPRISE-7EC119 Paso B / ISSUE-KVD-SKILLS-F438CE).
+          missing=""
+          while IFS= read -r -d '' f; do
+            if grep -q 'entity_update(' "$f"; then
+              if ! grep -q 'Guarded update (CAS)' "$f"; then
+                missing="$missing $f"
+              fi
+            fi
+          done < <(find plugins/kvendra-skills/skills -name SKILL.md -print0)
+
+          if [[ -n "$missing" ]]; then
+            echo "::error::Writer SKILL.md missing the canonical 'Guarded update (CAS)' rule:"
+            for m in $missing; do echo "  $m"; done
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Any skill that CALLS entity_update must read-modify-write with"
+            echo "    expected_version and handle 409 VERSION_CONFLICT. Add the canonical"
+            echo "    '**Guarded update (CAS)**' bullet to its '## Kvendra rules (summary)'."
+            exit 1
+          fi
+          echo "Guarded-update CAS adoption check passed: all entity_update writers carry the rule."

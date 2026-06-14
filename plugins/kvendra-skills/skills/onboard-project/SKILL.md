@@ -27,6 +27,7 @@ Read `help({topic:"workspace-layout"})` to refresh the canonical metadata conven
 ## Kvendra rules (summary)
 
 - Identify in every write: `updated_by: "skill:onboard-project"`. The MCP client adds `X-Kvendra-Skill` automatically.
+- **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with `txn_activate` (success) or `txn_cancel(reason)` (failure).
 - Before opening a TXN: `txn_check_interrupted({project_id, component_id?})`. If an in-progress TXN exists: ask Resume / Cancel / Ignore.
 - IDs are server-emitted. Exception: `PRJ`/`CMP`/`REL` require `force_id`.

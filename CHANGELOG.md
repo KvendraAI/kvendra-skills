@@ -4,6 +4,19 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.7.0] — 2026-06-14 — Guarded-update CAS adoption in writer skills (Paso B)
+
+### Added
+
+- **Guarded update (CAS) adoption** (Paso B of the guarded-update rollout): the 7 writer skills that call `entity_update` (`updater`, `release-manager`, `to-do`, `onboard-project`, `incident-manager`, `doc-indexer`, `consultancy`) now carry a canonical **Guarded update (CAS)** rule in their `## Kvendra rules (summary)` — capture `version` from the preceding read, send it as `expected_version`, and reconcile + bounded-retry on `409 VERSION_CONFLICT`. Makes the engine's optimistic lock effective end-to-end (the lock is ignored when `expected_version` is absent → last-write-wins). Client side of `IF-KVD-ENTERPRISE-060D2B` v1.3.
+- **`lint-skill-md` guarded-update CAS adoption check**: any `SKILL.md` issuing an `entity_update(` call must carry the canonical rule — keeps adoption at 100% as new writer skills are added (the verifiable equivalent of the adoption gate before flipping `KB_TEAM_CAS_REQUIRED`).
+
+### Refs
+
+- ISSUE: `ISSUE-KVD-SKILLS-F438CE` · REQ: `REQ-KVD-ENTERPRISE-7EC119` (Paso B / Fase 1a) · IF: `IF-KVD-ENTERPRISE-060D2B` v1.3
+- Backend (Paso A, shipped): `ISSUE-KVD-ENTERPRISE-C16A4E` (commit `9451a50`) · TXN: `TXN-KVD-20260614-004`
+- Enables the Paso C flip of `KB_TEAM_CAS_REQUIRED` once adoption is verified. Enforcement-scope follow-up (Pro/Team/Enterprise): `ISSUE-KVD-ENTERPRISE-9C1D6E`.
+
 ## [1.6.0] — 2026-06-11 — Pipeline-autonomy schema v2: zero-gate mode + /loop integration
 
 ### Highlights
