@@ -4,6 +4,18 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.8.0] — 2026-06-15 — Decision-key adoption in ADR/IF writer skills (Paso C)
+
+### Added
+
+- **Decision key for gated classes (ADR / IF)** (Paso C of the guarded-update rollout): the writer skills that create or update an `ADR` or `IF` (`planner`, `consultancy`, `onboard-project`, `interface-validator`, `updater`) now carry a canonical **Decision key for gated classes** rule in their `## Kvendra rules (summary)` — set `metadata.decision = {key, value}` (ADR: `<domain>.<topic>` → position taken; IF: `interface.<wire-name>` → wire version). With the flag ON the engine rejects a gated create/activate lacking `decision.key` (`decision_required`) and surfaces same-`key`/different-`value` clashes (`decision_conflict`). `GLO`/`REQ` are intentionally NOT gated (scope narrowed — see `ADR-KVD-ENTERPRISE-015CA8`). **Flag-OFF-safe**: the added metadata is inert until `KB_DECISION_GATE_REQUIRED` is flipped.
+
+### Refs
+
+- ISSUE: `ISSUE-KVD-SKILLS-8F1E0D` · ADR: `ADR-KVD-ENTERPRISE-015CA8` (gate rescope to ADR(accepted)+IF; GLO/REQ warn-only) · REQ: `REQ-KVD-ENTERPRISE-7EC119` (AC-DECISIONKEY-REQUIRED-1)
+- Engine (rescope, shipped staging): `ISSUE-KVD-ENTERPRISE-F801E5` (commit `7b99d2f`, `UPDATE_COMPLETE`) · corpus backfill of 47 ADR + 12 IF done same session (consultancy 2026-06-15).
+- Enables the flip of `KB_DECISION_GATE_REQUIRED` once this version is installed (`/plugin update`) and adoption is verified. Follow-up: a `lint-skill-md` decision-key adoption check (analogous to the 1.7.0 CAS check) is deferred.
+
 ## [1.7.0] — 2026-06-14 — Guarded-update CAS adoption in writer skills (Paso B)
 
 ### Added
