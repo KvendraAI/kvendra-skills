@@ -9,7 +9,7 @@
       "name": "kvendra-skills",
       "source": "./plugins/kvendra-skills",
       "description": "Orchestrators + subagents that drive the Kvendra hosted Knowledge engine (api.kvendra.cloud). 29 skills covering feature delivery, bug triage, incident response, release management, requirements analysis, planning, implementation, validation, regression, documentation, consultancy, CLAUDE.md lifecycle (onboard / sync / lint), STD-driven generic deploy, and release introspection (/version).",
-      "version": "1.1.0",
+      "version": "1.8.0",
       "category": "knowledge-management",
       "tags": ["kvendra", "knowledge-base", "orchestration", "kb-engine"],
       "license": "MIT",
