@@ -102,7 +102,7 @@ SUBAGENTS (used by pipelines, also invocable)
   /analyzer               Root cause + fix proposal
   /updater                Coherence: relations, REL changelog, derived
   /interface-validator    Naming in code vs IF and GLO
-  /doc-indexer            Indexes docs as DOC entries
+  /doc-indexer            Indexes docs as DOC entries + library super-index
 
 OPERATIONS
   /deploy                 STD-driven deploy (reads STD-<PROJ>-<COMP>-DEPLOY-PROCESS)
@@ -111,8 +111,11 @@ OPERATIONS
   /onboard-project        Onboarding: PRJ + CMP + IF + GLO + ENV + REL
 
 DOCUMENTATION
-  /manual-writer          Technical and user manuals (English, docs/<topic>/)
-  /doc-indexer            Index docs/ Markdown files as KB DOC entries
+  /manual-writer          Configurable doc "books" by genre x depth
+                          (overview | user-manual | c4 | ...); English;
+                          docs/<book>/
+  /doc-indexer            Index docs/ as KB DOC entries + regenerate the
+                          docs/README.md library super-index
   /changelog              Cross-entity / REL / date change query
 
 CONFIGURATION

@@ -1,18 +1,20 @@
 ---
 name: manual-writer
-description: Manual writer — generates Markdown documentation under docs/<topic>/ of a project (English source), consulting Kvendra DOC entries for consistency; optional Mermaid diagrams and screenshots
+description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/<book>/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots
 user_invocable: true
-args: "[manual topic and target project]"
+args: "[topic] [--genre=overview|user-manual|c4|...] [--depth=overview|standard|comprehensive] [--scope=project|CMP-...]"
 ---
 
 # Manual Writer — Write project documentation as Markdown
 
 You act as a **Senior Technical Writer**. Given a topic, you generate a
-complete, well-structured Markdown manual under the project's `docs/`
-directory. You consult existing DOC entries in the Kvendra KB to keep
-the new manual consistent with prior documentation. Optionally you
-embed Mermaid diagrams and capture screenshots if a browser MCP is
-available.
+complete, well-structured documentation **book** under the project's `docs/`
+directory — one genre instance with a configurable depth. You consult
+existing DOC entries in the Kvendra KB to keep the new book consistent with
+prior documentation, and you follow the genre blueprint (a minimal built-in
+one, or — if the project defines it — an `STD-TPL-DOC-GENRE-*` template).
+Optionally you embed Mermaid diagrams (including C4) and capture screenshots
+if a browser MCP is available.
 
 **FUNDAMENTAL PRINCIPLE — Consistency first**: before writing, load all
 existing DOC entries for this project and build a brief of established
@@ -56,8 +58,10 @@ Load the relevant entities from the Kvendra KB:
 - Functional / architectural context:
   - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"REQ", project_id:<PROJ> })`
   - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"CMP", project_id:<PROJ> })`
-- UX (if it's a user manual):
+- UX (if the genre is `user-manual`):
   - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"UX", project_id:<PROJ> })`
+- Interfaces and relations (if the genre is `c4` or another KB-projected genre):
+  - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"IF", project_id:<PROJ> })`
 
 ## Step 2 — Load existing documentation (CONSISTENCY BRIEF)
 
@@ -96,45 +100,97 @@ Build:
 If the project has no DOC entries yet, suggest running `/doc-indexer` to
 catalogue existing `docs/` content before continuing.
 
-## Step 3 — Determine manual type
+## Step 3 — Resolve genre, depth and scope
 
-| Type | Audience | Primary content | Screenshots |
-|------|----------|-----------------|-------------|
-| **user** | End users of the app | Step-by-step flows with screenshots | Recommended |
-| **technical** | Developers | Architecture, APIs, code, setup | Mermaid diagrams recommended |
-| **operations** | DevOps / SRE | Deployment, configuration, monitoring | As needed |
-| **functional** | Product owners / QA | Business rules, use cases | Recommended |
+A documentation **book** has three orthogonal axes. All are optional — when
+omitted, sensible defaults apply (Tier-0 minimal config), reproducing the
+classic single-manual behaviour.
+
+| Axis | Values | Default (Tier-0) |
+|------|--------|------------------|
+| `genre` | `overview`, `user-manual`, `c4` (+ any `STD-TPL-DOC-GENRE-*` in the KB) | inferred from the topic |
+| `depth` | `overview`, `standard`, `comprehensive` | `standard` |
+| `scope` | `project` or a component id (e.g. `CMP-...`) | `project` |
+
+Read them from the arguments (`--genre=`, `--depth=`, `--scope=`). With no
+flags, infer a genre from the topic, use `standard` depth and whole-project
+scope (backward-compatible with the classic single manual).
+
+### Built-in genre catalogue (minimal, generic)
+
+| Genre | Audience | Section blueprint | Diagrams | KB source |
+|-------|----------|-------------------|----------|-----------|
+| `overview` | all | `01-overview` (+ `02-architecture-at-a-glance` at comprehensive) | optional | PRJ + CMP |
+| `user-manual` | user | `01-introduction`, `02-<task>`, …, `NN-faq` | screenshots | UX + app |
+| `c4` | technical | `01-context`, `02-containers`, `03-components` (+ `04-code` at comprehensive) | Mermaid C4 (fallback flowchart) | CMP + IF + relations |
+
+`depth` controls breadth: `overview` is a single-page book; `standard` is the
+section blueprint above; `comprehensive` adds every optional section and
+denser diagrams.
+
+### Tier-1 — project override via STD-TPL-DOC-GENRE
+
+If the KB defines a template for the chosen genre, it overrides/extends the
+built-in blueprint:
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "STD",
+  project_id: <PROJ>,
+  tags_all: ["scope:std-tpl", "doc-genre", "genre:<genre>"]
+})
+```
+
+If found, follow its Book-structure / Diagram-types / KB-source-mapping /
+Depth-variants sections. If NOT found, use the built-in blueprint above and
+proceed — do NOT stop (a safe default always exists). This is the doc-genre
+fail-safe; it differs from the deploy-style STD fail-stop because docs always
+have a generic default.
+
+### KB-projected genres
+
+`c4` (and future api-ref / glossary / adr-log genres) are *projected* from KB
+entities, not free prose. Generate their content from the mapped entity types
+and mark every generated file `source: kb-projection` in its front-matter so
+it is recognised as regenerable (not hand-edited). For `c4` the mapping is:
+Context from `PRJ` + external actors; Containers from `CMP`; Components from
+the component internals + `IF`; relations from `depends_on` / `consumes`.
 
 ## Step 4 — Define the structure (MANDATORY PAUSE)
 
 Generate a Table of Contents before writing. Present:
 
-1. Proposed index (file structure).
-2. The CONSISTENCY BRIEF from Step 2.
-3. Any overlap alerts — if a section covers a topic already documented,
+1. The resolved `genre` / `depth` / `scope` and the section blueprint.
+2. Proposed file structure (under `docs/<book-slug>/`).
+3. The CONSISTENCY BRIEF from Step 2.
+4. Any overlap alerts — if the book covers a topic already documented,
    propose either a cross-reference or a different angle by audience.
 
 **Wait for the user to confirm** before writing any `.md` file.
 
-### Base structure
+### Book structure
+
+Each genre instance is a **book** — its own directory under `docs/`:
 
 ```
-docs/<topic>/
-├── README.md
-├── 01-introduction.md
+docs/<book-slug>/
+├── README.md          # book index; opens with YAML front-matter (see Step 8)
+├── 01-<section>.md
 ├── 02-<section>.md
 ├── ...
-├── NN-faq.md
 └── assets/
     ├── screenshots/
     └── diagrams/
 ```
 
-The structure is flat — `.md` files plus an `assets/` directory for images.
+`<book-slug>` is derived from the topic/genre (e.g. `architecture-c4`,
+`user-guide`). Each book is one entry in the project documentation library;
+the library super-index (`docs/README.md`) is regenerated by `doc-indexer`
+(Step 10) — never hand-maintained, never a JSON registry.
 
 ## Step 5 — Capture screenshots (optional, if user-facing)
 
-Only if the manual is `user` type and the project's application is
+Only if the book's genre is `user-manual` and the project's application is
 available locally. If a browser MCP is installed (e.g. Playwright,
 Puppeteer), use it; otherwise ask the user to provide screenshots
 manually or skip this section.
@@ -159,7 +215,7 @@ For each screen:
 1. Navigate to the URL.
 2. Wait for the page to be network-idle.
 3. Optionally highlight a specific element.
-4. Take a screenshot → save to `docs/<topic>/assets/screenshots/<NN>-<description>.png`.
+4. Take a screenshot → save to `docs/<book-slug>/assets/screenshots/<NN>-<description>.png`.
 
 ### Markdown reference
 
@@ -185,7 +241,15 @@ flowchart TD
 ````
 
 Supported types: `flowchart`, `graph`, `sequenceDiagram`, `erDiagram`,
-`stateDiagram-v2`, `pie`, `gantt`, `classDiagram`.
+`stateDiagram-v2`, `pie`, `gantt`, `classDiagram`, and the C4 family
+(`C4Context`, `C4Container`, `C4Component`, `C4Dynamic`).
+
+For the `c4` genre, `C4Context` renders cleanly, but `C4Container` /
+`C4Component` auto-layout tends to overlap edges and labels on dense
+diagrams. Default those denser levels to an equivalent `flowchart`/`graph`
+(same nodes and edges, `TB` direction, short labels); keep `C4Context` native.
+The C4 *levels* are the model — flowchart is only the renderer for the dense
+levels. Validate the render before publishing.
 
 ## Step 7 — Write the content
 
@@ -269,10 +333,23 @@ Use blockquotes with rich format, NOT code blocks:
 
 Code blocks ONLY for: commands, source code, URLs/paths, JSON/YAML, Mermaid.
 
-## Step 8 — Generate the README.md index
+## Step 8 — Generate the README.md index (with front-matter)
+
+The book's `README.md` MUST open with YAML front-matter — this is how
+`doc-indexer` discovers the book for the library super-index (no JSON
+registry):
 
 ```markdown
-# <Manual title>
+---
+kvendra_doc: book
+genre: <overview|user-manual|c4|...>
+audience: <user|technical|operations|functional|all>
+depth: <overview|standard|comprehensive>
+source: <authored|kb-projection>
+title: <Book title>
+---
+
+# <Book title>
 
 <2-3 line description>
 
@@ -287,13 +364,14 @@ Brief description.
 ---
 
 ## Audience
-<Who this manual is for>
+<Who this book is for>
 
 ## Prerequisites
 <What is needed before>
 
 ## Related documentation
-<Links to other manuals under docs/>
+See the [documentation library](../README.md) for the other books in this
+project.
 
 ---
 
@@ -304,41 +382,50 @@ Brief description.
 
 Checklist:
 
-1. Relative links between documents work.
-2. Images exist under `assets/screenshots/` and use relative paths.
-3. Mermaid blocks have correct syntax.
-4. Structured-data examples use blockquotes (not code blocks).
-5. Style is uniform.
-6. Every entry in the index has its file.
-7. Consistency with the CONSISTENCY BRIEF.
+1. The README front-matter is present and valid (`kvendra_doc: book` + genre,
+   audience, depth, source, title).
+2. Relative links between documents work.
+3. Images exist under `assets/screenshots/` and use relative paths.
+4. Mermaid blocks have correct syntax (C4 blocks have a flowchart fallback if
+   they render poorly).
+5. Structured-data examples use blockquotes (not code blocks).
+6. Style is uniform.
+7. Every entry in the index has its file.
+8. KB-projected files (e.g. `c4`) carry `source: kb-projection`.
+9. Consistency with the CONSISTENCY BRIEF.
 
 If any inconsistency is detected, inform the user before finishing.
 
-## Step 10 — Index the new manual in the Kvendra KB
+## Step 10 — Index the book and refresh the library super-index
 
-After the `.md` files are written, register them as DOC entries by
-invoking `doc-indexer` with the new manual's path:
+After the `.md` files are written, invoke `doc-indexer` on the book path. It
+registers each file as a DOC entry (tagged with the book `genre`) AND
+regenerates the project documentation library super-index `docs/README.md`
+from every book's front-matter:
 
 ```
-Skill(skill="kvendra-skills:doc-indexer", args="docs/<topic>/")
+Skill(skill="kvendra-skills:doc-indexer", args="docs/<book-slug>/")
 ```
 
-This guarantees that future runs of `manual-writer` find the new entries
-when building their CONSISTENCY BRIEF.
+This keeps the CONSISTENCY BRIEF complete for future runs and keeps the
+library index in sync — additively, without a JSON registry.
 
 ## Required output
 
 ```
-### MANUAL GENERATED
+### BOOK GENERATED
 - Project: [project_id]
-- Type: [user/technical/operations/functional]
-- Directory: docs/<topic>/
+- Genre: [overview/user-manual/c4/...]
+- Depth: [overview/standard/comprehensive]
+- Scope: [project/CMP-...]
+- Directory: docs/<book-slug>/
 - Files: N (README.md + N-1 sections)
 - Screenshots: N (if any)
 - Diagrams: N (if any)
+- Blueprint source: [built-in / STD-TPL-DOC-GENRE-<g>]
 
 ### FILE TREE
-docs/<topic>/
+docs/<book-slug>/
 ├── README.md
 ├── ...
 └── assets/
@@ -352,6 +439,7 @@ docs/<topic>/
 
 ### Kvendra UPDATED
 - DOC entries: N created/updated via doc-indexer
+- Library super-index: docs/README.md refreshed (doc:catalog)
 
 ### NOTES
 [Observations, pending sections, items to review]
@@ -359,17 +447,28 @@ docs/<topic>/
 
 ## Rules
 
+- **Genres, not just audiences.** A book has a `genre` (structure), a `depth`
+  (breadth) and a `scope`. Tech-specific or project-specific genre recipes
+  live in `STD-TPL-DOC-GENRE-*` entities of the KB, read at runtime — only
+  the minimal generic blueprint ships here (ADR-KVD-SKILLS-BB0E8A).
+- **Library, not mega-document.** Each genre instance is a separate book
+  under `docs/<book-slug>/`; the `docs/README.md` super-index is regenerated
+  by `doc-indexer`. Never a JSON registry / `build-registry.js` / `index.json`,
+  never visibility levels, never an external doc-portal stack
+  (ROAD-KVD-SKILLS-79272A "Still in force").
+- **Backward-compatible.** With no `--genre/--depth/--scope`, behaviour
+  matches the classic single `standard` manual under `docs/<topic>/`.
 - **Single language: English.** No multi-locale generation. The runtime
   agent translates to the project's CLAUDE.md language.
 - **Single source of truth: filesystem + KB.** The output lives as `.md`
-  files under `docs/<topic>/` and as DOC entries in the Kvendra KB.
+  files under `docs/<book-slug>/` and as DOC entries in the Kvendra KB.
 - **Mandatory pause** after Step 4 (TOC + consistency brief). Do not
   write any `.md` until the user approves.
 - **Do not invent data**. If you need information not in the KB or in
-  the code, ask the user.
+  the code, ask the user. KB-projected genres reflect real entities only.
 - **Real screenshots only**. Only captures of the actual application.
 - **Reuse screenshots**. If a screenshot already exists for the same
-  view in another manual under `docs/`, reference it via a relative
+  view in another book under `docs/`, reference it via a relative
   path rather than duplicating.
 - **Verifiable diagrams**. Reflect the real architecture / flows.
 - **Versioning**. Include the last-updated date at the end of the README.

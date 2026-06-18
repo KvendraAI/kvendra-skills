@@ -1,18 +1,20 @@
 ---
 name: doc-indexer
-description: Documentation indexer — reads .md files under a project's docs/ directory and creates DOC entries in the Kvendra KB (one entry per file)
+description: Documentation indexer — reads .md files under a project's docs/ directory, creates one DOC entry per file (tagged by genre), and regenerates the docs/README.md library super-index
 user_invocable: true
-args: "[optional path under docs/ to limit the scope, e.g. docs/onboarding/]"
+args: "[optional path under docs/ to limit the scope, e.g. docs/architecture-c4/]"
 ---
 
 # Doc Indexer — Index project documentation into the Kvendra KB
 
 You read all the Markdown files under a project's `docs/` directory and
 create or update DOC entries in the Kvendra KB, one entry per file. Each
-entry captures a short summary, the key facts the file states, the
-domain terminology it uses, and the relative file path so that
+entry captures a short summary, the key facts the file states, the domain
+terminology it uses, the book genre, and the relative file path so that
 `manual-writer` and any future skill can consult prior documentation for
-consistency before writing new content.
+consistency before writing new content. You also regenerate the project
+documentation **library super-index** (`docs/README.md`) so the books are
+easy to navigate.
 
 ## Optional path scope
 
@@ -21,8 +23,10 @@ $ARGUMENTS
 ## Step 0 — Kvendra initialization
 
 Identify `project_id` from the `CLAUDE.md`. If the user passed a path
-(e.g. `docs/onboarding/`), use it as the scope; otherwise index every
-`.md` under `<project root>/docs/`.
+(e.g. `docs/architecture-c4/`), use it as the scope for the per-file
+indexing; otherwise index every `.md` under `<project root>/docs/`. The
+library super-index (Step 5) is ALWAYS regenerated from the full `docs/`
+tree regardless of scope.
 
 ## Kvendra rules (summary)
 
@@ -55,22 +59,27 @@ Find every `.md` under the scope:
 find docs -name '*.md' -type f
 ```
 
-If a path scope is passed via args (e.g. `docs/onboarding/`), restrict
-the search to that subtree. Skip hidden directories. List the files and
-report the total; ask the user to confirm if the count is unexpectedly
-large (> 50 files).
+If a path scope is passed via args (e.g. `docs/architecture-c4/`), restrict
+the per-file indexing to that subtree. Skip hidden directories. List the
+files and report the total; ask the user to confirm if the count is
+unexpectedly large (> 50 files).
 
 ## Step 2 — Read and analyze each file
 
 For each `.md`:
 
 1. Read the file fully.
-2. Extract:
+2. If the file is a book `README.md`, read its YAML front-matter
+   (`kvendra_doc: book`, `genre`, `audience`, `depth`, `source`, `title`).
+3. Extract:
    - **Summary** — 2-3 sentences.
    - **Key facts** — concrete statements (entities, flows, states, roles, URLs, configs, rules).
    - **Terminology** — domain-specific terms with the definition as used in this file.
    - **Cross-references** — mentions of other files / sections (relative links inside `docs/`).
-   - **Audience** — one of `user | technical | operations | functional`.
+   - **Audience** — one of `user | technical | operations | functional | all`.
+   - **Genre** — from the book front-matter (`genre`). If absent (legacy book),
+     infer from content/path and flag it in the consistency report.
+   - **Source** — `authored | kb-projection` from front-matter (default `authored`).
 
 ## Step 3 — Check for existing entries
 
@@ -86,9 +95,9 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
 ```
 
 If a DOC entry exists with the same `file_path` in metadata → use
-`entity_update`. Otherwise → `entity_create`. Idempotent: re-running the
-skill on the same `docs/` directory updates in place rather than
-duplicating.
+`entity_update` (apply the **Guarded update (CAS)** rule). Otherwise →
+`entity_create`. Idempotent: re-running the skill on the same `docs/`
+directory updates in place rather than duplicating.
 
 ## Step 4 — Create or update the DOC entry
 
@@ -101,11 +110,13 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   title: "DOC: <relative file path>",
   content: <see format below>,
   metadata: {
-    file_path: "<path relative to project root, e.g. docs/onboarding/01-intro.md>",
-    audience: "<user|technical|operations|functional>",
+    file_path: "<path relative to project root, e.g. docs/architecture-c4/01-context.md>",
+    audience: "<user|technical|operations|functional|all>",
+    genre: "<book genre, e.g. c4>",
+    source: "<authored|kb-projection>",
     last_indexed: "<ISO date>"
   },
-  tags: ["<audience>", "<top-level topic>"],
+  tags: ["audience:<audience>", "doc:genre:<genre>", "<top-level topic>"],
   updated_by: "skill:doc-indexer"
 })
 ```
@@ -117,6 +128,7 @@ ENTITY_CONFIG. Cross-references go in `metadata.crossrefs` or in tags.)
 
 ```markdown
 ## File: <relative path>
+## Genre: <genre>
 ## Audience: <audience>
 
 ### Summary
@@ -134,7 +146,36 @@ ENTITY_CONFIG. Cross-references go in `metadata.crossrefs` or in tags.)
 - Depends on: <relative file path or section>
 ```
 
-## Step 5 — Consistency report
+## Step 5 — Regenerate the library super-index
+
+After indexing the files, (re)generate the project documentation **library**
+index at `docs/README.md` so the project's books are easy to navigate.
+
+1. **Discover books**: for every `docs/<book>/README.md`, read its YAML
+   front-matter (`kvendra_doc: book`, `genre`, `audience`, `depth`,
+   `source`, `title`). This convention IS the registry — do NOT create
+   `index.json`, `build-registry.js`, or any generated manifest.
+2. **Write `docs/README.md`**:
+
+```markdown
+# <Project> Documentation Library
+
+| Book | Genre | Audience | Depth | Summary |
+|------|-------|----------|-------|---------|
+| [<title>](./<book>/README.md) | <genre> | <audience> | <depth> | <1-line summary> |
+```
+
+3. **Additive and idempotent**: the index is rebuilt from the set of
+   discovered books on every run — adding a book appends a row, removing a
+   book drops it. Do not hand-edit it.
+4. **Register the catalog**: create/update `docs/README.md` as a DOC entry
+   tagged `doc:catalog` (one per project), so the KB knows which DOC is the
+   library index. Use the **Guarded update (CAS)** flow if it already exists.
+
+If a book directory has no front-matter (legacy), infer `genre` from its
+content/path, still list it, and flag it in the consistency report.
+
+## Step 6 — Consistency report
 
 After all files are processed, report:
 
@@ -142,6 +183,7 @@ After all files are processed, report:
 2. Potentially contradictory facts.
 3. Detected gaps (e.g. a referenced cross-link that has no target file).
 4. Duplications (two files covering the same topic for the same audience).
+5. Books missing front-matter (listed in the super-index by inference).
 
 ## Output
 
@@ -151,10 +193,11 @@ After all files are processed, report:
 - Scope: docs/ (or `<path>` if scoped)
 - Files processed: N
 - DOC entries: N (new: X, updated: Y)
+- Library super-index: docs/README.md regenerated (books: M)
 
 ### FILES PROCESSED
-| Path | Audience | Tags |
-|------|----------|------|
+| Path | Genre | Audience | Tags |
+|------|-------|----------|------|
 
 ### CONSISTENCY ANALYSIS
 #### Divergent terms
@@ -165,6 +208,8 @@ After all files are processed, report:
 - ...
 #### Duplications
 - ...
+#### Books missing front-matter
+- ...
 
 ### RECOMMENDED NEXT STEPS
 - ...
@@ -173,7 +218,15 @@ After all files are processed, report:
 ## Rules
 
 - **Read the actual content** — do not assume what a file says.
-- **Do not modify the Markdown files** — only create / update DOC entries.
+- **Do not modify the source `.md` files** — the only file this skill writes
+  to disk is the generated `docs/README.md` library super-index. Everything
+  else is KB DOC entries.
+- **Super-index is generated, never hand-edited** — `docs/README.md` is
+  rebuilt from book front-matter on every run, additively. Never create a
+  JSON registry / `build-registry.js` / `index.json` (ROAD-KVD-SKILLS-79272A
+  "Still in force").
+- **Tag the genre** — every DOC entry carries `doc:genre:<g>`; the library
+  index DOC carries `doc:catalog`.
 - **Be conservative with facts** — only verifiable statements.
 - **One DOC entry per `.md` file** — no sub-section splitting.
 - **Idempotent** — update if a DOC with the same `file_path` already

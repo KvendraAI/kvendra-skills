@@ -1,7 +1,7 @@
 {
   "name": "kvendra-skills",
   "description": "Kvendra skills — orchestrators (feature, bug, incident, release), analysts, testers, doc + ops tooling on top of the Kvendra KB engine hosted at api.kvendra.cloud",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "author": {
     "name": "Kvendra",
     "url": "https://kvendra.com"
