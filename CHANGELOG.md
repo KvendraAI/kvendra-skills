@@ -4,6 +4,20 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.11.0] — 2026-06-30 — New /setup onboarding wizard (MVP self-hosted-local)
+
+### Added
+
+- **NEW skill `/setup`** — "the Quickstart in a skill". A user-invocable, no-TXN onboarding wizard that connects Claude Code to a Kvendra backend and chains to `/onboard-project`. Q1 cloud (KB-managed) vs self-hosted; Q2 (self-hosted) embeddings local (Ollama) vs cloud free-tier. The MVP fully automates the **self-hosted + Ollama** path; the cloud-KB (OAuth) and cloud-embeddings branches give honest instructions/derivations (full automation → v1.1).
+  - **Pattern B** (additive, backwards-compatible): registers a separate `kvendra-platform` MCP server (`http://localhost:7777/mcp`, Bearer token read from the reference-stack container); the bundled `kvendra-cloud` server is left untouched, so existing cloud users keep their onboarding. The backend-agnostic plugin cleanup (parametrized bundled MCP + `/reload-plugins` no-restart) is deferred to v1.1.
+  - Robust token extraction via `docker compose exec -T kvendra-platform cat /data/auth.token` (retry); reference-stack bring-up with `up.sh --with-ollama`. Idempotent (`claude mcp list` first). Honest restart caveat (no false no-restart promise) and honest self-hosted→cloud migration guard (re-embedding required, no export/import).
+- New offline test fixtures `tests/setup/run-fixtures.sh` (mock docker+claude; drift-guarded against the SKILL.md).
+
+### Refs
+
+- REQ: `REQ-KVD-SKILLS-317B7B` (consultancy 2026-06-25 + 2026-06-30) · ISSUE: `ISSUE-KVD-SKILLS-9B265B` · TEST: `TEST-KVD-SKILLS-46469C`, `TEST-KVD-SKILLS-56BD65` · REL: `REL-KVD-SKILLS-1.11.0`
+- Built via `/new-feature` pipeline `TXN-KVD-20260630-001` (zero-gate). Validator professional 7/7 ACs, 0 defects; lint 4/4; fixtures 7/7.
+
 ## [1.8.0] — 2026-06-15 — Decision-key adoption in ADR/IF writer skills (Paso C)
 
 ### Added
