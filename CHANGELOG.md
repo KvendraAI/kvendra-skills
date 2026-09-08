@@ -4,6 +4,31 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.12.0] — 2026-09-08 — /setup locates or clones the reference stack
+
+### Added
+
+- **`/setup` step S1b — reference-stack root resolution.** The self-hosted path no longer assumes the session already sits inside a reference-stack clone: the wizard detects an existing clone (walking up from the cwd, then a canonical `kvendra-reference-stack/` subdirectory, then the sibling `../kvendra-reference-stack`, then subdirectory candidates), and otherwise asks where to place one and clones it. Idempotent: an existing clone is reused, never re-cloned or overwritten. The whole self-hosted onboarding now happens inside Claude Code, with no terminal step.
+  - **Detection predicate**: a single shared check, reused by every branch, that demands three signals — `docker-compose.yml`, `scripts/up.sh`, and a `kvendra-platform` service declared inside that compose file. The third signal is what keeps the wizard from adopting the user's own repository: the first two match any project that happens to ship a Compose file and a start script, and a resolved root is used with no confirmation, so a two-signal predicate would run the *user's* `scripts/up.sh` with `--with-ollama`. The service name is the one S3 addresses, so it is the signal with the fewest false positives.
+  - **Sibling branch**: the side-by-side workspace layout (the user's repository and the stack as sibling directories under one root) is detected instead of reported as "nothing found", which previously led to a second clone under `$HOME`.
+  - **Guard against polluting the user's repo**: when the cwd is a git repo that is *not* the reference stack, the wizard refuses to clone inside the work tree (an embedded repo would dirty `git status`) and defaults the destination to `$HOME` instead, only cloning inside after an explicit confirmation plus a `.gitignore` warning.
+  - **Destination safety**: rejects the filesystem root, `$HOME` itself, system directories and the read-only plugin cache; stops instead of overwriting a non-empty destination; warns on cloud-synced paths (the stack writes a `.env` in the clone root) and on awkward path characters; checks parent writability and free disk space before touching the disk.
+  - **Supply-chain hygiene**: the clone URL is a constant of the skill and never parametrizable from context (org typosquat vector), `GIT_TERMINAL_PROMPT=0` plus a neutralized credential helper fail fast instead of hanging on a credential prompt, and the resolved URL and commit are displayed before the wizard executes `scripts/up.sh` from the clone. Partial clones are cleaned up only when the wizard created the directory.
+- **Bootstrap exemption rationale** documented in the skill: `/setup` cannot read its own recipe from a KB STD because its job is to create the KB connection, so the detection and clone logic is inlined by design, not by omission (`ADR-KVD-SKILLS-BB0E8A`).
+
+### Changed
+
+- **S2 and S3 now operate against the absolute stack root** resolved in S1b instead of the current working directory. This fixes a pre-existing bug: with the platform already healthy but the session outside the clone, S2 skipped the bring-up and S3's token extraction failed. `up.sh` is invoked by absolute path (it relocates itself), while the Compose calls are wrapped so they run from the stack root inside the same Bash invocation.
+- **Stack collision detection** added to the already-up branch: a healthy port with no containers under the resolved root means another stack owns it, so the wizard stops and explains it rather than proceeding.
+- **`curl` added to the S1b-1 prerequisites gate**, with its own diagnosis alongside `git` and `docker`. It is a hard dependency of S2 (the `/healthz` probe) and of the stack's own `up.sh`: absent, the probe exits 127, the `||` operator reads that as "not healthy", and the wizard fires the bring-up over a stack that may already be running.
+- Test fixtures extended from 7 to 54 assertions, including a mock that records its own working directory to prove cwd independence, plus the full S1b resolution matrix. Mutation testing covers the load-bearing lines of S1b-1, S1b-2, S1b-4, S2 and S3 — 15 mutants (each of the three detection signals and each detection branch, the `$HOME` and system-directory rejections, the deliberate absence of `/opt` from that list, the destination normalisation, the parent-writability guard, the `curl` prerequisite, the absolute-path invocation of the start script, and the `cd` on each of the two Compose commands), all 15 red. One of them — dropping the `docker-compose.yml` existence test while keeping the service grep on that same file — is behaviourally equivalent to the original, so it is pinned by a textual drift assertion rather than by a fixture.
+
+### Refs
+
+- REQ: `REQ-KVD-SKILLS-317B7B` (`## Increment v1.2`, `AC-V12-1..12`) · ISSUE: `ISSUE-KVD-SKILLS-C6B6D3` · REL: `REL-KVD-SKILLS-1.12.0` · ROAD: `ROAD-KVD-SKILLS-C20D24`
+- Built via `/new-feature` pipeline `TXN-KVD-20260908-001` (zero-gate). Companion copy update on kvendra.dev (`CMP-KVD-DEV`): the onboarding no longer shows a terminal step.
+- Out of scope, still deferred to v1.1 of the wizard REQ: the no-restart pattern, removal of the bundled cloud MCP preconfig, and cloud/OAuth automation. The restart caveat is unchanged.
+
 ## [1.11.0] — 2026-06-30 — New /setup onboarding wizard (MVP self-hosted-local)
 
 ### Added
