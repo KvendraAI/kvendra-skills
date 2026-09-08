@@ -314,7 +314,14 @@ fi
 # being reintroduced: invoking the start script by a RELATIVE path silently
 # depends on the caller cwd, which is exactly what S1b exists to remove.
 # ------------------------------------------------------------------
+# Anchored to the S2 SECTION, not merely to the first `curl -fsS` line in the
+# file: since 1.13.0 the wizard runs other curl-based steps (the S1c key probe),
+# and a content-only anchor would capture whichever came first in the document.
+# The Ollama block is deliberately the FIRST fenced block of S2, so this
+# extractor lands on the branch that carries the flag.
 BRINGUP_SNIPPET="$(awk '
+  /^### S2/ { in_s2=1 }
+  !in_s2 { next }
   /^curl -fsS / { capture=1 }
   capture { print }
   capture && /with-ollama/ { exit }
@@ -854,6 +861,961 @@ if has_line "$out" "WARN non-canonical-directory-name"; then
   pass "S1b-4 F13c: non-canonical directory name warns (stack-collision link)"
 else
   fail "S1b-4 F13c: non-canonical directory name warns (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ==================================================================
+# 1.13.0 FIXTURES — S1c (embeddings key), the conditional S2 flag, document
+# order and wording, the key probe, and the manifests.
+#
+# Same drift guard as everything above: the code under test is EXTRACTED from
+# the shipped SKILL.md, never duplicated here. The extraction is FENCE-AWARE
+# (the whole ```bash block that contains a distinctive marker) instead of
+# line-prefix anchored, so a new step cannot silently steal another step's
+# anchor the way a bare `^curl -fsS ` anchor could.
+# ==================================================================
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$PLUGIN_DIR/../.." && pwd)"
+
+extract_block() {  # extract_block <awk-regex> : the fenced bash block containing it
+  awk -v pat="$1" '
+    /^```bash$/ { inb=1; buf=""; next }
+    /^```$/ {
+      if (inb && buf ~ pat) { printf "%s", buf; exit }
+      inb=0; buf=""; next
+    }
+    inb { buf = buf $0 "\n" }
+  ' "$SKILL_MD"
+}
+
+section() {  # section <start-regex> <end-regex> : lines of one SKILL.md section
+  awk -v s="$1" -v e="$2" '
+    $0 ~ s { inx=1; print; next }
+    inx && $0 ~ e { exit }
+    inx { print }
+  ' "$SKILL_MD"
+}
+
+line_of() { grep -n -m1 -- "$1" "$SKILL_MD" | cut -d: -f1; }
+has_str() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
+
+ENVCREATE_SNIPPET="$(extract_block 'ENV exists-keep')"
+ENVREWRITE_SNIPPET="$(extract_block 'kvd_is_ollama_wired')"
+# Markers chosen to be UNIQUE to their block. `config -` would be wrong here:
+# the S1b-2 detection block runs `git config --get remote.origin.url`, so it
+# matches that substring and gets extracted instead of the probe.
+PLACEHOLDER_SNIPPET="$(extract_block 'cut -c1-10')"
+PROBE_SNIPPET="$(extract_block 'curl --config')"
+SIGNUP_SNIPPET="$(extract_block 'KVD_SIGNUP_URL')"
+
+# The literal placeholder line the wizard substitutes with the pasted key.
+KEY_PLACEHOLDER="PASTE_THE_KEY_ON_A_LINE_OF_ITS_OWN"
+
+# The literal placeholder every fenced block uses for the stack root resolved in
+# S1b. Each Bash call is a fresh shell, so every block that references
+# $STACK_ROOT has to declare it on its own first line; the runner substitutes
+# that declaration with the temp stack root exactly as it substitutes the key.
+# Substituting (instead of only pre-assigning STACK_ROOT around the eval) is
+# what makes the extracted snippet run as SHIPPED — see T1q, the static
+# assertion that guards the whole class.
+ROOT_PLACEHOLDER="<absolute path resolved in S1b>"
+
+# A faithful replica of the reference stack's .env.example. The comment block
+# is NOT decoration: line "for you (in place, marked with ...)" QUOTES the
+# Ollama marker inside prose, and it is the fixture that kills a substring-based
+# detector (trap 1). Every T1 scenario is built from this.
+write_env_example() {  # write_env_example <file>
+  cat > "$1" <<'ENVEOF'
+# --- Embeddings provider --------------------------------------------------
+# Active defaults: Cloud mode (api.kvendra.cloud).
+# Replace EMBEDDINGS_API_KEY with your real key from https://kvendra.cloud
+EMBEDDINGS_PROVIDER=openai-compatible
+EMBEDDINGS_BASE_URL=https://api.kvendra.cloud/v1
+EMBEDDINGS_MODEL=kvendra-embedding-v1
+EMBEDDINGS_API_KEY=REPLACE_WITH_YOUR_KVENDRA_KEY
+
+# --- Alternative mode: Ollama local ------------------------------------------
+# Just run `./scripts/up.sh --with-ollama`: it starts the kvendra-ollama
+# service AND rewrites the three EMBEDDINGS_* lines above to the values below
+# for you (in place, marked with `# set by up.sh --with-ollama`). You do NOT
+# need to uncomment these by hand.
+# EMBEDDINGS_PROVIDER=openai-compatible
+# EMBEDDINGS_BASE_URL=http://kvendra-ollama:11434/v1
+# EMBEDDINGS_MODEL=mxbai-embed-large
+# # No EMBEDDINGS_API_KEY needed for local Ollama.
+
+EMBEDDINGS_TIMEOUT_MS=30000
+PLATFORM_HOST_PORT=7777
+ENVEOF
+}
+
+# What `up.sh --with-ollama` leaves behind: a standalone marker line plus the
+# three rewired values.
+write_env_ollama_wired() {  # write_env_ollama_wired <file>
+  write_env_example "$1"
+  awk '
+    /^EMBEDDINGS_PROVIDER=/ { print "# set by up.sh --with-ollama"; print; next }
+    /^EMBEDDINGS_BASE_URL=/ { print "EMBEDDINGS_BASE_URL=http://kvendra-ollama:11434/v1"; next }
+    /^EMBEDDINGS_MODEL=/    { print "EMBEDDINGS_MODEL=mxbai-embed-large"; next }
+    { print }
+  ' "$1" > "$1.t" && mv "$1.t" "$1"
+}
+
+mk_env_stack() {  # mk_env_stack <dir> : stack dir carrying a .env.example
+  mkdir -p "$1"
+  write_env_example "$1/.env.example"
+}
+
+run_rewrite() {  # run_rewrite <stack_root> <key> : S1c-5 with both placeholders substituted
+  (
+    export PATH="$MOCK_BIN:$PATH"
+    STACK_ROOT="$1"
+    snippet="${ENVREWRITE_SNIPPET//$ROOT_PLACEHOLDER/$1}"
+    snippet="${snippet//$KEY_PLACEHOLDER/$2}"
+    eval "$snippet"
+  ) 2>&1
+}
+
+run_envcreate() {  # run_envcreate <stack_root> : the S1c-4 block
+  (
+    export PATH="$MOCK_BIN:$PATH"
+    STACK_ROOT="$1"
+    eval "${ENVCREATE_SNIPPET//$ROOT_PLACEHOLDER/$1}"
+  ) 2>&1
+}
+
+run_placeholder_check() {  # run_placeholder_check <stack_root> : the S1c-6 block
+  (
+    export PATH="$MOCK_BIN:$PATH"
+    STACK_ROOT="$1"
+    eval "${PLACEHOLDER_SNIPPET//$ROOT_PLACEHOLDER/$1}"
+  ) 2>&1
+}
+
+perms_of() { ls -l "$1" | cut -c1-10; }
+env_val() { grep -m1 "^$2=" "$1" | sed "s|^$2=||"; }
+
+# ---- T0: every new snippet was actually extracted -----------------
+for pair in "ENVCREATE_SNIPPET:S1c-4 .env creation" \
+            "ENVREWRITE_SNIPPET:S1c-5 detect-and-rewrite" \
+            "PLACEHOLDER_SNIPPET:S1c-6 placeholder check" \
+            "PROBE_SNIPPET:S1c-7 key probe" \
+            "SIGNUP_SNIPPET:S1c-2 signup accompaniment"; do
+  var="${pair%%:*}"; label="${pair#*:}"
+  if [[ -n "${!var}" ]]; then
+    pass "T0: $label snippet extracted from SKILL.md"
+  else
+    fail "T0: $label snippet extracted from SKILL.md"
+  fi
+done
+
+# ==================================================================
+# T1 — the .env rewrite: four scenarios, the marker false positive,
+# idempotency, permissions, portability, the gitignore gate and the
+# placeholder check.
+# ==================================================================
+T1="$WORK_ROOT/t1"; mkdir -p "$T1"
+TESTKEY="kvd_live_0123456789abcdefTESTKEY"
+
+# ---- T1a: PRISTINE .env — only the key line changes ---------------
+mk_env_stack "$T1/a"; cp "$T1/a/.env.example" "$T1/a/.env"
+out="$(run_rewrite "$T1/a" "$TESTKEY")"
+if has_str "$out" "ENV cloud-defaults-intact" \
+   && [[ "$(env_val "$T1/a/.env" EMBEDDINGS_API_KEY)" == "$TESTKEY" ]] \
+   && [[ "$(env_val "$T1/a/.env" EMBEDDINGS_BASE_URL)" == "https://api.kvendra.cloud/v1" ]] \
+   && [[ "$(env_val "$T1/a/.env" EMBEDDINGS_MODEL)" == "kvendra-embedding-v1" ]] \
+   && [[ "$(grep -c '^EMBEDDINGS_API_KEY=' "$T1/a/.env")" -eq 1 ]]; then
+  pass "T1a: pristine .env -> only the key line rewritten, cloud values untouched"
+else
+  fail "T1a: pristine .env (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ---- T1b: THE MARKER FALSE POSITIVE -------------------------------
+# .env.example QUOTES `# set by up.sh --with-ollama` inside a prose comment. A
+# substring detector reads a pristine file as Ollama-wired and rewrites three
+# lines that were already correct. Whole-line equality is the fix; this fixture
+# is what fails if anyone reintroduces grep -F.
+if has_str "$out" "ENV cloud-defaults-intact" && ! has_str "$out" "was-ollama-wired" \
+   && grep -q 'marked with `# set by up.sh --with-ollama`' "$T1/a/.env"; then
+  pass "T1b: the marker quoted inside a prose comment is NOT a wiring signal (no false positive)"
+else
+  fail "T1b: marker false positive (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ---- T1c: .env already holding a REAL key -------------------------
+mk_env_stack "$T1/c"; cp "$T1/c/.env.example" "$T1/c/.env"
+awk '/^EMBEDDINGS_API_KEY=/ { print "EMBEDDINGS_API_KEY=kvd_live_OLDKEY"; next } { print }' \
+  "$T1/c/.env" > "$T1/c/.env.t" && mv "$T1/c/.env.t" "$T1/c/.env"
+out="$(run_rewrite "$T1/c" "$TESTKEY")"
+if [[ "$(env_val "$T1/c/.env" EMBEDDINGS_API_KEY)" == "$TESTKEY" ]] \
+   && ! grep -q 'kvd_live_OLDKEY' "$T1/c/.env" \
+   && [[ "$(grep -c '^EMBEDDINGS_API_KEY=' "$T1/c/.env")" -eq 1 ]]; then
+  pass "T1c: an existing real key is replaced in place, not appended"
+else
+  fail "T1c: existing real key replaced (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ---- T1d: .env WIRED TO OLLAMA — three lines + the marker ---------
+mk_env_stack "$T1/d"; write_env_ollama_wired "$T1/d/.env"
+out="$(run_rewrite "$T1/d" "$TESTKEY")"
+marker_lines="$(grep -cx '# set by up.sh --with-ollama' "$T1/d/.env" || true)"
+if has_str "$out" "was-ollama-wired" \
+   && [[ "$marker_lines" -eq 0 ]] \
+   && [[ "$(env_val "$T1/d/.env" EMBEDDINGS_PROVIDER)" == "openai-compatible" ]] \
+   && [[ "$(env_val "$T1/d/.env" EMBEDDINGS_BASE_URL)" == "https://api.kvendra.cloud/v1" ]] \
+   && [[ "$(env_val "$T1/d/.env" EMBEDDINGS_MODEL)" == "kvendra-embedding-v1" ]] \
+   && [[ "$(env_val "$T1/d/.env" EMBEDDINGS_API_KEY)" == "$TESTKEY" ]]; then
+  pass "T1d: Ollama-wired .env -> marker dropped and all three cloud values restored"
+else
+  fail "T1d: Ollama-wired .env (marker lines=$marker_lines, got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# The prose comment must SURVIVE the marker drop: only the standalone line goes.
+if grep -q 'marked with `# set by up.sh --with-ollama`' "$T1/d/.env"; then
+  pass "T1d2: dropping the marker removes only the standalone line, not the prose comment"
+else
+  fail "T1d2: the prose comment quoting the marker was destroyed"
+fi
+
+# ---- T1e: NO .env at all (fresh clone) ----------------------------
+mk_env_stack "$T1/e"
+out="$(run_envcreate "$T1/e")"
+if has_str "$out" "ENV created-from-example" && [[ -f "$T1/e/.env" ]] \
+   && grep -q '^EMBEDDINGS_API_KEY=REPLACE_WITH_YOUR_KVENDRA_KEY' "$T1/e/.env"; then
+  pass "T1e: a fresh clone with no .env gets one created from .env.example"
+else
+  fail "T1e: .env creation on a fresh clone (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ---- T1f: an existing .env is NEVER overwritten -------------------
+mk_env_stack "$T1/f"
+printf 'CUSTOM_MARKER=do-not-lose-me\nEMBEDDINGS_API_KEY=kvd_live_MINE\n' > "$T1/f/.env"
+out="$(run_envcreate "$T1/f")"
+if has_str "$out" "ENV exists-keep" && grep -q '^CUSTOM_MARKER=do-not-lose-me' "$T1/f/.env"; then
+  pass "T1f: an existing .env is kept as-is (custom content preserved)"
+else
+  fail "T1f: existing .env preserved (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ---- T1g: IDEMPOTENCY — running the rewrite twice is a no-op ------
+mk_env_stack "$T1/g"; write_env_ollama_wired "$T1/g/.env"
+run_rewrite "$T1/g" "$TESTKEY" >/dev/null
+cp "$T1/g/.env" "$T1/g/after-first"
+run_rewrite "$T1/g" "$TESTKEY" >/dev/null
+if cmp -s "$T1/g/after-first" "$T1/g/.env"; then
+  pass "T1g: the rewrite is idempotent (second run produces a byte-identical .env)"
+else
+  fail "T1g: rewrite not idempotent ($(diff "$T1/g/after-first" "$T1/g/.env" | head -5 | tr '\n' '|'))"
+fi
+
+# ---- T1h: PERMISSIONS survive every mv ----------------------------
+# `mv` replaces the file, so a single chmod at the end is not enough: each
+# rewrite has to re-apply 600. The Ollama-wired path performs FIVE rewrites.
+if [[ "$(perms_of "$T1/g/.env")" == "-rw-------" ]] \
+   && [[ "$(perms_of "$T1/a/.env")" == "-rw-------" ]] \
+   && [[ "$(perms_of "$T1/e/.env")" == "-rw-------" ]]; then
+  pass "T1h: .env is 0600 after every rewrite path (creation, single-line, full rewire)"
+else
+  fail "T1h: .env permissions (rewired=$(perms_of "$T1/g/.env"), pristine=$(perms_of "$T1/a/.env"), created=$(perms_of "$T1/e/.env"))"
+fi
+
+# ---- T1i: no temp file is left behind -----------------------------
+if [[ ! -e "$T1/g/.env.kvdtmp" && ! -e "$T1/a/.env.kvdtmp" ]]; then
+  pass "T1i: the awk temp file is always moved, never left behind"
+else
+  fail "T1i: a .env.kvdtmp temp file survived the rewrite"
+fi
+
+# ---- T1j: PORTABILITY — no in-place sed anywhere in the skill -----
+# BSD/macOS and GNU disagree on the argument of sed's in-place flag; the stack's
+# own up.sh avoids it for exactly that reason.
+sedi_hits="$(grep -nE "sed +-i" "$SKILL_MD" || true)"
+if [[ -z "$sedi_hits" ]]; then
+  pass "T1j: the skill never uses the in-place flag of sed (BSD/GNU portability)"
+else
+  fail "T1j: in-place sed found in SKILL.md ($(printf '%s' "$sedi_hits" | tr '\n' '|'))"
+fi
+
+# ---- T1k: the GITIGNORE gate --------------------------------------
+if [[ -z "$GIT_BIN" ]]; then
+  skip "T1k: gitignore gate (no working git binary on this machine)"
+else
+  mk_env_stack "$T1/k-ignored"
+  ( export PATH="$MOCK_BIN:$PATH"; cd "$T1/k-ignored" && git init -q . ) >/dev/null 2>&1
+  printf '.env\n' > "$T1/k-ignored/.gitignore"
+  out_ok="$(run_envcreate "$T1/k-ignored")"
+
+  mk_env_stack "$T1/k-tracked"
+  ( export PATH="$MOCK_BIN:$PATH"; cd "$T1/k-tracked" && git init -q . ) >/dev/null 2>&1
+  out_bad="$(run_envcreate "$T1/k-tracked")"
+
+  mk_env_stack "$T1/k-tarball"
+  out_tar="$(run_envcreate "$T1/k-tarball")"
+
+  if has_str "$out_ok" "GITIGNORE ok" \
+     && has_str "$out_bad" "REJECT env-not-gitignored" \
+     && has_str "$out_tar" "GITIGNORE not-a-git-repo"; then
+    pass "T1k: gitignore gate distinguishes ignored, TRACKED (REJECT) and non-git stacks"
+  else
+    fail "T1k: gitignore gate (ok='$out_ok' bad='$out_bad' tar='$out_tar')"
+  fi
+fi
+
+# ---- T1l: the PLACEHOLDER is provably gone ------------------------
+out="$(run_placeholder_check "$T1/d")"
+ph_count="$(printf '%s\n' "$out" | sed -n 1p)"
+cloud_count="$(printf '%s\n' "$out" | sed -n 2p)"
+ph_perms="$(printf '%s\n' "$out" | sed -n 3p)"
+if [[ "$ph_count" == "0" && "$cloud_count" == "1" && "$ph_perms" == "-rw-------" ]]; then
+  pass "T1l: after S1c the placeholder count is 0 (up.sh's late warning is unreachable)"
+else
+  fail "T1l: placeholder check (placeholder=$ph_count cloud=$cloud_count perms=$ph_perms)"
+fi
+
+# The same check over an UNTOUCHED .env must report 1, or it proves nothing.
+mk_env_stack "$T1/l-raw"; cp "$T1/l-raw/.env.example" "$T1/l-raw/.env"
+out="$(run_placeholder_check "$T1/l-raw")"
+if [[ "$(printf '%s\n' "$out" | sed -n 1p)" == "1" ]]; then
+  pass "T1l2: the placeholder check reports 1 on an untouched .env (the assertion has teeth)"
+else
+  fail "T1l2: placeholder check on an untouched .env (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# ---- T1m: key FORM validation -------------------------------------
+mk_env_stack "$T1/m"; cp "$T1/m/.env.example" "$T1/m/.env"
+out="$(run_rewrite "$T1/m" "")"
+if has_str "$out" "REJECT empty-key" && ! has_str "$out" "ENV key-written"; then
+  pass "T1m1: an empty key is REJECTed and nothing is written"
+else
+  fail "T1m1: empty key rejected (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_rewrite "$T1/m" "kvd_live_with space")"
+if has_str "$out" "REJECT whitespace-or-newline-in-key" && ! has_str "$out" "ENV key-written"; then
+  pass "T1m2: a key containing whitespace is REJECTed"
+else
+  fail "T1m2: whitespace key rejected (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_rewrite "$T1/m" "$(printf 'kvd_live_a\nkvd_live_b')")"
+if has_str "$out" "REJECT whitespace-or-newline-in-key" && ! has_str "$out" "ENV key-written"; then
+  pass "T1m3: a multi-line paste is REJECTed"
+else
+  fail "T1m3: multi-line key rejected (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_rewrite "$T1/m" "kvd_live_a=b")"
+if has_str "$out" "REJECT equals-sign-in-key" && ! has_str "$out" "ENV key-written"; then
+  pass "T1m4: a key containing = is REJECTed"
+else
+  fail "T1m4: equals-sign key rejected (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_rewrite "$T1/m" "REPLACE_WITH_YOUR_KVENDRA_KEY")"
+if has_str "$out" "REJECT placeholder-pasted" && ! has_str "$out" "ENV key-written"; then
+  pass "T1m5: pasting the placeholder back is REJECTed"
+else
+  fail "T1m5: placeholder rejected (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# The .env must be untouched after every REJECT above.
+if grep -q '^EMBEDDINGS_API_KEY=REPLACE_WITH_YOUR_KVENDRA_KEY' "$T1/m/.env"; then
+  pass "T1m6: no REJECTed key ever reached the .env"
+else
+  fail "T1m6: a REJECTed key was written to .env"
+fi
+
+# WARN, never REJECT: the key format belongs to the hosted engine.
+out="$(run_rewrite "$T1/m" "sk-someothervendorkey")"
+if has_str "$out" "WARN unexpected-key-prefix" && has_str "$out" "ENV key-written" \
+   && ! has_str "$out" "REJECT"; then
+  pass "T1m7: an unexpected key prefix WARNs and still writes (never REJECT)"
+else
+  fail "T1m7: unexpected prefix warns but writes (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_rewrite "$T1/m" 'kvd_live_a#b$c')"
+if has_str "$out" "WARN unsafe-characters-for-dotenv-sourcing" && has_str "$out" "ENV key-written"; then
+  pass "T1m8: characters unsafe for a sourced .env WARN and still write"
+else
+  fail "T1m8: unsafe characters warn (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# The quoted heredoc delimiter is what keeps `$` and backticks literal.
+if [[ "$(env_val "$T1/m/.env" EMBEDDINGS_API_KEY)" == 'kvd_live_a#b$c' ]]; then
+  pass "T1m9: the quoted heredoc delimiter keeps \$ literal (no expansion of the secret)"
+else
+  fail "T1m9: secret expanded by the shell (got: '$(env_val "$T1/m/.env" EMBEDDINGS_API_KEY)')"
+fi
+
+# The non-secret values must travel as awk -v, the secret through ENVIRON.
+if has_str "$ENVREWRITE_SNIPPET" 'ENVIRON["KVD_EMB_KEY"]' \
+   && has_str "$ENVREWRITE_SNIPPET" 'export KVD_EMB_KEY=' \
+   && has_str "$ENVREWRITE_SNIPPET" "<<'KVD_KEY_EOF'" \
+   && has_str "$ENVREWRITE_SNIPPET" 'unset KVD_EMB_KEY'; then
+  pass "T1n: the secret travels through ENVIRON with an explicit export and a quoted heredoc"
+else
+  fail "T1n: secret transport (ENVIRON + explicit export + quoted heredoc)"
+fi
+
+# Trap 2 as an executable assertion: no `VAR=value function` prefix form.
+if ! printf '%s\n' "$ENVREWRITE_SNIPPET" | grep -qE '^[[:space:]]*KVD_EMB_KEY=[^ ]* +kvd_'; then
+  pass "T1o: the secret is never passed as an assignment prefixing a function call (trap 2)"
+else
+  fail "T1o: an assignment-prefixed function call would leave ENVIRON empty"
+fi
+
+# Trap 3: one chmod per mv, not one at the end.
+mv_count="$(printf '%s\n' "$ENVREWRITE_SNIPPET" | grep -c 'mv "\$ENV_FILE.kvdtmp"' | tr -d ' ')"
+chmod_count="$(printf '%s\n' "$ENVREWRITE_SNIPPET" | grep -c 'chmod 600 "\$ENV_FILE"' | tr -d ' ')"
+if [[ "$mv_count" -ge 3 && "$chmod_count" -eq "$mv_count" ]]; then
+  pass "T1p: every mv ($mv_count) is followed by its own chmod 600 (trap 3)"
+else
+  fail "T1p: chmod per mv (mv=$mv_count chmod=$chmod_count)"
+fi
+
+# ---- T1q: every bash fence that USES $STACK_ROOT also DECLARES it ---------
+# THE CLASS-LEVEL GUARD, not a fourth instance of a bug found four times.
+#
+# Every Bash call is a fresh shell — the skill says so itself: the stack root is
+# "passed explicitly in every Bash call. Never rely on a `cd` from a previous
+# call — it does not persist." A block that references $STACK_ROOT without
+# assigning it therefore resolves it to the empty string: ENV_FILE becomes
+# "/.env", the copy from .env.example fails, and the git-ignore gate answers
+# `GITIGNORE not-a-git-repo`, which the skill classifies as "not a rejection" —
+# so the wizard walks on with a broken .env and no diagnostic.
+#
+# Why this has to be a STATIC assertion over the SKILL.md text: the executable
+# helpers above pre-assign STACK_ROOT around the `eval` and substitute
+# $ROOT_PLACEHOLDER into the snippet, so no runtime fixture can ever observe a
+# missing declaration. The defect class is invisible to execution by
+# construction; only the text can testify.
+#
+# Scope is deliberately STACK_ROOT ONLY. S4 references ${TOKEN} without
+# declaring it in the same fence — a pre-existing defect, identical in 1.12.0,
+# outside this increment. Generalising this assertion to every variable would
+# turn that red and widen the increment instead of guarding it.
+stack_root_offenders="$(awk '
+  /^```bash$/ { inb=1; uses=0; decl=0; start=NR; next }
+  /^```$/ {
+    if (inb && uses && !decl) printf("line %d ", start)
+    inb=0; uses=0; decl=0; next
+  }
+  inb {
+    if (index($0, "$STACK_ROOT") > 0 || index($0, "${STACK_ROOT}") > 0) uses = 1
+    if ($0 ~ /^[[:space:]]*STACK_ROOT=/) decl = 1
+  }
+' "$SKILL_MD")"
+stack_root_users="$(awk '
+  /^```bash$/ { inb=1; uses=0; next }
+  /^```$/ { if (inb && uses) n++; inb=0; uses=0; next }
+  inb { if (index($0, "$STACK_ROOT") > 0 || index($0, "${STACK_ROOT}") > 0) uses = 1 }
+  END { print n+0 }
+' "$SKILL_MD")"
+if [[ -z "$stack_root_offenders" && "$stack_root_users" -ge 8 ]]; then
+  pass "T1q: all $stack_root_users bash fences that reference \$STACK_ROOT declare it in the same fence"
+else
+  fail "T1q: bash fence(s) reference \$STACK_ROOT without declaring it (opened at: ${stack_root_offenders:-none}; users=$stack_root_users)"
+fi
+
+# The declaration must be the SAME literal everywhere, or "declared" degrades
+# into "assigned something": a fence that invents its own wording is a fence the
+# runner cannot substitute and the reader cannot follow.
+root_decl_total="$(grep -c '^STACK_ROOT=' "$SKILL_MD" | tr -d ' ')"
+root_decl_canon="$(grep -cF "STACK_ROOT=\"$ROOT_PLACEHOLDER\"" "$SKILL_MD" | tr -d ' ')"
+if [[ "$root_decl_total" -eq "$root_decl_canon" && "$root_decl_canon" -ge 8 ]]; then
+  pass "T1r: every \$STACK_ROOT declaration uses the one canonical literal ($root_decl_canon of them)"
+else
+  fail "T1r: STACK_ROOT declarations drifted (total=$root_decl_total canonical=$root_decl_canon)"
+fi
+
+# ==================================================================
+# T2 — S2: the Ollama flag is CONDITIONAL on the Q2 answer.
+# The single highest-value fix of the increment: passing the flag on the cloud
+# branch rewires the embeddings AND suppresses up.sh's placeholder warning, so
+# the key written in S1c would sit there inert with no diagnostic at all.
+# ==================================================================
+S2_SECTION="$(section '^### S2 ' '^### S3 ')"
+S2_OLLAMA="$(printf '%s\n' "$S2_SECTION" | awk '/\*\*Ollama branch/ { c=1 } /\*\*Cloud-embeddings branch/ { exit } c { print }')"
+S2_CLOUD="$(printf '%s\n' "$S2_SECTION" | awk '/\*\*Cloud-embeddings branch/ { c=1 } c { print }')"
+
+if [[ -n "$S2_OLLAMA" && -n "$S2_CLOUD" ]]; then
+  pass "T2a: S2 has two distinct branch blocks (Ollama first, cloud second)"
+else
+  fail "T2a: S2 branch blocks (ollama=${#S2_OLLAMA} cloud=${#S2_CLOUD})"
+fi
+
+if has_str "$S2_OLLAMA" '|| "$STACK_ROOT/scripts/up.sh" --with-ollama'; then
+  pass "T2b: the Ollama branch invokes the start script WITH the flag"
+else
+  fail "T2b: Ollama branch flag"
+fi
+
+cloud_flag_hits="$(printf '%s\n' "$S2_CLOUD" | grep -c 'with-ollama' | tr -d ' ')"
+if [[ "$cloud_flag_hits" -eq 0 ]]; then
+  pass "T2c: the cloud-embeddings branch of S2 mentions the Ollama flag ZERO times"
+else
+  fail "T2c: the cloud branch of S2 still carries the Ollama flag ($cloud_flag_hits hits)"
+fi
+
+if printf '%s\n' "$S2_CLOUD" | grep -qx '  || "\$STACK_ROOT/scripts/up.sh"'; then
+  pass "T2d: the cloud branch invokes the start script BARE, by absolute \$STACK_ROOT path"
+else
+  fail "T2d: cloud branch bare invocation (got: $(printf '%s' "$S2_CLOUD" | grep 'up.sh' | tr '\n' '|'))"
+fi
+
+# The shipped 1.12.0 line "retry it as `bash ...up.sh --with-ollama`" sat OUTSIDE
+# any conditional. Every remaining mention of the flag in S2 must be inside the
+# Ollama block.
+s2_flag_total="$(printf '%s\n' "$S2_SECTION" | grep -c -- '--with-ollama' | tr -d ' ')"
+s2_flag_ollama="$(printf '%s\n' "$S2_OLLAMA" | grep -c -- '--with-ollama' | tr -d ' ')"
+s2_flag_intro="$(printf '%s\n' "$S2_SECTION" | awk '/\*\*Ollama branch/ { exit } { print }' | grep -c -- '--with-ollama' | tr -d ' ')"
+if [[ "$s2_flag_total" -eq $((s2_flag_ollama + s2_flag_intro)) && "$s2_flag_intro" -eq 0 ]]; then
+  pass "T2e: every --with-ollama occurrence in S2 lives inside the Ollama conditional"
+else
+  fail "T2e: --with-ollama outside the Ollama conditional (total=$s2_flag_total ollama=$s2_flag_ollama intro=$s2_flag_intro)"
+fi
+
+# ==================================================================
+# T3 — document order and the load-bearing wording.
+# ==================================================================
+l_s1b6="$(line_of '#### S1b-6')"
+l_s1c="$(line_of '### S1c —')"
+l_s2="$(line_of '### S2 —')"
+if [[ -n "$l_s1b6" && -n "$l_s1c" && -n "$l_s2" && "$l_s1b6" -lt "$l_s1c" && "$l_s1c" -lt "$l_s2" ]]; then
+  pass "T3a: S1c sits strictly between S1b-6 and S2 (S1b-6=$l_s1b6 S1c=$l_s1c S2=$l_s2)"
+else
+  fail "T3a: S1c ordering (S1b-6=$l_s1b6 S1c=$l_s1c S2=$l_s2)"
+fi
+
+prev=0; order_ok=1
+for n in 1 2 3 4 5 6 7; do
+  ln="$(line_of "#### S1c-$n")"
+  if [[ -z "$ln" || "$ln" -le "$prev" ]]; then order_ok=0; break; fi
+  prev="$ln"
+done
+if [[ "$order_ok" -eq 1 ]]; then
+  pass "T3b: all seven S1c sub-steps are present and in order"
+else
+  fail "T3b: S1c sub-steps present and ordered (broke at S1c-${n:-?})"
+fi
+
+# Strings that MUST be gone.
+gone_ok=1; gone_report=""
+while IFS= read -r bad; do
+  [[ -z "$bad" ]] && continue
+  if grep -qF -- "$bad" "$SKILL_MD"; then gone_ok=0; gone_report="$gone_report|$bad"; fi
+done <<'GONE'
+Full key-rewire automation is a v1.1 follow-up
+export it before bring-up
+the read test is identical
+## Self-hosted + local-embeddings automated flow
+instructions only in this MVP
+docs/SETUP-PRO.md
+GONE
+if [[ "$gone_ok" -eq 1 ]]; then
+  pass "T3c: every superseded / factually wrong string is gone from the skill"
+else
+  fail "T3c: superseded strings still present ($gone_report)"
+fi
+
+# Strings that MUST be present.
+need_ok=1; need_report=""
+while IFS= read -r good; do
+  [[ -z "$good" ]] && continue
+  if ! grep -qF -- "$good" "$SKILL_MD"; then need_ok=0; need_report="$need_report|$good"; fi
+done <<'NEED'
+## Self-hosted automated flow
+The cloud path performs no local registration
+never visible to `ps` on your
+it does appear once in this conversation's transcript
+PASTED_BY_USER
+mxbai-embed-large
+kvendra-embedding-v1
+1024-dim
+403 forbidden_tier
+https://kvendra.ai
+https://kvendra.cloud
+mcp__kvendra-platform__entity_query
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query
+## External-execution policy
+NEED
+if [[ "$need_ok" -eq 1 ]]; then
+  pass "T3d: every load-bearing string is present (escape hatch, both namespaces, both domains)"
+else
+  fail "T3d: missing load-bearing strings ($need_report)"
+fi
+
+# The migration rationale names the MODELS and the dimension, never the vendor.
+if ! grep -qiE '\b(titan|bedrock)\b' "$SKILL_MD"; then
+  pass "T3e: the vector-space rationale names no embedding vendor (models and dimension only)"
+else
+  fail "T3e: an embedding vendor is named in the skill"
+fi
+
+# Open-core posture: no pricing anywhere. The pattern deliberately does NOT
+# include a bare `$<digit>`: shell positional parameters and `$0 == m` would
+# match it, which is noise, not a pricing leak.
+PRICE_RE='pricing|price|per month|per user|USD|EUR|tier matrix|subscription|checkout'
+if ! grep -qEi "$PRICE_RE" "$SKILL_MD"; then
+  pass "T3f: no pricing or tier matrix leaked into the skill (open-core posture)"
+else
+  fail "T3f: pricing-like text found ($(grep -nEi "$PRICE_RE" "$SKILL_MD" | head -3 | tr '\n' '|'))"
+fi
+
+# The cloud path: two executable branches plus the no-authentication disclaimer.
+CLOUD_SECTION="$(section '^### Cloud path' '^## Q2')"
+if has_str "$CLOUD_SECTION" "**C1 —" && has_str "$CLOUD_SECTION" "**C2 —" \
+   && has_str "$CLOUD_SECTION" "the wizard does not authenticate" \
+   && has_str "$CLOUD_SECTION" "does not create the account"; then
+  pass "T3g: the cloud path branches on Pro (C1/C2) and disclaims authenticating"
+else
+  fail "T3g: cloud path branches + disclaimer"
+fi
+
+# S1 branch (c) must route into a real rewire.
+S1_SECTION="$(section '^### S1 —' '^### S1b')"
+if has_str "$S1_SECTION" "re-enters" && has_str "$S1_SECTION" "S1c"; then
+  pass "T3h: S1 branch (c) routes back into Q2 and S1c instead of promising nothing"
+else
+  fail "T3h: S1 branch (c) is still an empty promise"
+fi
+
+# The four traps must be documented in prose, not only encoded in the snippets.
+S1C_SECTION="$(section '^### S1c ' '^### S2 ')"
+if has_str "$S1C_SECTION" "FALSE POSITIVE" \
+   && has_str "$S1C_SECTION" "does NOT export" \
+   && has_str "$S1C_SECTION" "overwrites the destination's permissions" \
+   && has_str "$S1C_SECTION" "in-place flag of \`sed\`"; then
+  pass "T3i: all four traps are documented in the SKILL.md itself, not only in the code"
+else
+  fail "T3i: the four traps are not all documented in prose"
+fi
+
+# The probe ladder has FIVE states, not two.
+ladder_rows="$(printf '%s\n' "$S1C_SECTION" | grep -c '^| `2xx`\|^| `401`\|^| `429`\|^| `403`\|^| `CURL_RC`' | tr -d ' ')"
+if [[ "$ladder_rows" -eq 5 ]]; then
+  pass "T3j: the probe ladder documents all five outcomes (2xx / 401 / 429 / other / transport)"
+else
+  fail "T3j: probe ladder rows (expected 5, saw $ladder_rows)"
+fi
+
+# S7 must be byte-identical to the shipped text.
+S7_EXPECTED="$(cat <<'S7EOF'
+### S7 — Migration guard (honest)
+
+If the user later wants to move from self-hosted to cloud (or vice versa), be
+honest about the cost: vectors are NOT portable across embedding models, so a
+backend switch requires **re-embedding** the whole KB. The open-core build has
+no export/import path for this. Point the user to https://kvendra.ai/docs for
+the supported migration story. Do not present a fake one-click switch.
+S7EOF
+)"
+S7_ACTUAL="$(section '^### S7 ' '^### S8 ' | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}')"
+if [[ "$S7_ACTUAL" == "$S7_EXPECTED" ]]; then
+  pass "T3k: S7 (migration guard) is untouched, word for word"
+else
+  fail "T3k: S7 drifted from the shipped text"
+fi
+
+# Required output gains exactly the three new rows.
+if grep -q '^| Embeddings backend |' "$SKILL_MD" \
+   && grep -q '^| Embeddings key | WIRED / KEPT_EXISTING / PASTED_BY_USER / SKIPPED |' "$SKILL_MD" \
+   && grep -q '^| Key probe |' "$SKILL_MD"; then
+  pass "T3l: Required output reports the embeddings backend, the key outcome and the probe"
+else
+  fail "T3l: Required output rows"
+fi
+
+# Invariant: /setup still performs no KB write.
+if ! grep -q 'entity_update(' "$SKILL_MD" && ! grep -q 'entity_create(' "$SKILL_MD" \
+   && ! grep -q 'txn_create(' "$SKILL_MD"; then
+  pass "T3m: /setup still writes nothing to the KB (no entity_update / entity_create / txn_create)"
+else
+  fail "T3m: a KB write call appeared in /setup"
+fi
+
+# The signup accompaniment: best-effort open, URL ALWAYS printed, no polling.
+if has_str "$SIGNUP_SNIPPET" 'echo "Free embeddings key' \
+   && has_str "$SIGNUP_SNIPPET" 'command -v open' \
+   && has_str "$SIGNUP_SNIPPET" 'command -v xdg-open' \
+   && has_str "$S1C_SECTION" "No polling, no timeout"; then
+  pass "T3n: S1c-2 opens the browser best-effort, always prints the URL, and never polls"
+else
+  fail "T3n: S1c-2 signup accompaniment"
+fi
+
+# ---- T3o (kills M5): S6 maps each namespace to the RIGHT branch ------------
+# T3d only proves both namespace strings EXIST somewhere in the file, so
+# swapping them between the two verify blocks leaves it green — and that
+# mapping is the entire point of the S6 fix: the two MCP servers expose
+# DIFFERENT tool namespaces, so verifying a self-hosted registration with the
+# cloud namespace tests the wrong server, or fails confusingly.
+S6_SECTION="$(section '^### S6 ' '^### S7 ')"
+S6_SELF="$(printf '%s\n' "$S6_SECTION" | awk '/^Self-hosted path/ { c=1 } /^Cloud path/ { exit } c { print }')"
+S6_CLOUD="$(printf '%s\n' "$S6_SECTION" | awk '/^Cloud path/ { c=1 } c && /^- / { exit } c { print }')"
+
+if [[ -n "$S6_SELF" && -n "$S6_CLOUD" ]]; then
+  pass "T3o1: S6 has two distinct verify blocks (self-hosted first, cloud second)"
+else
+  fail "T3o1: S6 verify blocks (self=${#S6_SELF} cloud=${#S6_CLOUD})"
+fi
+
+if has_str "$S6_SELF" 'mcp__kvendra-platform__entity_query' \
+   && ! has_str "$S6_SELF" 'kvendra-cloud__'; then
+  pass "T3o2: the self-hosted verify block uses the kvendra-platform namespace, and only that one"
+else
+  fail "T3o2: self-hosted verify namespace (got: $(printf '%s' "$S6_SELF" | grep 'mcp__' | tr '\n' '|'))"
+fi
+
+if has_str "$S6_CLOUD" 'mcp__plugin_kvendra-skills_kvendra-cloud__entity_query' \
+   && ! has_str "$S6_CLOUD" 'mcp__kvendra-platform__'; then
+  pass "T3o3: the cloud verify block uses the bundled kvendra-cloud namespace, and only that one"
+else
+  fail "T3o3: cloud verify namespace (got: $(printf '%s' "$S6_CLOUD" | grep 'mcp__' | tr '\n' '|'))"
+fi
+
+# ---- T3p (kills M6): the probe's endpoint and model are the real contract --
+# Nothing else asserts WHAT the probe calls: rewriting the path to
+# /v1/WRONG-ENDPOINT and the model to "WRONG-MODEL" leaves every other
+# assertion green, because the curl mock answers whatever it is asked.
+#
+# CONTRACT OWNERSHIP: `POST /v1/embeddings` and the `kvendra-embedding-v1`
+# model alias belong to IF-KVD-ENTERPRISE-25BF5A (CMP-KVD-ENTERPRISE), NOT to
+# this repo. They can therefore drift from OUTSIDE this repo, with nothing here
+# to notice. When this assertion fails, check the IF version before touching
+# the skill: the skill may be the correct side.
+if has_str "$PROBE_SNIPPET" "-X POST 'https://api.kvendra.cloud/v1/embeddings'"; then
+  pass "T3p1: the probe posts to the contracted endpoint https://api.kvendra.cloud/v1/embeddings"
+else
+  fail "T3p1: probe endpoint drifted (got: $(printf '%s' "$PROBE_SNIPPET" | grep -i 'kvendra.cloud' | tr '\n' '|'))"
+fi
+
+if has_str "$PROBE_SNIPPET" '"model":"kvendra-embedding-v1"'; then
+  pass "T3p2: the probe requests the contracted model kvendra-embedding-v1"
+else
+  fail "T3p2: probe model drifted (got: $(printf '%s' "$PROBE_SNIPPET" | grep -- '-d ' | tr '\n' '|'))"
+fi
+
+# ---- T3q (kills M7): the 401 row carries the NORMATIVE clause --------------
+# T4g only proves a 401 is displayed. What makes the probe worth its tokens is
+# the rule attached to it: 401 is the single outcome that stops the bring-up.
+# Deleting that clause, or spreading it to another row, is invisible to every
+# other assertion.
+ladder_401="$(printf '%s\n' "$S1C_SECTION" | grep -m1 '^| `401`')"
+if has_str "$ladder_401" "do NOT bring the stack up"; then
+  pass "T3q1: the 401 row of the probe ladder forbids bringing the stack up"
+else
+  fail "T3q1: the 401 row lost its normative clause (row: '$ladder_401')"
+fi
+
+block_clause_rows="$(printf '%s\n' "$S1C_SECTION" | grep -c '^|.*do NOT bring the stack up' | tr -d ' ')"
+if [[ "$block_clause_rows" -eq 1 ]]; then
+  pass "T3q2: exactly ONE ladder row blocks the bring-up (429 and the inconclusive rows continue)"
+else
+  fail "T3q2: $block_clause_rows ladder rows block the bring-up (expected exactly 1)"
+fi
+
+if has_str "$S1C_SECTION" 'Only `401` blocks the bring-up'; then
+  pass "T3q3: the ladder is closed by the explicit rule 'Only 401 blocks the bring-up'"
+else
+  fail "T3q3: the 'Only 401 blocks the bring-up' rule is missing from S1c"
+fi
+
+# ==================================================================
+# T4 — the key probe, under a mocked curl. The load-bearing assertion is
+# NEGATIVE: the key must not appear in the recorded argv.
+# ==================================================================
+CURL_ARGV_LOG="$STATE_DIR/curl_argv.log"
+CURL_STDIN_LOG="$STATE_DIR/curl_stdin.log"
+cat > "$MOCK_BIN/curl" <<'CURLMOCK'
+#!/usr/bin/env bash
+# Mock curl. Records argv and stdin, honours -o, and returns a scripted code.
+for a in "$@"; do printf '%s\n' "$a"; done >> "$KVD_CURL_ARGV_LOG"
+cat >> "$KVD_CURL_STDIN_LOG"
+out=""; prev=""
+for a in "$@"; do
+  [[ "$prev" == "-o" ]] && out="$a"
+  prev="$a"
+done
+[[ -n "$out" ]] && printf '%s' "${MOCK_CURL_BODY:-mock-response-body}" > "$out"
+printf '%s' "${MOCK_HTTP_CODE:-200}"
+exit "${MOCK_CURL_RC:-0}"
+CURLMOCK
+chmod +x "$MOCK_BIN/curl"
+
+PROBEKEY="kvd_live_PROBESECRET0123456789"
+mk_env_stack "$T1/probe"; cp "$T1/probe/.env.example" "$T1/probe/.env"
+run_rewrite "$T1/probe" "$PROBEKEY" >/dev/null
+
+run_probe() {  # run_probe <http_code> <curl_rc>
+  : > "$CURL_ARGV_LOG"; : > "$CURL_STDIN_LOG"
+  (
+    export PATH="$MOCK_BIN:$PATH"
+    export KVD_CURL_ARGV_LOG="$CURL_ARGV_LOG" KVD_CURL_STDIN_LOG="$CURL_STDIN_LOG"
+    export MOCK_HTTP_CODE="$1" MOCK_CURL_RC="$2"
+    STACK_ROOT="$T1/probe"
+    eval "${PROBE_SNIPPET//$ROOT_PLACEHOLDER/$T1/probe}"
+  ) 2>&1
+}
+
+out="$(run_probe 200 0)"
+if has_str "$out" "PROBE http=200 rc=0"; then
+  pass "T4a: the probe reads the key back from .env and reports the HTTP code and rc"
+else
+  fail "T4a: probe 200 (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# THE assertion of this group: the secret must not be in the process argv.
+if ! grep -qF "$PROBEKEY" "$CURL_ARGV_LOG"; then
+  pass "T4b: the key does NOT appear in the recorded curl argv (invisible to ps)"
+else
+  fail "T4b: the key LEAKED into the curl argv ($(grep -nF "$PROBEKEY" "$CURL_ARGV_LOG" | head -2 | tr '\n' '|'))"
+fi
+
+if grep -qF "header = \"Authorization: Bearer $PROBEKEY\"" "$CURL_STDIN_LOG"; then
+  pass "T4c: the Authorization header reaches curl on STDIN via --config -"
+else
+  fail "T4c: header on stdin (stdin log: $(tr '\n' '|' < "$CURL_STDIN_LOG"))"
+fi
+
+if grep -qx -- '--config' "$CURL_ARGV_LOG" \
+   && ! grep -q '^Authorization:' "$CURL_ARGV_LOG"; then
+  pass "T4d: curl is driven by --config, never by a -H Authorization argument"
+else
+  fail "T4d: --config used and no -H Authorization in argv"
+fi
+
+# The shell BUILTIN printf: an absolute path would spawn a real process whose
+# argv carries the key, undoing T4b.
+if has_str "$PROBE_SNIPPET" "printf 'header = " \
+   && ! has_str "$PROBE_SNIPPET" "/usr/bin/printf"; then
+  pass "T4e: the header is produced by the shell builtin printf, not /usr/bin/printf"
+else
+  fail "T4e: printf builtin used for the header"
+fi
+
+# The exit code must not be polluted by a 2>&1 merged into the same capture.
+if ! printf '%s\n' "$PROBE_SNIPPET" | grep -q 'http_code.*2>&1'; then
+  pass "T4f: the http_code capture does not mix 2>&1 into the exit-code path"
+else
+  fail "T4f: 2>&1 mixed into the http_code capture"
+fi
+
+out="$(run_probe 401 0)"
+if has_str "$out" "PROBE http=401 rc=0"; then
+  pass "T4g: a 401 is surfaced as such (the only outcome that blocks the bring-up)"
+else
+  fail "T4g: probe 401 (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_probe 429 0)"
+if has_str "$out" "PROBE http=429 rc=0"; then
+  pass "T4h: a 429 is surfaced (valid key, exhausted quota: warn and continue)"
+else
+  fail "T4h: probe 429 (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+out="$(run_probe 000 7)"
+if has_str "$out" "rc=7"; then
+  pass "T4i: a transport failure propagates its curl exit code (no verdict on the key)"
+else
+  fail "T4i: probe transport failure (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+# The response body is captured BEFORE the temp file is removed, and the temp
+# file does not survive.
+export MOCK_CURL_BODY="forbidden_tier: upgrade required"
+out="$(run_probe 403 0)"
+unset MOCK_CURL_BODY
+if has_str "$out" "PROBE http=403" && has_str "$out" "PROBE body=forbidden_tier: upgrade required"; then
+  pass "T4j: the first bytes of the body are captured before the temp file is deleted"
+else
+  fail "T4j: body snippet captured (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+rm -f "$MOCK_BIN/curl"
+
+# ==================================================================
+# T5 — the public manifests.
+# ==================================================================
+MCP_JSON="$PLUGIN_DIR/.mcp.json"
+PLUGIN_JSON="$PLUGIN_DIR/.claude-plugin/plugin.json"
+MARKET_JSON="$REPO_ROOT/.claude-plugin/marketplace.json"
+
+if command -v python3 >/dev/null 2>&1; then
+  if python3 -c 'import json,sys; [json.load(open(p)) for p in sys.argv[1:]]' \
+       "$MCP_JSON" "$PLUGIN_JSON" "$MARKET_JSON" 2>/dev/null; then
+    pass "T5a: .mcp.json, plugin.json and marketplace.json are all valid JSON"
+  else
+    fail "T5a: one of the manifests is not valid JSON"
+  fi
+else
+  skip "T5a: JSON validity (no python3 on this machine)"
+fi
+
+if [[ "$(grep -c 'SETUP-PRO' "$MCP_JSON" || true)" -eq 0 ]] \
+   && ! grep -qi 'aws' "$MCP_JSON"; then
+  pass "T5b: .mcp.json no longer publishes the internal ops instruction or its broken reference"
+else
+  fail "T5b: .mcp.json still mentions SETUP-PRO or AWS"
+fi
+
+if grep -q '20 MCP tools' "$MCP_JSON" && ! grep -q '14 MCP tools' "$MCP_JSON"; then
+  pass "T5c: .mcp.json declares the real tool count (20, not 14)"
+else
+  fail "T5c: .mcp.json tool count"
+fi
+
+if grep -q 'Pro tier required' "$MCP_JSON" && grep -q 'https://kvendra.ai' "$MCP_JSON"; then
+  pass "T5d: 'Pro tier required' survives and points at kvendra.ai (AC-7 posture)"
+else
+  fail "T5d: Pro tier pointer in .mcp.json"
+fi
+
+if grep -qF 'scope precedence and Local > Plugin, so a same-name plugin server gets eclipsed silently' "$MCP_JSON"; then
+  pass "T5e: the load-bearing server-naming note survives word for word"
+else
+  fail "T5e: the server-naming note was altered or dropped"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  mcp_shape="$(python3 -c '
+import json,sys
+d=json.load(open(sys.argv[1]))["mcpServers"]
+s=d.get("kvendra-cloud",{})
+print(len(d), s.get("type"), s.get("url"))
+' "$MCP_JSON" 2>/dev/null)"
+  if [[ "$mcp_shape" == "1 http https://api.kvendra.cloud/mcp" ]]; then
+    pass "T5f: .mcp.json still declares exactly one server with the same type and url"
+  else
+    fail "T5f: .mcp.json shape changed (got: '$mcp_shape')"
+  fi
+else
+  skip "T5f: .mcp.json shape (no python3 on this machine)"
+fi
+
+skill_count="$(find "$PLUGIN_DIR/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+if grep -q '"version": "1.13.0"' "$PLUGIN_JSON" \
+   && grep -q '"version": "1.13.0"' "$MARKET_JSON" \
+   && grep -q "$skill_count skills" "$MARKET_JSON"; then
+  pass "T5g: both manifests are at 1.13.0 and the marketplace states the real skill count ($skill_count)"
+else
+  fail "T5g: manifest versions / skill count (skills on disk=$skill_count)"
+fi
+
+if grep -q '^## \[1.13.0\]' "$REPO_ROOT/CHANGELOG.md"; then
+  pass "T5h: the CHANGELOG carries a 1.13.0 entry"
+else
+  fail "T5h: CHANGELOG 1.13.0 entry"
+fi
+
+# The conditional-flag fix is a BUG FIX, not a feature: it belongs under Fixed.
+changelog_113="$(awk '/^## \[1.13.0\]/ { c=1; next } c && /^## \[/ { exit } c { print }' "$REPO_ROOT/CHANGELOG.md")"
+cl_fixed="$(printf '%s\n' "$changelog_113" | awk '/^### Fixed/ { c=1; next } c && /^### / { exit } c { print }')"
+if has_str "$cl_fixed" "unconditionally"; then
+  pass "T5i: the unconditional-flag regression is recorded under '### Fixed', not '### Added'"
+else
+  fail "T5i: the unconditional-flag fix is not under '### Fixed'"
 fi
 
 echo ""

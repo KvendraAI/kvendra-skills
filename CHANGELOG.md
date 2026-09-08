@@ -4,6 +4,39 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.13.0] — 2026-09-08 — /setup wires the embeddings key before bring-up, and the cloud path branches on Pro
+
+### Added
+
+- **`/setup` step S1c — embeddings key, cloud free-tier branch.** A new step that sits strictly between S1b (stack root resolved) and S2 (bring-up), and runs only when Q2 was answered *cloud free-tier*. It accompanies the signup (best-effort browser open at `https://kvendra.cloud`, URL always printed for headless and remote sessions, then a pause with no polling and no timeout), asks for the key with the escape hatch offered in the same message, creates the stack's `.env` when the clone does not have one yet, rewrites it, verifies the placeholder is gone, and probes the key against the live embeddings endpoint before anything is brought up. The wizard accompanies the signup; it does not create the account and does not mint the key — that needs an already-authenticated caller.
+  - **Detect first, then decide how many lines to rewrite.** "Only the key line changes" holds for a `.env` freshly copied from `.env.example` and is false for one an earlier Ollama bring-up rewired, which is a case `/setup` reaches on its own because it is idempotent and its S1 branch (c) lands exactly there. When the file is Ollama-wired, the provider, base URL and model lines are restored to the cloud values and the now-false `# set by up.sh --with-ollama` marker is dropped. Detection matches that marker as a WHOLE LINE: `.env.example` quotes the same string inside a prose comment, so a substring match reports a pristine file as Ollama-wired.
+  - **Secret hygiene, stated honestly.** The key never travels in a command line, so it is never visible to `ps`; it does appear once in the conversation transcript, and the step says so and offers the user the option of pasting it into `.env` themselves. It reaches `awk` through the environment (an `awk -v` assignment is visible in the process argv) and reaches `curl` through `--config -` on stdin rather than a `-H` argument, with the shell's `printf` builtin so no real process ever carries it. `chmod 600` runs after every rewrite, because the temp-file-plus-`mv` pattern replaces the file and its permissions; `.env` is checked as git-ignored before anything is written. Form validation rejects an empty, multi-line, whitespace-bearing, `=`-bearing or placeholder value, and only WARNS on an unexpected key prefix — the format belongs to the hosted engine, which this skill cannot re-read at runtime.
+  - **Five-state probe ladder** instead of pass/fail: `2xx` continues, `401` re-asks and refuses to bring the stack up, `429` reports a valid key with an exhausted quota and continues, any other `4xx`/`5xx` is inconclusive and hands the user the code plus the first ~200 characters of the body, and a transport failure reports no verdict and offers to continue. Only `401` blocks: a probe that stopped the wizard behind a corporate proxy would be worse than no probe.
+  - All rewrites use the portable `awk`-into-a-temp-file-then-`mv` pattern the stack's own start script uses, never the in-place flag of `sed` (BSD/macOS and GNU disagree on its argument).
+- **Cloud path branches on "do you already have Pro?"** — C1 (account exists) guides `/mcp` and verifies; C2 (no account) opens `https://kvendra.ai`, states that the wizard neither creates the account nor handles payment, pauses, and then falls into C1. Carries an explicit disclaimer that **the wizard does not authenticate**: the OAuth 2.1 + PKCE cycle is driven by Claude Code, and `/mcp` is a slash command the user types.
+- **The two domains are distinguished up front, in Q1/Q2** rather than only when a verify fails: `kvendra.ai` is the Pro account for the hosted KB engine, `kvendra.cloud` is a free embeddings key for a self-hosted stack. A free signup is not a way into the hosted KB, and the tier note in the cloud path spells out that difference next to the `403 forbidden_tier` case.
+
+### Fixed
+
+- **S2 passed the Ollama flag unconditionally, in BOTH branches of Q2.** This is the bug the rest of the increment is built around, not a nicety: anyone who chose cloud free-tier ended up with the Ollama container running, `mxbai-embed-large` downloaded, and their embeddings key inert — with no warning at all, because the start script's placeholder warning is itself suppressed when that flag is passed. S2 now has two blocks and the flag appears only in the Ollama one. Writing the key without making the flag conditional would have fixed nothing.
+- **Q2 told the user to export the key before bring-up. That never worked** and has been removed: the start script sources `.env` after parsing its flags, so the value read from the file overwrites the exported one, and Compose then interpolates the placeholder. The skill now says explicitly that the export does not work, so the instruction does not come back.
+- **S1 branch (c) "reconfigure embeddings" was an empty promise** — it is now a real path that re-enters Q2 and performs an actual rewire, including the Ollama-to-cloud direction.
+- **S6 verified the wrong server on the self-hosted path.** The read test was written with the `kvendra-cloud` tool namespace for both paths, so a self-hosted verify probed the cloud server or failed confusingly. There are now two verify blocks, one per namespace, and the claim that "the read test is identical" is gone.
+- **`.mcp.json` published an internal ops instruction pointing at a file that does not exist.** The `kvendra-cloud` description no longer tells readers to promote a Free user to Pro with an AWS CLI snippet in `docs/SETUP-PRO.md` (no such file is in the repo). "Pro tier required" stays — it is honest user-facing information that prevents a baffling 403 — and now points at `https://kvendra.ai`. The tool count is corrected from 14 to 20, and the load-bearing note about the server name and `Local > Plugin` scope precedence is preserved verbatim.
+- Marketplace entry said "29 skills"; the plugin ships 28.
+
+### Changed
+
+- The self-hosted section heading drops "+ local-embeddings": the flow now covers both embeddings backends.
+- `## Required output` gains three rows: `Embeddings backend`, `Embeddings key` (WIRED / KEPT_EXISTING / PASTED_BY_USER / SKIPPED) and `Key probe`.
+- Test fixtures extended from 54 assertions to cover the new surface: the four `.env` scenarios (pristine, real key already present, Ollama-wired, missing file), the marker false positive, idempotency, permissions after every rewrite, the git-ignore gate, the placeholder check, the conditional flag in S2, document order and wording, the probe under a mocked `curl` (including an assertion that the key does NOT appear in the recorded argv), and the manifests. The bring-up snippet extractor is now anchored to the S2 section instead of to the first `curl` line in the file, so a later step that also uses `curl` cannot capture it by accident.
+
+### Refs
+
+- REQ: `REQ-KVD-SKILLS-317B7B` (`## Increment v1.3`, `AC-V13-1..27`) · ISSUE: `ISSUE-KVD-SKILLS-75BFCC` · REL: `REL-KVD-SKILLS-1.13.0` · ROAD: `ROAD-KVD-SKILLS-C20D24`
+- Built via `/new-feature` pipeline `TXN-KVD-20260908-002` (zero-gate). Consumes `IF-KVD-ENTERPRISE-25BF5A` v1.0.4 (`POST /v1/embeddings`, the `kvendra-embedding-v1` model alias and the `kvd_live_*` key format); no interface is modified.
+- Still deferred: programmatic signup (a backend feature, explicitly discarded by the owner), removal of the bundled cloud MCP preconfig, the no-restart pattern, and the Free tier gating of the hosted KB. No change to `kvendra.dev`.
+
 ## [1.12.0] — 2026-09-08 — /setup locates or clones the reference stack
 
 ### Added
