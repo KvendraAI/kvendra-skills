@@ -4,6 +4,36 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.13.1] — 2026-09-09 — honest warning: a free account cannot mint an embeddings key yet
+
+### Fixed
+
+- **`/setup` no longer walks free users into a wall.** 1.13.0 taught the wizard
+  to accompany the cloud free-tier signup and wire the resulting
+  `EMBEDDINGS_API_KEY` into the stack's `.env`. Verifying that path end-to-end
+  against the live API showed the premise is false today: a free account gets
+  `403 forbidden_tier` from `POST /v1/auth/api-keys` — *"This endpoint requires
+  Pro tier"*. The free embeddings quota itself works (a free session token
+  computes a 1024-dim vector fine), but the STATIC key a Docker `.env` needs
+  cannot be issued, and a container cannot refresh a session token.
+  `Q2` and `S1c` now state the blocker up front and steer users to Ollama, which
+  is fully automated and needs no account. The cloud branch is offered only to
+  someone who already holds a key or is on Pro.
+
+  This is a backend gate, not a wizard bug, and the gate is CORRECT as it
+  stands: the API-key authorizer hardcodes `tier: 'pro'` for every key, so
+  simply letting free users mint one would grant 50x the quota they are
+  entitled to. The real fix is per-key tier resolution in the authorizer.
+  Tracked in `ISSUE-KVD-ENTERPRISE-A0182E`.
+
+### Refs
+
+- `ISSUE-KVD-ENTERPRISE-A0182E` — root cause, live evidence and the fix that is
+  actually needed.
+- Materialises risk **R7** raised while planning 1.13.0: *"confirmed by
+  contract, not verified live; if false, the whole increment is pointless."*
+  It was verified, and it was false.
+
 ## [1.13.0] — 2026-09-08 — /setup wires the embeddings key before bring-up, and the cloud path branches on Pro
 
 ### Added

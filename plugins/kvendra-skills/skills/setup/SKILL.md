@@ -127,6 +127,18 @@ lead to DIFFERENT executable paths — this is a branch, not a preamble:
   asks for the key, writes it into the stack's `.env`, probes it, and only then
   brings the stack up in `S2`, **cloud branch**, with no Ollama flag.
 
+> **KNOWN BLOCKER — verified live 2026-09-08. Read this before offering the
+> cloud free-tier branch.** A free account currently CANNOT mint an embeddings
+> key: `POST /v1/auth/api-keys` answers `403 forbidden_tier` ("This endpoint
+> requires Pro tier"). The free embeddings quota itself works — a free account
+> can compute embeddings with a session token — but the STATIC key that a
+> Docker `.env` needs cannot be obtained yet, and a container cannot refresh a
+> session token. Until this is fixed: say so plainly and recommend **Ollama**,
+> which is fully automated and needs no account at all. Offer the cloud branch
+> only to a user who ALREADY holds a key, or who is on Pro. Do not send anyone
+> to sign up expecting a key they cannot get. Tracked as
+> `ISSUE-KVD-ENTERPRISE-A0182E`.
+
 **Why the choice is worth a minute — vector spaces.** Ollama embeds with
 `mxbai-embed-large`; the cloud embeds with `kvendra-embedding-v1` (1024-dim).
 Those are DIFFERENT vector spaces, so a KB embedded locally cannot simply be
@@ -437,6 +449,12 @@ to their repo and not seeing the MCP.
 
 **Gate.** Run this whole step ONLY when the answer to `Q2` was *cloud
 free-tier*. On the Ollama branch, skip `S1c` completely and go to `S2`.
+
+**Second gate — check the KNOWN BLOCKER stated in `Q2` first.** A free account
+cannot mint a key today, so this step only completes for a user who ALREADY
+holds one or who is on Pro. If they have neither, do NOT walk them through
+`S1c-1` and `S1c-2`: it would send them to a signup page for a key the API
+will refuse to issue. Send them back to `Q2` and use Ollama instead.
 
 **Ordering rule, and it is load-bearing**: on the cloud branch, `S2` does NOT
 run until `S1c` has finished. The reason is mechanical, not stylistic — the

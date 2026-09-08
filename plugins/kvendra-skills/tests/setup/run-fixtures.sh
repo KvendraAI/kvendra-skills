@@ -1795,18 +1795,26 @@ else
 fi
 
 skill_count="$(find "$PLUGIN_DIR/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
-if grep -q '"version": "1.13.0"' "$PLUGIN_JSON" \
-   && grep -q '"version": "1.13.0"' "$MARKET_JSON" \
+# Deliberately version-AGNOSTIC. An earlier revision pinned the literal
+# "1.13.0" here, which turns every future version bump into a red test for no
+# reason at all. The invariants that actually matter are that the two manifests
+# AGREE WITH EACH OTHER and that the marketplace states the real skill count.
+plugin_ver="$(awk -F'"' '/"version"[[:space:]]*:/ { print $4; exit }' "$PLUGIN_JSON")"
+market_ver="$(awk -F'"' '/"version"[[:space:]]*:/ { print $4; exit }' "$MARKET_JSON")"
+if [ -n "$plugin_ver" ] && [ "$plugin_ver" = "$market_ver" ] \
    && grep -q "$skill_count skills" "$MARKET_JSON"; then
-  pass "T5g: both manifests are at 1.13.0 and the marketplace states the real skill count ($skill_count)"
+  pass "T5g: both manifests agree on $plugin_ver and the marketplace states the real skill count ($skill_count)"
 else
-  fail "T5g: manifest versions / skill count (skills on disk=$skill_count)"
+  fail "T5g: manifest versions / skill count (plugin=$plugin_ver market=$market_ver skills on disk=$skill_count)"
 fi
 
-if grep -q '^## \[1.13.0\]' "$REPO_ROOT/CHANGELOG.md"; then
-  pass "T5h: the CHANGELOG carries a 1.13.0 entry"
+# Also version-agnostic: whatever the manifests say they are, the CHANGELOG
+# must document it. (T5i below stays pinned to 1.13.0 on purpose — it guards a
+# historical record, not the current version.)
+if grep -q "^## \[$plugin_ver\]" "$REPO_ROOT/CHANGELOG.md"; then
+  pass "T5h: the CHANGELOG carries a $plugin_ver entry"
 else
-  fail "T5h: CHANGELOG 1.13.0 entry"
+  fail "T5h: CHANGELOG $plugin_ver entry"
 fi
 
 # The conditional-flag fix is a BUG FIX, not a feature: it belongs under Fixed.
