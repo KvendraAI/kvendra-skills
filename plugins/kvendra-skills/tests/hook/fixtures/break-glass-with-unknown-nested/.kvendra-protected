@@ -1,0 +1,45 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture — break-glass scope + unknown nested block)
+# Policy is byte-identical to `break-glass-scope` EXCEPT for the additive
+# `broker_capabilities_seen:` block, deliberately placed IMMEDIATELY BEFORE
+# `break_glass:`. That is the worst placement for the awk mini-parser: the
+# `break_glass:` mapping is the ONE nested mapping the parser really does read
+# (it emits BG records only while `current_list == "break_glass"`). If a
+# tolerant fix left the cursor dirty, `break_glass.enabled` would never reach
+# the hook, break-glass would silently switch itself off, and the only visible
+# symptom would be a block where an ACTIVE grant was expected.
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 2
+synced_at: 2026-05-29T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: strict
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+broker_min_version: "0.4.0"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+(commit|push|tag)([[:space:]]|$)'
+  - '(^|[[:space:];&|]|/)aws[[:space:]]+s3[[:space:]]+(sync|cp)([[:space:]]|$)'
+
+allow_bash: []
+
+broker_capabilities_seen:
+  broker_version: "0.6.3"
+  schema_version: 1
+  seen_at: "2026-09-09T10:00:00Z"
+  primitives_count: 7
+  ops_count_total: 23
+  checksum: "abc123"
+
+break_glass:
+  enabled: true
+  pubkey_ed25519: "TESTPUBKEYb64AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  grant_path: ".kvendra-grant"
+
+require_broker:
+  - op_pattern: 'git[[:space:]]+(commit|push|tag)'
+    primitive: kvendra.git
+  - op_pattern: 'aws[[:space:]]+s3'
+    primitive: kvendra.aws

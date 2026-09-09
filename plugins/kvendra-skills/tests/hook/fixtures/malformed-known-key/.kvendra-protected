@@ -1,0 +1,32 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture — DEGRADED known key, must stay fail-closed)
+# `require_broker` is a list of MAPPINGS. Here the `- op_pattern: ...` sequence
+# marker has been lost (bad merge / hand edit / a buggy additive writer), so the
+# `primitive:` continuation line dangles directly under the known list key.
+#
+# This MUST remain exit 2. The fix for ISSUE-KVD-SKILLS-A5ED0D loosens the awk
+# parser to tolerate continuation lines under UNKNOWN top-level keys; if that
+# tolerance were applied unconditionally, this file would parse "successfully"
+# with an EMPTY require_broker, `lookup_primitive` would fall through to its
+# `kvendra.shell` default, and the operator would be handed a wrong remediation
+# for a real block — policy weakened with zero noise. The known-key allowlist
+# (block_bash / allow_bash / require_broker + the no-parent case) is what keeps
+# this loud.
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 1
+synced_at: 2026-05-26T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: strict
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+broker_min_version: "0.4.0"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+(commit|push|tag)([[:space:]]|$)'
+
+allow_bash: []
+
+require_broker:
+  primitive: kvendra.git

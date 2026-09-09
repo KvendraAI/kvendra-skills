@@ -1,0 +1,48 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture — an unknown container shaped
+# like a SEQUENCE OF MAPPINGS must not be promoted into `require_broker`)
+#
+# Both unknown blocks below have the exact shape of a require_broker entry
+# (`- op_pattern:` + `primitive:`). The parser leaves each pair PENDING and
+# flushes it when the next top-level key arrives — and there are TWO distinct
+# flush sites, one per top-level-key rule:
+#
+#   `vendor_hints`             -> flushed by a top-level SCALAR key
+#                                 (`broker_min_version:` below)
+#   `broker_capabilities_seen` -> flushed by a top-level LIST OPENER key
+#                                 (`require_broker:` below)
+#
+# A flush that hardcodes the label `require_broker` files the bogus pair into
+# the lookup table AHEAD of the real entries, so `lookup_primitive` returns the
+# first bogus match and the remediation of a genuine `git push` block silently
+# changes. Each block targets a different primitive, so the fixture names which
+# site regressed: `kvendra.shell` = scalar site, `kvendra.http` = list-opener
+# site, `kvendra.git` = both correct. Each flush must use the pair's own parent
+# key, exactly as the END block already does.
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 1
+synced_at: 2026-05-26T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: strict
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+(commit|push|tag)([[:space:]]|$)'
+
+allow_bash: []
+
+vendor_hints:
+  - op_pattern: 'git[[:space:]]+push'
+    primitive: kvendra.shell
+broker_min_version: "0.4.0"
+
+broker_capabilities_seen:
+  - op_pattern: 'git[[:space:]]+(commit|push|tag)'
+    primitive: kvendra.http
+
+require_broker:
+  - op_pattern: 'git[[:space:]]+(commit|push|tag)'
+    primitive: kvendra.git

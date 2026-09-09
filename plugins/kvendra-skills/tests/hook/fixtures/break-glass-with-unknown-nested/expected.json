@@ -1,0 +1,16 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D x break-glass. Assertions are IDENTICAL to `break-glass-scope` on purpose — the additive `broker_capabilities_seen:` block must be a strict no-op for break-glass too. Grant covers kvendra.git.push only. git push -> ALLOWED (exit 0, break-glass ACTIVE audit line). aws s3 sync -> still BLOCKED (out-of-scope). Verify-grant invoked once per block-hit (2x total) since break_glass is enabled — the `assert_verify_calls: 2` is the load-bearing assertion here: it proves `break_glass.enabled` survived the unknown block that precedes it. A dirty parse cursor would silently yield 0 calls and a plain block.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 0,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] break-glass ACTIVE:.*kvendra\\.git\\.push.*Audited\\.",
+  "stub_kvendra_mode": "scope-git-push",
+  "assert_verify_calls": 2,
+  "extra_cases": [
+    {
+      "command": "aws s3 sync ./dist s3://bucket",
+      "expected_exit": 2,
+      "expected_stderr_regex": "^\\[KVD-PROTECTED\\].*Break-glass: out-of-scope\\..*kvendra\\.aws"
+    }
+  ]
+}

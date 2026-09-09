@@ -193,6 +193,13 @@ entity_query({
 
 - **>1 results** → pick `[0]` (most recent), surface a WARNING and recommend archiving older duplicates.
 
+### Step 6.1b — Broker-less projects: do not materialise
+
+If the STD read in Step 6.1 carries `metadata.broker_install_skipped: true`, the project has deliberately opted out of a workspace marker (see the broker-discovery step of `onboard-project`). Do NOT write `.kvendra-protected`, in default mode or under `--policy-only`. Report `policy: not materialised (broker-less)` and end the Step 6 branch.
+
+- If `.kvendra-protected` exists at the workspace root regardless, do not delete it and do not rewrite it. Surface a WARNING: file and KB contract disagree, and the file wins at runtime, because the hook reads only the file.
+- Remediation once the broker is installed: clear `broker_install_skipped` on the STD (this skill never writes to the KB), then re-run `/sync-claudemd --policy-only`.
+
 ### Step 6.2 — Optionally merge a CMP-level override
 
 If a component context is in scope (cwd inside a known `CMP.metadata.workspace_subdir`), also query:
@@ -222,7 +229,7 @@ Extract from the STD `content` the canonical YAML block under `## Steps` step 3 
 - `synced_at` ← current ISO8601 UTC timestamp.
 - `synced_by` ← `"skill:sync-claudemd"`.
 - `cmp_overrides_applied` ← list of CMP STD ids merged in Step 6.2.
-- `checksum` ← `sha256` hex of the canonical YAML body (everything below the provenance block, i.e. starting from `mode:`).
+- `checksum` ← `sha256` hex of the **STD-derived policy body**: everything from `mode:` down to the last key rendered from the STD, `break_glass:` included (Step 6.3b). Additive blocks of local origin that no STD produces — `broker_capabilities_seen:` (Step 6.6b) — sit below that body and are EXCLUDED from the hash, so a refreshed snapshot never reads as policy drift in Step 6.4.
 
 ### Step 6.3b — Pin the break-glass pubkey (IF-840EE9 1.0 → 1.1)
 
@@ -320,6 +327,19 @@ Write the YAML payload to the **workspace root** (resolved from `PRJ.metadata.wo
 
 The file is rewritten atomically: write to `.kvendra-protected.new`, then `mv` over the existing one.
 
+### Step 6.6b — Preserve locally observed additive blocks
+
+Step 6.6 renders the file from the STD payload, so any top-level block the STD does not produce is lost on every re-sync. One such block exists: `broker_capabilities_seen:`, written by the broker-discovery step of `onboard-project` as local telemetry for drift detection.
+
+Immediately prior to the atomic replace, read the outgoing file and carry the block over:
+
+1. Extract the block whose top-level key is exactly `broker_capabilities_seen`, from that key down to the next top-level key or end of file.
+2. Append it verbatim BELOW the STD-derived body, after `break_glass:` when present, and keep it out of the `checksum` (Step 6.3).
+3. Carry over that key and no other. Any other top-level key missing from the STD payload is dropped, and a WARNING names it: hand-edited policy keys must not survive a sync, or the file would silently outrank the KB contract.
+4. Preservation is verbatim. This skill never runs broker discovery and never refreshes the snapshot content.
+
+If the outgoing file is absent or holds no such block, this sub-step is a no-op.
+
 ### Step 6.7 — Fail-safe
 
 If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*. Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers. <!-- lint-allow-es -->
@@ -331,3 +351,4 @@ If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonica
 - The skill is **dual-mode**: works identically against `kvendra-platform` local (tier:free) and `kvendra-cloud` Enterprise (tier:pro+).
 - The skill respects **AC-CLAUDEMD-8 (Manual immutable from project content)**: it never injects project-specific IDs into the Manual section. Only generic placeholders.
 - The `--policy-only` flag is the canonical surface for re-syncing `.kvendra-protected` independently of CLAUDE.md drift.
+- A project may legitimately have **no** `.kvendra-protected`. A missing marker is the contract's no-enforcement state, not a defect to repair: this skill materialises a marker only for projects whose STD does not carry `broker_install_skipped`.

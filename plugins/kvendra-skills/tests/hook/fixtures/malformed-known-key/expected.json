@@ -1,0 +1,14 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D counter-fixture. Exit 2 alone is NOT the assertion — a naive `tolerate every continuation line` fix also exits 2 here, but for the wrong reason (empty require_broker -> `kvendra.shell` fallback -> a block that names the wrong primitive). The load-bearing assertion is the STDERR REGEX: it must be the `malformed ... YAML parse error` fail-closed path, not a policy block. This fixture does not discriminate HEAD vs the proposed fix (2 on both, by design); it discriminates the proposed fix vs a naive over-tolerant one.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] malformed \\.kvendra-protected at .* — YAML parse error\\. Re-sync via /sync-claudemd --policy-only\\.",
+  "extra_cases": [
+    {
+      "command": "git status",
+      "expected_exit": 2,
+      "expected_stderr_regex": "^\\[KVD-PROTECTED\\] malformed \\.kvendra-protected at .* — YAML parse error\\."
+    }
+  ]
+}

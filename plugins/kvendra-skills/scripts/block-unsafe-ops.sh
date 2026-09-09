@@ -316,9 +316,11 @@ YAML_DUMP="$(awk '
 
   # Top-level scalar `key: value`
   /^[A-Za-z_][A-Za-z0-9_]*:[[:space:]]/ {
-    # flush any pending mapping item
+    # flush any pending mapping item under ITS OWN parent key (never a
+    # hardcoded `require_broker`, or an unknown container shaped like a
+    # sequence of mappings would be promoted into the policy).
     if (in_pair) {
-      print "PAIR\trequire_broker\t" "op_pattern=" pair_op ";primitive=" pair_prim
+      print "PAIR\t" current_list "\t" "op_pattern=" pair_op ";primitive=" pair_prim
       in_pair = 0; pair_op = ""; pair_prim = ""
     }
     current_list = ""
@@ -332,8 +334,10 @@ YAML_DUMP="$(awk '
 
   # Top-level list opener `key:` (followed by indented `- ...` lines)
   /^[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*$/ {
+    # Same flush contract as the scalar rule above: label the pair with the
+    # key it actually belongs to, resolved BEFORE current_list is reassigned.
     if (in_pair) {
-      print "PAIR\trequire_broker\t" "op_pattern=" pair_op ";primitive=" pair_prim
+      print "PAIR\t" current_list "\t" "op_pattern=" pair_op ";primitive=" pair_prim
       in_pair = 0; pair_op = ""; pair_prim = ""
     }
     sub(/:[[:space:]]*$/, "", $0)
@@ -378,8 +382,12 @@ YAML_DUMP="$(awk '
       next
     }
     if (!in_pair) {
-      print "ERROR\t" NR ":1:mapping continuation outside sequence item" > "/dev/stderr"
-      exit 1
+      if (current_list == "" || current_list == "block_bash" ||
+          current_list == "allow_bash" || current_list == "require_broker") {
+        print "ERROR\t" NR ":1:mapping continuation outside sequence item" > "/dev/stderr"
+        exit 1
+      }
+      next   # unknown top-level container -> ignore its nested mapping
     }
     line = $0
     sub(/^[[:space:]]+/, "", line)

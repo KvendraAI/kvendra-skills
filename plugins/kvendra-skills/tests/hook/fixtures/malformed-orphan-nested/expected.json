@@ -1,0 +1,14 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D counter-fixture, `current_list == \"\"` arm. Real YAML syntax error (PyYAML rejects it as well), so fail-closed is the correct behaviour and must survive the parser loosening. Like `malformed-known-key` this does NOT discriminate HEAD vs fix (2 on both, by design) — it discriminates the proposed fix vs a naive `tolerate every continuation line` fix, under which the orphan line would be swallowed and the file would enforce a policy the operator never wrote. Assertion is the stderr regex, not the exit code.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] malformed \\.kvendra-protected at .* — YAML parse error\\. Re-sync via /sync-claudemd --policy-only\\.",
+  "extra_cases": [
+    {
+      "command": "ls -la",
+      "expected_exit": 2,
+      "expected_stderr_regex": "^\\[KVD-PROTECTED\\] malformed \\.kvendra-protected at .* — YAML parse error\\."
+    }
+  ]
+}

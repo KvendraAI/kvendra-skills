@@ -4,6 +4,106 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.14.0] — 2026-09-10 — the hook stops bricking workspaces its own skills configured
+
+### Fixed
+
+- **A nested mapping in `.kvendra-protected` disabled Bash entirely.** The
+  marker parser accepted an indented key only inside a `require_broker`
+  sequence item or under `break_glass`; anything else aborted with a YAML
+  parse error, and the caller turned that into exit 2 for **every** Bash
+  invocation in the workspace — reads included. The file was valid YAML;
+  what could not read it was our own minimal parser.
+
+  The failure mode is what makes this severe rather than annoying. It is
+  fail-closed and global, so the agent loses the very tool it would use to
+  repair the file, and the only escape left to the user is deleting the
+  marker or switching the hook off in settings — a permanently permissive
+  surface. A policy error should never make disabling the policy the
+  cheapest way out.
+
+  Worse, the workspace was configured that way **by us**: sub-step 1.5.f of
+  `/onboard-project` instructs writing a nested `broker_capabilities_seen:`
+  block, and asserted that the hook "ignores unknown top-level keys". That
+  claim was true for unknown *scalars* and false for unknown *mappings*, so
+  following the skill to the letter bricked the workspace. Reproducible on
+  every new onboarding that reached that step.
+
+  The parser now ignores unknown top-level containers and whatever nests
+  under them. Tolerance means **ignored, never promoted**: a key nested
+  under an unknown container does not become policy even when it is named
+  `mode`, `allow_bash` or `break_glass`. Known containers — `block_bash`,
+  `allow_bash`, `require_broker` — and an orphan indented key with no parent
+  at all still fail hard, because degrading a known list into an empty one
+  would weaken enforcement without any noise: `require_broker` would fall
+  through to its default primitive and hand the operator a wrong remediation
+  for a real block. Two fixtures exist for the sole purpose of killing a
+  naive version of this fix that drops the distinction.
+
+- **Unknown containers shaped like a sequence were promoted to
+  `require_broker`.** Both flush sites printed that key hardcoded while the
+  `END` block printed the current one. Pre-existing and low severity —
+  `require_broker` only drives the remediation text, never the block
+  decision — but the tolerance above turns the path into a sanctioned one,
+  so it is fixed in the same release. The new fixture covers both sites
+  separately, so a future regression names which one broke.
+
+- **`/env-check` told users to brick their workspace.** Check 7 looked for
+  the *legacy* `.kvendra-workspace` marker, which the hook explicitly
+  rejects. It therefore reported a healthy project as NOT FOUND, reported
+  hook-active for a marker that fails closed on every call, and recommended
+  creating that marker by hand. This is the skill people run precisely when
+  their environment is broken. It now looks for `.kvendra-protected` first,
+  reports the legacy marker as an ERROR with the correct remediation, and
+  distinguishes a legitimately broker-less project from one that was never
+  onboarded. The hand-rolled marker recommendation is gone.
+
+- **`/onboard-project` seeded a mode that does not exist.** The broker-less
+  branch wrote `mode: "off"`, and the hook accepts only
+  `strict|permissive|hybrid` — a second brick with the same blast radius and
+  a different cause. A project with no broker now writes no marker at all,
+  which is the contract's documented no-enforcement state, and records
+  `broker_install_skipped` plus `policy_materialised: false` on its
+  broker-policy STD instead. `/sync-claudemd` honours the same flag and will
+  not recreate the file.
+
+- **`/sync-claudemd` silently destroyed the capabilities snapshot.** Step 6.6
+  renders the marker from the STD payload, so a re-sync erased any block the
+  STD does not produce — including the one 1.5.f had just written. The block
+  is now preserved verbatim across re-syncs and excluded from the provenance
+  checksum, so refreshing local telemetry never reads as policy drift. Only
+  that one key is carried over: preserving arbitrary unknown keys would let
+  a hand-edited `allow_bash` outlive every sync and quietly outrank the KB
+  contract.
+
+  The related claim that re-running `--policy-only` "populates"
+  the snapshot was false in a second way that survives the fix: that skill
+  never runs broker discovery, so it can preserve a snapshot but cannot
+  create a missing one. The text now says so rather than promising a
+  refresh surface that does not exist.
+
+### Changed
+
+- Tolerance of unknown top-level keys is now documented as a **versioned**
+  guarantee floored at this release, not an unconditional property. The
+  marker file is shared by everyone working in a workspace, so the floor is
+  a fleet property: a teammate on an older plugin still fails closed on a
+  block someone else wrote. Producers of additive blocks must check the
+  floor declared on the broker-policy contract before writing one.
+
+### Refs
+
+- `ISSUE-KVD-SKILLS-A5ED0D` — root cause, live reproduction and the three
+  candidate fixes considered.
+- Reducing the blast radius of a parse error (so a broken policy blocks only
+  what it can still parse, instead of everything) was **deliberately not**
+  done here. Fail-closed buys nothing against an adversary — anyone able to
+  write the marker writes a well-formed permissive one, and the hook never
+  verifies the checksum — so its only victim is the legitimate user. But the
+  variant proposed in the issue would resurrect the hardcoded seed policy
+  removed on purpose in 1.2.0-alpha.2. It needs its own design, and with the
+  parser fixed a parse error is no longer the common route into the brick.
+
 ## [1.13.1] — 2026-09-09 — honest warning: a free account cannot mint an embeddings key yet
 
 ### Fixed

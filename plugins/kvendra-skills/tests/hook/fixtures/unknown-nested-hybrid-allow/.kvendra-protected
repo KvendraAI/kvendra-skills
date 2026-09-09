@@ -1,0 +1,37 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture — hybrid + unknown nested block)
+# Same policy as `hybrid-override`, but the unknown additive block is wedged
+# between `allow_bash:` and `require_broker:`. That placement is the nastiest
+# one for the awk mini-parser: `require_broker` is the only list-of-MAPPINGS
+# key and it relies on the `in_pair` / `current_list` cursor state that the
+# unknown block's continuation lines walk through. If the cursor were left
+# dirty, `require_broker` would parse to nothing and `lookup_primitive` would
+# silently degrade to the `kvendra.shell` fallback.
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 1
+synced_at: 2026-05-26T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: hybrid
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+broker_min_version: "0.4.0"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+log([[:space:]]|$)'
+
+allow_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+log[[:space:]]+--oneline([[:space:]]|$)'
+
+broker_capabilities_seen:
+  broker_version: "0.6.3"
+  schema_version: 1
+  seen_at: "2026-09-09T10:00:00Z"
+  primitives_count: 7
+  ops_count_total: 23
+  checksum: "abc123"
+
+require_broker:
+  - op_pattern: 'git[[:space:]]+log'
+    primitive: kvendra.git

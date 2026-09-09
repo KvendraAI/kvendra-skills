@@ -1,0 +1,18 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D regression guard. NFR-CAP-7 (REQ-KVD-ECDAE9) promises the hook v2 parser IGNORES unknown top-level keys, so the additive `broker_capabilities_seen:` block written by onboard-project 1.5.f must be a no-op. On HEAD the awk mini-parser raises `mapping continuation outside sequence item` and every Bash command — read-only ones included — dies with exit 2 `YAML parse error` (workspace bricked). Case 1 (`git status` -> 0) is the discriminator: RED on HEAD, GREEN once fixed. Case 2 proves the policy is still ENFORCED, not merely un-bricked. Case 3 covers the second block_bash entry / second require_broker pair, i.e. that the unknown trailing block did not truncate the parse.",
+  "tool_name": "Bash",
+  "command": "git status",
+  "expected_exit": 0,
+  "extra_cases": [
+    {
+      "command": "git push origin main",
+      "expected_exit": 2,
+      "expected_stderr_regex": "\\[KVD-PROTECTED\\].*policy 'STD-KVD-BROKER-POLICY'.*mode: strict.*kvendra\\.git"
+    },
+    {
+      "command": "aws s3 sync ./dist s3://bucket",
+      "expected_exit": 2,
+      "expected_stderr_regex": "\\[KVD-PROTECTED\\].*policy 'STD-KVD-BROKER-POLICY'.*mode: strict.*kvendra\\.aws"
+    }
+  ]
+}

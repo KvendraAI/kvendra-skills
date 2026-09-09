@@ -65,7 +65,7 @@ If `whoami` does not return — or if the broker / MCP is unreachable — apply 
 Empirically discover the local broker primitive surface so the onboarding can:
 - Surface drift between local CLI and the KB-canonical `IF-<PROJ>-CLI-PRIMITIVES-MANIFEST`.
 - Warn early if the broker is missing, outdated, or pointing at a non-GitHub VCS.
-- Persist a `broker_capabilities_seen` snapshot for future drift detection.
+- Persist a `broker_capabilities_seen` snapshot for future drift detection (preserved verbatim across policy re-syncs, never refreshed by them).
 
 This step is **read-only**: zero broker calls beyond `kvendra --version` + `kvendra capabilities`, zero KB writes. The actual `.kvendra-protected` write happens in sub-step 1.5.f, and the STD metadata update in 1.5.g — both additive.
 
@@ -83,7 +83,7 @@ Run `kvendra --version` via Bash (read-only, allowlisted by the hook). Capture s
 **If CLI NOT installed → present 3 explicit options to the owner**:
 
 1. **Install now** (recommended for cloud tier). Print: `cargo install kvendra` (or point to the GitHub releases binary if cargo is unavailable). Wait for owner to confirm install, then re-run sub-step 1.5.a.
-2. **Continue broker-less** (acceptable for `tier:free` local / docs-only projects). The onboarding proceeds but the resulting `STD-<PROJ>-BROKER-POLICY` will be seeded in `mode: "off"` and no `broker_capabilities_seen` block is written. Persist `metadata.broker_install_skipped: true` on the STD-BROKER-POLICY.
+2. **Continue broker-less** (acceptable for `tier:free` local / docs-only projects). Onboarding proceeds and the seed `STD-<PROJ>-BROKER-POLICY` is still created, in the same `strict` mode as any other project — the KB entity is the contract, the workspace file is only its materialisation. What changes is that **no `.kvendra-protected` file is written at all** (Step 6.5 is skipped) and no `broker_capabilities_seen` block is produced. A missing marker is the documented no-enforcement state of the broker-policy contract; there is no `off` mode, and writing one fails closed on every Bash call with `invalid mode`. Persist on the STD: `metadata.broker_install_skipped: true` and `metadata.policy_materialised: false`. Tell the owner that enforcement starts only once the broker is installed, the flag is cleared on the STD, and `/sync-claudemd --policy-only` is run. Warn as well if an ancestor directory already carries a marker: that ancestor policy governs this workspace anyway, because the hook resolves the nearest marker upwards.
 3. **Cancel onboarding**. Owner aborts; orchestrator calls `txn_cancel` if a TXN is already open (which at Step 1.5 it should NOT be — TXN opens at Step 4).
 
 ### 1.5.c — Detect GitHub remote (informational)
@@ -155,7 +155,9 @@ broker_capabilities_seen:
   checksum: "<sha256 of the JSON payload>"
 ```
 
-Idempotency: if the existing block has the same `broker_version` + `checksum`, only update `seen_at` (no other field change). Per `NFR-CAP-7` (REQ-ECDAE9): adding this block does NOT break existing schema; hook v2 with defensive parser ignores unknown top-level keys.
+Idempotency: if the existing block has the same `broker_version` + `checksum`, only update `seen_at` (no other field change).
+
+Per `NFR-CAP-7` (REQ-ECDAE9) the block is additive: it does not change `schema_version` and no hook logic reads it. Tolerance of unknown top-level keys is a **versioned** guarantee, not an unconditional one. Hooks at or above the minimum plugin version declared by the broker-policy contract (`STD-<PROJ>-BROKER-POLICY.metadata.hook_min_plugin_version`) ignore unknown top-level keys and the mappings nested under them; earlier hooks abort with a YAML parse error and fail closed on every Bash call in that workspace. The marker file is shared by everyone who works in the workspace, so the floor applies to every hook that reads the file, not only the one on this machine. If that floor is not met — or is unknown — skip this sub-step and record the observed broker version in the KB only (sub-step 1.5.g), which needs no file write.
 
 **Note**: in **add-component mode** this step is SKIPPED — `.kvendra-protected` belongs to the workspace root, not the component subdir. Re-syncing is the job of `/sync-claudemd --policy-only`.
 
@@ -187,8 +189,12 @@ Emit, in order, only the warnings that apply:
   ```
 - If `capabilities_parse_failed == true`:
   ```
-  ⚠ capabilities snapshot was NOT written. Re-run /sync-claudemd --policy-only
-    after fixing the broker to populate broker_capabilities_seen.
+  ⚠ capabilities snapshot was NOT written. Informational only — enforcement is
+    unaffected. No re-population surface exists today: `/sync-claudemd
+    --policy-only` renders the policy from the KB STD, never runs broker
+    discovery, and so preserves an existing snapshot but cannot create a
+    missing one. Until a refresh surface ships, drift detection relies on the
+    KB IF-MANIFEST diff of sub-step 1.5.e.
   ```
 
 ## Step 2 — Determine scope
@@ -406,6 +412,7 @@ txn_create({
    Seed broker-policy playbook with **strict** mode + canonical production blocklist (cloned from the schema documented at `help({topic:"broker-policy"})` and from `STD-KVD-BROKER-POLICY` as the reference instance). Schema per `help({topic:"broker-policy"})` (`playbook_type:"broker-policy"`).
    - `metadata.playbook_type = "broker-policy"`, `metadata.mode = "strict"`, `metadata.schema_version = 1`, `metadata.broker_min_version = "0.4.0"`, `metadata.broker_install_hint = "Install kvendra-cli: cargo install kvendra (or see https://github.com/KvendraAI/kvendra-cli)"`.
    - Content includes the canonical YAML payload (mode + block_bash[] + allow_bash[] + require_broker[] + broker_install_hint + broker_min_version), pre-populated with the canonical Kvendra blocklist as the default seed.
+   - `metadata.hook_min_plugin_version = "<floor cloned from STD-KVD-BROKER-POLICY>"` — the minimum kvendra-skills plugin version whose hook tolerates additive unknown top-level keys in the marker file. Every consumer of the marker must be at or above it before sub-step 1.5.f writes the snapshot block.
    - Tags: `playbook_type:broker-policy`, `mode:strict`, `scope:broker-policy`.
    - Relations: `derives_from → ADR-KVD-SKILLS-BB0E8A`, `part_of → PRJ-<PROJECT_ID>`.
 
@@ -456,7 +463,7 @@ txn_create({
 
 ## Step 6.5 — Materialise `.kvendra-protected` (broker policy)
 
-Only in **new project mode**. After the seed `STD-<PROJECT_ID>-BROKER-POLICY` is created in Step 2b:
+Only in **new project mode**, and only when the project materialises a policy. Skip the whole step when `STD-<PROJECT_ID>-BROKER-POLICY.metadata.broker_install_skipped` is `true`: a broker-less project deliberately has no marker, and the marker is the only thing that turns enforcement on. Report `policy: not materialised (broker-less)` in the run summary. After the seed `STD-<PROJECT_ID>-BROKER-POLICY` is created in Step 2b:
 
 1. Read the freshly-created STD (the txn-scoped entity_id is known from Step 2b).
 2. Extract the canonical YAML body from `## Steps` step 3 (the fenced ```yaml … ``` block).

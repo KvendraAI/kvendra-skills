@@ -1,0 +1,13 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D — the security half of the fix. `git push` must STILL be blocked, and the stderr must literally name policy 'STD-KVD-BROKER-POLICY' and 'mode: strict', proving that the colliding keys nested inside `broker_capabilities_seen` were IGNORED, not promoted. A promotion bug would have flipped MODE to permissive with `allow_bash: .*` (exit 0, full bypass) or renamed the policy to STD-EVIL. The regex also anchors `mode: strict). Use broker primitive` with NO `Break-glass:` segment in between, proving the nested `break_glass.enabled: true` was not adopted either (NFR-COMPAT-1: no annotation when break-glass is not opted into at top level). Case 2 confirms read-only traffic is unaffected. On HEAD both cases die with exit 2 `YAML parse error`, so case 2 discriminates and case 1 discriminates on stderr.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] Bash op .* blocked by policy 'STD-KVD-BROKER-POLICY' v1 \\(mode: strict\\)\\. Use broker primitive 'kvendra\\.git' instead",
+  "extra_cases": [
+    {
+      "command": "git status",
+      "expected_exit": 0
+    }
+  ]
+}

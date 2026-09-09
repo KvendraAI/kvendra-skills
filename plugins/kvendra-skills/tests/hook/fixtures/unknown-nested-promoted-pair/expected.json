@@ -1,0 +1,13 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D — regression guard for the TWO hardcoded flush sites. Both top-level-key rules printed `PAIR<TAB>require_broker` instead of `PAIR<TAB>` + current_list (which is what the END block already does), so a pending mapping pair left over from an UNKNOWN container was promoted into the effective require_broker table and, being flushed first, won the `lookup_primitive` scan. Here that rewrites the remediation of a genuine `git push` block away from `kvendra.git`. The marker file carries one unknown block per flush site, each pointing at a different primitive, so a failure names the regressed site: `kvendra.shell` = the top-level-scalar rule, `kvendra.http` = the top-level-list-opener rule. The block itself must still fire (exit 2, mode strict, policy STD-KVD-BROKER-POLICY): the defect is a wrong remediation, not a bypass. Case 2 proves read-only traffic is unaffected. Note this marker parses fine even on HEAD — the fixture isolates the flush-label defect from the unknown-nested tolerance fix.",
+  "tool_name": "Bash",
+  "command": "git push origin main",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] Bash op .* blocked by policy 'STD-KVD-BROKER-POLICY' v1 \\(mode: strict\\)\\. Use broker primitive 'kvendra\\.git' instead",
+  "extra_cases": [
+    {
+      "command": "git status",
+      "expected_exit": 0
+    }
+  ]
+}

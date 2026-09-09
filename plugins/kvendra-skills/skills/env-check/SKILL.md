@@ -101,19 +101,53 @@ If all OK, validate that the PRJ exists in the KB:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<value>" })
 ```
 
-### 7. `.kvendra-workspace` marker in CWD or an ancestor
+### 7. Broker-policy marker in CWD or an ancestor
+
+The canonical marker is `.kvendra-protected`. `.kvendra-workspace` is the
+legacy marker of the transition window and is **no longer supported** by the
+hook. Resolve both exactly as the hook does — walk up from the cwd, and let
+the nearest `.kvendra-protected` win over any legacy marker found on the way:
 
 ```bash
-DIR="$PWD"; while [[ "$DIR" != "/" ]]; do
-  [[ -f "$DIR/.kvendra-workspace" ]] && echo "FOUND: $DIR/.kvendra-workspace" && break
-  DIR="$(dirname "$DIR")"
+DIR="$PWD"; PROT=""; LEGACY=""
+while :; do
+  [[ -z "$PROT"   && -f "$DIR/.kvendra-protected" ]] && PROT="$DIR/.kvendra-protected" && break
+  [[ -z "$LEGACY" && -f "$DIR/.kvendra-workspace" ]] && LEGACY="$DIR/.kvendra-workspace"
+  PARENT="$(dirname "$DIR")"; [[ "$PARENT" == "$DIR" ]] && break; DIR="$PARENT"
 done
+echo "protected: ${PROT:-NONE}"; echo "legacy: ${LEGACY:-NONE}"
 ```
 
-- **FOUND** → PreToolUse hook active, will block Bash for external ops.
-- **NOT FOUND** → hook does not activate in this directory. If intentional
-  (project outside Kvendra), OK. Otherwise create the marker manually:
-  `printf 'workspace: <name>\n' > .kvendra-workspace`.
+- **`.kvendra-protected` found** → **OK**. Enforcement is active from that
+  workspace root down. Report the path. A legacy marker sitting alongside it
+  is inert; mention it as an INFO line and suggest removing it.
+
+- **Only `.kvendra-workspace` found** → **ERROR**, not OK. The hook rejects
+  the legacy marker outright and fails closed: **every** Bash call in this
+  workspace exits 2, read-only ones included. Remediation: run
+  `/sync-claudemd --policy-only` to materialise `.kvendra-protected` from
+  `STD-<PROJ>-BROKER-POLICY`, then delete the legacy file. Never hand-write a
+  marker: an unsigned or hand-made file is what bricks the workspace.
+
+- **Neither found** → no enforcement in this directory. Two very different
+  causes, so distinguish them before reporting. Read the project's
+  broker-policy STD:
+  ```
+  mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+    entity_type:"STD", project_id:"<PROJECT>",
+    tags_all:["scope:broker-policy"], status:"active", limit:1 })
+  ```
+  - STD exists with `metadata.broker_install_skipped: true` → **OK
+    (broker-less)**. A missing marker is the documented no-enforcement state
+    of the contract, not a defect. No action. Enforcement starts once the
+    broker is installed, the flag is cleared on the STD, and
+    `/sync-claudemd --policy-only` is run.
+  - STD exists without that flag → **WARN**: the KB contract says the policy
+    should be materialised and it is not. Remediation:
+    `/sync-claudemd --policy-only`.
+  - No STD, or no `project_id` in `CLAUDE.md` → the project was never
+    onboarded. Suggest `/onboard-project`. If the directory is intentionally
+    outside Kvendra, this is expected — report it as informational.
 
 ### 8. PreToolUse hook from the plugin installed
 
@@ -149,7 +183,7 @@ after install. Ask the user to run `/plugin list` and validate that
 | 4 | MCP kvendra (broker) | OK / FAIL | <cause> |
 | 5 | 7 broker primitives | OK / N/7 / N/A | <missing list> |
 | 6 | CLAUDE.md + Project Identity | OK / PARTIAL / NONE | project_id: X, tier: Y |
-| 7 | .kvendra-workspace marker | FOUND / NOT_FOUND | <path or NOT_FOUND> |
+| 7 | Broker-policy marker | OK / OK (broker-less) / WARN / ERROR (legacy) | <path or cause> |
 | 8 | PreToolUse hook | INSTALLED / MISSING | <path> |
 | 9 | Skills | OK / N skills | <list or missing> |
 

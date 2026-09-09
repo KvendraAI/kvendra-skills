@@ -1,0 +1,13 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D — hybrid mode with the unknown block wedged immediately BEFORE `require_broker`. Case 1 (`git log --oneline` -> 0) discriminates on exit code and proves the allow_bash override still fires. Case 2 (`git log` -> 2) proves the block list still fires AND that the stderr names `kvendra.git`, i.e. the require_broker mapping that FOLLOWS the unknown block was parsed — a dirty parse cursor would have degraded it to the `kvendra.shell` fallback without changing the exit code, which is exactly the kind of silent policy weakening this fixture exists to catch.",
+  "tool_name": "Bash",
+  "command": "git log --oneline -n 5",
+  "expected_exit": 0,
+  "extra_cases": [
+    {
+      "command": "git log -n 5",
+      "expected_exit": 2,
+      "expected_stderr_regex": "^\\[KVD-PROTECTED\\] Bash op .* blocked by policy 'STD-KVD-BROKER-POLICY' v1 \\(mode: hybrid\\)\\. Use broker primitive 'kvendra\\.git' instead"
+    }
+  ]
+}

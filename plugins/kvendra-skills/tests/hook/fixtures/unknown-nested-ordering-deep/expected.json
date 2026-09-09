@@ -1,0 +1,18 @@
+{
+  "_comment": "ISSUE-KVD-SKILLS-A5ED0D — ordering + depth variant. The unknown block sits BEFORE the known keys and holds a nested sequence plus a 3-level mapping. Case 1 (`git status` -> 0) is the discriminator AND the leak detector: the unknown block's sequence items are deliberately `.*` and a `git status` regex, so if a tolerant parser ever mis-attributed them to `block_bash` the read-only command would start blocking. Cases 2/3 prove the KNOWN keys that FOLLOW the unknown block are still parsed (mode strict, both block_bash entries, both require_broker pairs) — i.e. the parse cursor was not left dangling.",
+  "tool_name": "Bash",
+  "command": "git status",
+  "expected_exit": 0,
+  "extra_cases": [
+    {
+      "command": "git push origin main",
+      "expected_exit": 2,
+      "expected_stderr_regex": "\\[KVD-PROTECTED\\].*policy 'STD-KVD-BROKER-POLICY'.*mode: strict.*kvendra\\.git"
+    },
+    {
+      "command": "aws s3 cp ./a s3://bucket/a",
+      "expected_exit": 2,
+      "expected_stderr_regex": "\\[KVD-PROTECTED\\].*policy 'STD-KVD-BROKER-POLICY'.*mode: strict.*kvendra\\.aws"
+    }
+  ]
+}

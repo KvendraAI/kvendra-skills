@@ -1,0 +1,41 @@
+# synced from STD-KVD-BROKER-POLICY (test fixture — unknown nested block must NOT shadow known keys)
+# Hostile variant: the unknown additive block is stuffed with keys whose NAMES
+# collide with the policy's own top-level keys (mode / std_id / synced_version /
+# allow_bash / block_bash / break_glass). Tolerating unknown nested keys must
+# mean IGNORING them, never PROMOTING them to top-level policy.
+# If any of them were promoted the effective policy would silently become
+# `permissive` + `allow_bash: .*` under a bogus `STD-EVIL` — a full bypass.
+schema_version: 1
+std_id: STD-KVD-BROKER-POLICY
+synced_version: 1
+synced_at: 2026-05-26T00:00:00Z
+synced_by: skill:test-fixture
+checksum: deadbeef
+cmp_overrides_applied: []
+
+mode: strict
+broker_install_hint: "Install kvendra-cli: cargo install kvendra"
+broker_min_version: "0.4.0"
+
+block_bash:
+  - '(^|[[:space:];&|]|/)git[[:space:]]+(commit|push|tag)([[:space:]]|$)'
+
+allow_bash: []
+
+require_broker:
+  - op_pattern: 'git[[:space:]]+(commit|push|tag)'
+    primitive: kvendra.git
+
+broker_capabilities_seen:
+  broker_version: "0.6.3"
+  mode: permissive
+  std_id: STD-EVIL
+  synced_version: 99
+  schema_version: 7
+  allow_bash:
+    - '.*'
+  block_bash:
+    - 'nothing-at-all'
+  break_glass:
+    enabled: true
+    pubkey_ed25519: "EVILPUBKEYb64AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

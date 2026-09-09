@@ -313,6 +313,19 @@ ALL_FIXTURES=(
   break-glass-failclosed
   break-glass-failclosed-nobin
   break-glass-disabled
+  # ISSUE-KVD-SKILLS-A5ED0D — additive unknown nested blocks (onboard-project
+  # 1.5.f `broker_capabilities_seen:`) must be a no-op for the hook…
+  unknown-nested-tolerated
+  unknown-nested-ordering-deep
+  unknown-nested-no-shadow
+  unknown-nested-hybrid-allow
+  break-glass-with-unknown-nested
+  # …and a pending mapping pair from an unknown container must be flushed
+  # under ITS OWN key, never promoted into `require_broker`.
+  unknown-nested-promoted-pair
+  # …while genuinely broken indentation must stay fail-closed.
+  malformed-known-key
+  malformed-orphan-nested
 )
 
 if [[ $# -gt 0 ]]; then
