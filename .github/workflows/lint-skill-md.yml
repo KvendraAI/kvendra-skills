@@ -225,3 +225,84 @@ jobs:
             exit 1
           fi
           echo "Guarded-update CAS adoption check passed: all entity_update writers carry the rule."
+
+      - name: No-false-engine-claims check
+        id: no_false_engine_claims
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Regression gate for the three defects fixed in REL-KVD-SKILLS-1.14.1
+          # (ISSUE-KVD-SKILLS-B7F1CB / -890DAA / -BF4BA2). Each pattern below was
+          # a literal, verified-false claim about the KB engine that shipped in
+          # the plugin and produced orphan entities in customer KBs.
+          # Class 1 + class 2 of PAT-KVD-5F888B. Self-contained by design: this
+          # repo cannot reach the (private) engine repo, so the engine-side
+          # counterparts live in kvendra-enterprise CI -- see ISSUE-KVD-SKILLS-B61520.
+          fail=0
+
+          # (1) Invented engine restriction. `ENTITY_CONFIG` exists in no repo;
+          #     the engine accepts `relations` for every entity_type (the only
+          #     validity gate is the entity_relations foreign key).
+          if grep -rnE '(relations=no|ENTITY_CONFIG|does NOT accept relations|does not accept relations)' \
+               plugins/kvendra-skills/skills/*/SKILL.md; then
+            echo "::error::A SKILL.md claims the engine rejects relations for some entity_type."
+            echo "  That claim is false and was the root cause of ISSUE-KVD-SKILLS-B7F1CB:"
+            echo "  it made agents omit the relations argument, orphaning DOC and RUN entries."
+            echo "  The engine has no per-type relation gate. Every non-PRJ entity carries"
+            echo "  at least part_of to its PRJ. See the '### Relations - required, not"
+            echo "  optional' section in doc-indexer / regression / incident-manager."
+            fail=1
+          fi
+
+          # (2) False wire shape. COMPONENT_ID_RE = /^[A-Z][A-Z0-9]*$/ in
+          #     @kvendra/enterprise-core rejects hyphens, so "<PROJ>-<COMP>"
+          #     renders "KVD-SKILLS" and is refused by entity_create,
+          #     entity_query, txn_create and txn_check_interrupted alike.
+          if grep -rnE 'component_id: *"?<[A-Z_]+>-' plugins/kvendra-skills/skills/; then
+            echo "::error::A component_id is documented with a project prefix."
+            echo "  The field takes the BARE component code: \"SKILLS\", never \"KVD-SKILLS\"."
+            echo "  Hyphenated values are rejected on all four surfaces (ISSUE-KVD-SKILLS-BF4BA2)."
+            echo "  NOTE: force_id DOES take the full hyphenated entity id, and"
+            echo "  tags_all:[\"CMP-<PROJ>-<COMP>\"] is a tag, not a component_id. Neither is"
+            echo "  matched by the pattern above -- do not 'fix' them."
+            fail=1
+          fi
+
+          # (3) Cited HTTP headers must be real. Measured 2026-09-10: the entire
+          #     plugin cites exactly ONE header, and it did not exist in any repo
+          #     (ISSUE-KVD-SKILLS-6D1A39). An allowlist therefore has a
+          #     zero false-positive rate here. Adding a header to this list is a
+          #     deliberate act that shows up in review -- which is the point.
+          allowed_headers=" Authorization X-Id-Token "
+          bad_headers=""
+          while IFS= read -r h; do
+            [[ -z "$h" ]] && continue
+            if [[ "$allowed_headers" != *" $h "* ]]; then
+              bad_headers="$bad_headers $h"
+            fi
+          done < <(grep -rhoE '\bX-[A-Za-z][A-Za-z0-9-]*' plugins/kvendra-skills/skills/*/SKILL.md | sort -u)
+
+          # WARN-ONLY FOR NOW, deliberately. X-Kvendra-Skill is still cited in 23
+          # SKILL.md because ISSUE-KVD-SKILLS-6D1A39 (defect E) was deferred out of
+          # REL-KVD-SKILLS-1.14.1 on purpose. Enforcing today would break CI on the
+          # first run -- the flag-off -> warn -> enforce rule of PAT-KVD-5F888B applies
+          # to this gate too. FLIP TO ::error:: AND SET fail=1 in the same PR that
+          # closes ISSUE-KVD-SKILLS-6D1A39.
+          if [[ -n "$bad_headers" ]]; then
+            echo "::warning::SKILL.md cites HTTP header(s) that are not in the allowlist:"
+            for h in $bad_headers; do echo "  $h"; done
+            echo ""
+            echo "Migration guidance:"
+            echo "  - The MCP client sends no custom headers. If a skill needs to identify"
+            echo "    itself, use metadata.updated_by (a skill convention) and started_by on"
+            echo "    txn_create (a declared, persisted field). A top-level updated_by is in"
+            echo "    no tool schema and is dropped without an error."
+            echo "  - If the header is genuinely implemented now, add it to allowed_headers"
+            echo "    in this workflow IN THE SAME PR that implements it, citing the file"
+            echo "    that reads it."
+            # fail=1  <- uncomment when ISSUE-KVD-SKILLS-6D1A39 closes
+          fi
+
+          if [[ "$fail" -ne 0 ]]; then exit 1; fi
+          echo "No-false-engine-claims check passed: no invented restriction, no bad component_id shape. Header check is warn-only until ISSUE-KVD-SKILLS-6D1A39 closes."

@@ -115,7 +115,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-<PROJ>-<VER>" })`.
 2. List included ISSUEs: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`.
 3. Verify regression gates: for each component with an ISSUE in the REL,
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`.
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
 4. Show the changelog (returned automatically by `entity_get` — the server
    populates `entity_changelog` whenever there is an active REL).
 5. Show blockers: ISSUEs with `relations_outbound: blocks → REL-<PROJ>-<VER>`.
@@ -140,7 +140,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 ### GATE-CHECK — Verify regression gates
 
 For each included component:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`.
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
 2. Verify the last run (in `metadata.execution_history` or read the latest
    associated RUN via `entity_related`).
 3. Per-component result: PASS / BLOCKED (list bugs) / PENDING.

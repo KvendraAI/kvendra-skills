@@ -57,7 +57,7 @@ pointing to the required broker primitive.
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",   // optional
+  component_id: "<COMP>",   // optional
   title: "<title>",
   content: <markdown>,
   metadata: { severity, priority },

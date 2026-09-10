@@ -56,7 +56,7 @@ pointing to the required broker primitive.
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
 
 4. **Defined and consumed IFs:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
    For each IF consumed from another component, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"IF-<...>" })`.
 
 ## Step 2 — Scan source code

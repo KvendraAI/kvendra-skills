@@ -53,7 +53,7 @@ Use **tag-based discovery** (NOT literal id lookup) per `PAT-KVD-577667`:
 entity_query({
   entity_type: "STD",
   project_id: "<PROJECT>",
-  component_id: "<PROJECT>-<COMP>",
+  component_id: "<COMP>",
   tags_all: ["scope:deploy", "scope:process"],
   status: "active",
   order_by: "updated_at_desc",

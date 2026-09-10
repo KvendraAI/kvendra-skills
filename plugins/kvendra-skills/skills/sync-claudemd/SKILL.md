@@ -208,7 +208,7 @@ If a component context is in scope (cwd inside a known `CMP.metadata.workspace_s
 entity_query({
   entity_type: "STD",
   project_id: "<PROJECT>",
-  component_id: "<PROJECT>-<COMP>",
+  component_id: "<COMP>",
   tags_all: ["scope:broker-policy"],
   status: "active",
   order_by: "updated_at_desc",

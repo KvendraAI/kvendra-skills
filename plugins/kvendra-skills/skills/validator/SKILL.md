@@ -54,7 +54,7 @@ Load from the Kvendra KB:
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<area of the changes>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
 
 3. **Existing tests for the component** (reference for protocols):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:<PROJ>-<COMP> })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:<COMP> })`
 
 ## Step 2 — Determine the level
 

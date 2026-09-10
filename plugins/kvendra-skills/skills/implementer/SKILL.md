@@ -54,7 +54,7 @@ pointing to the required broker primitive.
    → mandatory patterns, anti-patterns, handler pattern, testing.
 
 3. **Component interfaces:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
    → contracts with canonical field names, types, direction.
 
 4. **Domain glossary:**

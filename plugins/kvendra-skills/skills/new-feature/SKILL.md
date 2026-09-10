@@ -116,7 +116,7 @@ what is missing or suspect — the pack is an optimization, not a cage."
 ### Interrupted check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
 ```
 
 If an in-progress TXN exists: Resume / Cancel / Ignore.
@@ -127,7 +127,7 @@ If an in-progress TXN exists: Resume / Cancel / Ignore.
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "new-feature",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   trigger: "<feature description>",
   pipeline: [
     { step:0, name:"requirements-analyst" },
@@ -298,7 +298,7 @@ up to 3 iterations per criterion.
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: <PROJ>,
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   title: "<title derived from SPEC>",
   content: <markdown>,
   metadata: { type:"task", status:"draft" },

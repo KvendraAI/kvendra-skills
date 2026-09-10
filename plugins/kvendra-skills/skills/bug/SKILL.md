@@ -110,7 +110,7 @@ what is missing or suspect — the pack is an optimization, not a cage."
 ### Interrupted check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
 ```
 
 If an in-progress TXN exists:
@@ -127,7 +127,7 @@ If an in-progress TXN exists:
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "bug",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   trigger: "<target to test>",
   pipeline: [
     { step:1, name:"functional-expert" },

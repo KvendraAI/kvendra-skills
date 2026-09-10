@@ -312,7 +312,7 @@ This is the deterministic transform applied at Step 5 once the answers are known
    entity_create({
      entity_type: "STD",
      project_id: "<PROJ>",
-     component_id: "<PROJ>-<COMP>",
+     component_id: "<COMP>",
      title: "STD-<PROJ>-<COMP>-DEPLOY-PROCESS: <derived from D1>",
      content: <rendered content>,
      metadata: {
@@ -365,11 +365,14 @@ This goes verbatim under `## Particularidades` in the generated CLAUDE.md.
 ## Step 4 — Open a TXN
 
 ```
-txn_check_interrupted({ project_id:<PROJECT_ID>, component_id:"<PROJECT_ID>-<COMP>" })
+txn_check_interrupted({
+  project_id:<PROJECT_ID>,
+  component_id:"<COMP>"   // only in add-component mode
+})
 txn_create({
   type: "onboarding",
   project_id: "<PROJECT_ID>",
-  component_id: "<PROJECT_ID>-<COMP>",   // only in add-component mode
+  component_id: "<COMP>",   // only in add-component mode
   trigger: "Onboard <project|component name>",
   pipeline: [
     {step:1, name:"create-prj-or-cmp"},
@@ -433,7 +436,7 @@ txn_create({
    entity_create({
      entity_type: "CMP",
      project_id: "<PROJECT_ID>",
-     component_id: "<PROJECT_ID>-<COMP>",
+     component_id: "<COMP>",
      force_id: "CMP-<PROJECT_ID>-<COMP>",
      title, content,
      metadata: {

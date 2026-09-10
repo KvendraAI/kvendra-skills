@@ -39,6 +39,15 @@ tree regardless of scope.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- **`component_id` is an explicit decision, never a guess.** Pass the bare
+  component code — uppercase A-Z + digits, NO project prefix and NO hyphens
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  specific component; **OMIT the key entirely** when it is genuinely
+  project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
+  Never invent a component to fill the field and never pass `null` (`null` is
+  a hard 400 on `entity_query`); if the scope is not obvious from the work at
+  hand, ask the user — `component_id` cannot be changed after creation, and an
+  entity created without it never appears in the component's tabs.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
@@ -99,14 +108,48 @@ If a DOC entry exists with the same `file_path` in metadata → use
 `entity_create`. Idempotent: re-running the skill on the same `docs/`
 directory updates in place rather than duplicating.
 
+## Step 3b — Resolve the relation targets from the KB
+
+Do this ONCE, before the first create. Relation targets must be ids the KB
+returned to you, never ids you assembled from `CLAUDE.md`, from a path
+segment or from a book slug:
+
+    mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id: "PRJ-<PROJ>" })
+    mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type: "CMP", project_id: "<PROJ>" })
+
+- If `entity_get` on the PRJ returns `not_found`: STOP and report that the
+  project is not onboarded (run `/onboard-project` first). Do NOT index docs
+  that have nowhere to attach.
+- Map a file to a component ONLY when the mapping is unambiguous:
+  1. the book `README.md` front-matter declares `scope: CMP-<PROJ>-<COMP>` and
+     that id is in the CMP list returned above; or
+  2. exactly one CMP code from that list matches a path segment or the book
+     slug, case-insensitively.
+  Otherwise the file is a project-level doc: no `component_id`, no `affects`.
+  When a book's front-matter DECLARES a `scope:` that is not in the CMP list,
+  do not fall back silently: index it as project-level AND flag it in the
+  Step 6 consistency report, naming the book and the unresolved id. The
+  author stated an intent the KB cannot honour — that is a finding, not a
+  default.
+- Keep the resolved ids verbatim in `relations[].target` — do not normalise,
+  re-case or re-hyphenate them. This applies to full entity ids only:
+  `component_id` is a separate field and takes the BARE component code out
+  of that id (`CMP-KVD-SKILLS` -> `"SKILLS"`), never the id itself.
+
 ## Step 4 — Create or update the DOC entry
 
 One entry per `.md` file:
+
+Decide `component_id` ONCE per book, not per file: every `.md` under the same
+`docs/<book>/` directory shares that book's scope. A book documenting one
+component (e.g. `docs/api-ref/` of a single service) carries that component's
+code; a project-wide book (e.g. `docs/project-overview/`) omits the key.
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "DOC",
   project_id: <PROJ>,
+  component_id: <bare component code if the book documents one component; OMIT the key if project-wide>,
   title: "DOC: <relative file path>",
   content: <see format below>,
   metadata: {
@@ -117,12 +160,53 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
     last_indexed: "<ISO date>"
   },
   tags: ["audience:<audience>", "doc:genre:<genre>", "<top-level topic>"],
+  relations: [
+    { type: "part_of", target: "<PRJ id from Step 3b>" },   // ALWAYS
+    { type: "affects", target: "<CMP id from Step 3b>" }     // only when a component was resolved
+  ],
+  txn_id: "<txn_id>",            // only when an orchestrator passed one; omit for a standalone run
   updated_by: "skill:doc-indexer"
 })
 ```
 
-(DOC in the Kvendra KB does NOT accept relations — `relations=no` in
-ENTITY_CONFIG. Cross-references go in `metadata.crossrefs` or in tags.)
+### Relations — required, not optional
+
+Every DOC carries `part_of` to its PRJ. That is what gives the document a
+place in the project tree the glossary defines: a DOC with no outbound edge is
+an orphan, invisible to `entity_related` and to the Component "Docs" tab. When
+Step 3b resolved a component, add `affects` to that CMP as well — `affects`
+rather than `part_of`, because an architecture document legitimately crosses
+several components and `part_of` would claim sole ownership.
+
+Doc-to-doc cross-references stay in the `### Cross-references` content section
+below. Do NOT turn them into relations during this pass: they point at files
+whose DOC entries may not exist yet, and a missing target aborts the create
+(see below). If you want them as edges, do a SECOND pass after every DOC of
+the run exists, with `entity_update({ relations_add: [...] })` under the
+Guarded update (CAS) rule, and `entity_get` each target first.
+
+That `entity_get` per target is not belt-and-braces: on the UPDATE path a
+missing relation target is **not** reported as the clean error below. Measured
+2026-09-10: `entity_update({relations_add})` with an absent target returns an
+unmapped `{"error":{"type":"internal_error","message":"Internal server
+error"}}` — no `field`, no offending id, nothing you can act on. Nothing is
+persisted (verified: no version bump, no history row, valid relations in the
+same call are not added either), so integrity holds; but you cannot recover
+from the message, only from having checked first. Tracked in
+`ISSUE-KVD-ENTERPRISE-0773E5`.
+
+**Relation-target failure — never degrade.** If a relation target does not
+exist the engine rejects the whole call and creates NOTHING (the entity row
+and its relations are one database transaction; the target check is the
+foreign key). The response is verbatim:
+
+    {"error":{"type":"invalid_request","message":"relations: relations target CMP-KVD-NOPE999 not found","field":"relations"}}
+
+The `message` echoes the offending target id. On this error: re-read the
+correct id from the KB and retry with the corrected target. Do NOT retry with
+`relations` removed or shortened, and do NOT move the reference into
+`metadata` instead — that recreates the orphan this rule exists to prevent. If
+the target genuinely does not exist, STOP and report it.
 
 ### Content format
 

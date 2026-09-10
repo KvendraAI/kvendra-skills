@@ -33,6 +33,15 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- **`component_id` is an explicit decision, never a guess.** Pass the bare
+  component code — uppercase A-Z + digits, NO project prefix and NO hyphens
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  specific component; **OMIT the key entirely** when it is genuinely
+  project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
+  Never invent a component to fill the field and never pass `null` (`null` is
+  a hard 400 on `entity_query`); if the scope is not obvious from the work at
+  hand, ask the user — `component_id` cannot be changed after creation, and an
+  entity created without it never appears in the component's tabs.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
@@ -105,13 +114,13 @@ If a new REQ was implemented:
 
 If regression-case TESTs were created:
 - Find the REG for the component:
-  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:<PROJ>-<COMP> })`
+  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:<COMP> })`
 - Append the TEST IDs to the suite via `entity_update` (content + `relations_add: { type:"part_of", target:"REG-..." }` from the TEST).
 
 ### 3e — PAT (lessons learned)
 
 If a bug yields a generalisable lesson:
-- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
+- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, component_id:<COMP from the originating ISSUE, or omit if the lesson generalises>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
 
 ## Step 4 — Final verification
 

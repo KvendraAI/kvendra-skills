@@ -36,6 +36,15 @@ If the topic is cross-project, work without a component.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- **`component_id` is an explicit decision, never a guess.** Pass the bare
+  component code — uppercase A-Z + digits, NO project prefix and NO hyphens
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  specific component; **OMIT the key entirely** when it is genuinely
+  project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
+  Never invent a component to fill the field and never pass `null` (`null` is
+  a hard 400 on `entity_query`); if the scope is not obvious from the work at
+  hand, ask the user — `component_id` cannot be changed after creation, and an
+  entity created without it never appears in the component's tabs.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
@@ -160,6 +169,7 @@ Create the ROAD entry directly in the KB:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ROAD",
   project_id: <PROJ>,
+  component_id: <bare component code if this roadmap item belongs to one component; OMIT if cross-component>,
   title: "ROAD-<PROJ>-<auto>: <title>",
   content: <markdown>,
   metadata: { status: "proposed" },
@@ -173,6 +183,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "PAT",
   project_id: <PROJ>,
+  component_id: <bare component code if the lesson is component-specific; OMIT if it generalises across the project>,
   title: "PAT-<PROJ>-<auto>: <lesson>",
   content: <markdown with lesson + when to apply + example>,
   metadata: { category: "lesson-learned", origin: "consultancy" },

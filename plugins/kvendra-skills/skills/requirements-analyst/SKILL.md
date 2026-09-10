@@ -31,6 +31,15 @@ Identify `project_id` from the `CLAUDE.md`.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- **`component_id` is an explicit decision, never a guess.** Pass the bare
+  component code — uppercase A-Z + digits, NO project prefix and NO hyphens
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  specific component; **OMIT the key entirely** when it is genuinely
+  project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
+  Never invent a component to fill the field and never pass `null` (`null` is
+  a hard 400 on `entity_query`); if the scope is not obvious from the work at
+  hand, ask the user — `component_id` cannot be changed after creation, and an
+  entity created without it never appears in the component's tabs.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
@@ -78,6 +87,7 @@ If new and approved by the user:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REQ",
   project_id: "<PROJ>",
+  component_id: "<COMP>",   // the same <COMP> as the `affects CMP-<PROJ>-<COMP>` relation below; OMIT for a cross-component REQ
   title: "REQ-<PROJ>-<auto>: <title>",
   content: <markdown with description, acceptance criteria, scope, ...>,
   tags: ["type:<type>", "priority:<level>"],

@@ -48,7 +48,7 @@ pointing to the required broker primitive.
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
 
 2. **IFs (to verify naming in tests):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
 
 3. **REQ to validate** (if indicated):
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REQ-<PROJ>-<NN>" })`
@@ -58,10 +58,10 @@ pointing to the required broker primitive.
 
 5. **Existing tests** (to avoid duplicates — the server warns via
    `check_duplicates` automatically, but inspection is also useful):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:"<COMP>" })`
 
 6. **SLA targets** (for performance tests):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<COMP>" })`
 
 ## Step 2 — Design the TEST
 
@@ -102,7 +102,7 @@ Design the structure:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "TEST",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   title: "TEST-<PROJ>-<COMP>-<auto>: <descriptive title>",
   content: <full markdown: preconditions / process / postconditions /
             validations / result / evidence>,

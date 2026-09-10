@@ -34,6 +34,15 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- **`component_id` is an explicit decision, never a guess.** Pass the bare
+  component code — uppercase A-Z + digits, NO project prefix and NO hyphens
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  specific component; **OMIT the key entirely** when it is genuinely
+  project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
+  Never invent a component to fill the field and never pass `null` (`null` is
+  a hard 400 on `entity_query`); if the scope is not obvious from the work at
+  hand, ask the user — `component_id` cannot be changed after creation, and an
+  entity created without it never appears in the component's tabs.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
@@ -63,7 +72,7 @@ If a similar past incident exists → show it for context.
 ## Step 2 — Open the incident TXN
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })
+mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
 # if an in-progress TXN exists: Resume / Cancel / Ignore
 ```
 
@@ -71,7 +80,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PR
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
   type: "incident",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   trigger: "<short description>",
   pipeline: [
     { step: 1, name: "create-issue" },
@@ -90,7 +99,7 @@ Capture `txn_id`.
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   title: "<short description>",
   content: <markdown — see format below>,
   metadata: {
@@ -167,16 +176,44 @@ If no runbook covers this scenario:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "RUN",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   title: "RUN-<PROJ>-<COMP>-<auto>: <description>",
   content: <resolution steps>,
-  metadata: { origin_issue: "ISSUE-<PROJ>-<COMP>-<NN>" },
+  metadata: { origin_issue: "<ISSUE id from Step 3>" },   // mirror of the mitigates edge
+  relations: [
+    { type: "mitigates", target: "<ISSUE id returned by Step 3>" },   // ALWAYS
+    { type: "affects",   target: "<CMP id read in Step 1>" }          // ALWAYS
+  ],
   txn_id: "<txn_id>",
   updated_by: "skill:incident-manager"
 })
 ```
 
-(RUN does not accept relations in the Kvendra KB — traceability lives in metadata.)
+### Relations — required, not optional
+
+A runbook born from an incident carries `mitigates` to that incident and
+`affects` to the component it operates on. `mitigates` (not `fixes`): the
+runbook restores service, it does not remove the defect.
+`metadata.origin_issue` is kept only as a human-readable mirror — a string
+nothing can traverse. Without the edges this RUN is an orphan: the next
+incident on the same component will not surface it in the Step 1 lookup, which
+is the whole reason for writing it.
+
+Take the ISSUE id from what Step 3 returned, and the CMP id from what Step 1
+read. Never assemble a target id by hand. The ISSUE is a draft inside the same
+TXN and that is fine: the target check is a foreign key on the entity row,
+which exists as soon as the draft is created — TXN status is irrelevant to it.
+
+**Relation-target failure — never degrade.** If a relation target does not
+exist the engine rejects the whole call and creates NOTHING (the entity row
+and its relations are one database transaction). The response is verbatim:
+
+    {"error":{"type":"invalid_request","message":"relations: relations target CMP-KVD-NOPE999 not found","field":"relations"}}
+
+The `message` echoes the offending target id. On this error: re-read the
+correct id from the KB and retry with the corrected target. Do NOT retry with
+`relations` removed or shortened. If the target genuinely does not exist, STOP
+and report it inside the incident rather than persisting an orphan runbook.
 
 ### 5b — REQ (if applicable)
 
@@ -186,6 +223,7 @@ If it reveals a need for improvement (alerting, monitoring, redundancy):
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REQ",
   project_id: "<PROJ>",
+  component_id: "<COMP>",   // inherit from the originating ISSUE-<PROJ>-<COMP>-<NN>; OMIT if the improvement is project-wide
   title: "REQ-<PROJ>-<auto>: <improvement>",
   content: <description + acceptance criteria>,
   relations: [
@@ -204,6 +242,7 @@ If there is a generalisable lesson:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "PAT",
   project_id: "<PROJ>",
+  component_id: "<COMP>",   // inherit from the originating ISSUE-<PROJ>-<COMP>-<NN>; OMIT if the lesson generalises
   title: "PAT-<PROJ>-<auto>: <lesson>",
   content: <markdown with the lesson + when to apply + example>,
   relations: [

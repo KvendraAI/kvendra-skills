@@ -45,7 +45,7 @@ pointing to the required broker primitive.
 ## Step 1 — Load the REG suite
 
 1. **REG for the component:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`
 
    If a specific REG ID is provided:
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REG-<PROJ>-<COMP>-<SEQ>" })`
@@ -56,10 +56,17 @@ pointing to the required broker primitive.
    For each `test_id` referenced: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
 
 4. **SLA targets:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<PROJ>-<COMP>" })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<COMP>" })`
 
 5. **Active REL (to associate results):**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_all:["status:planning"] })`
+
+6. **Relation targets (ids, not guesses):**
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ> })`
+   Keep the `CMP` entity_id verbatim, plus the `REG` id from 1.1 and the `REL`
+   id from 1.5 if one is active. Every relation target below MUST be an id one
+   of these calls returned — never a string you assembled from `CLAUDE.md` or
+   from args. A target that does not exist aborts the create (see Step 5).
 
 ## Step 2 — Verify preconditions
 
@@ -105,26 +112,52 @@ Create a RUN entry (no embedding by default):
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "RUN",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   title: "RUN-<PROJ>-<COMP>-<auto>: regression <REG-id> <date>",
   content: <markdown with per-test result, timings, evidence, SLA compliance>,
   metadata: {
-    reg_id: "REG-<PROJ>-<COMP>-<SEQ>",
+    reg_id: "REG-<PROJ>-<COMP>-<SEQ>",   // human-readable mirror of the fulfills edge
     started_at: "<ISO>",
     completed_at: "<ISO>",
     overall_result: "pass|warning|fail|blocked",
     test_results: [
       { test_id, result, duration_ms, validations: [...] }
     ],
-    rel_id: "REL-<PROJ>-<VER>"   // if active
+    rel_id: "REL-<PROJ>-<VER>"           // mirror of the part_of edge; if active
   },
   tags: ["result:<result>"],
+  relations: [
+    { type: "fulfills", target: "<REG id from Step 1.1>" },   // ALWAYS
+    { type: "affects",  target: "<CMP id from Step 1.6>" },   // ALWAYS
+    { type: "part_of",  target: "<REL id from Step 1.5>" }    // only when a REL is active
+  ],
+  txn_id: "<txn_id>",   // only when an orchestrator passed one; omit for a standalone run
   updated_by: "skill:regression"
 })
 ```
 
-(RUN does not accept relations in the Kvendra KB — `relations=no`. Traceability
-goes in `metadata.reg_id` / `metadata.rel_id` and in tags.)
+### Relations — required, not optional
+
+The RUN's traceability IS the relation set: `fulfills` to the suite that was
+executed, `affects` to the component under test, and `part_of` to the active
+REL when there is one. `metadata.reg_id` / `metadata.rel_id` are kept only as
+a human-readable mirror — they are strings nothing can traverse, so a RUN that
+carries them and no relations is an orphan: it will not appear in
+`entity_related` for its REG, its CMP or its REL, and the release gate that
+reads the graph will not see this result at all.
+
+**Relation-target failure — never degrade.** If a relation target does not
+exist the engine rejects the whole call and creates NOTHING (the entity row
+and its relations are one database transaction; the target check is the
+foreign key). The response is verbatim:
+
+    {"error":{"type":"invalid_request","message":"relations: relations target CMP-KVD-NOPE999 not found","field":"relations"}}
+
+The `message` echoes the offending target id. On this error: re-read the
+correct id from the KB (Step 1) and retry with the corrected target. Do NOT
+retry with `relations` removed or shortened, and do NOT fall back to recording
+the reference in `metadata` only. If the target genuinely does not exist, STOP
+and report the suite result as unpersisted rather than persisting an orphan.
 
 ## Step 6 — Auto-generate an ISSUE if a blocking test failed
 
@@ -134,7 +167,7 @@ For each blocking test that failed:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
-  component_id: "<PROJ>-<COMP>",
+  component_id: "<COMP>",
   title: "ISSUE-<PROJ>-<COMP>-<auto>: Regression in <test_name>",
   content: <description with steps-to-reproduce from the TEST>,
   metadata: {
