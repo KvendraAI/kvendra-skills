@@ -12,10 +12,73 @@ on:
 
 jobs:
   lint:
-    name: SKILL.md lint (EN-only + no-tech-specifics)
+    name: SKILL.md lint (front-matter + EN-only + no-tech-specifics)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Front-matter check (claude.ai upload validator)
+        id: front_matter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Mirrors the constraints the claude.ai "Upload a plugin" validator
+          # enforces on every SKILL.md front-matter (ISSUE-KVD-SKILLS-C5F91C).
+          # 1.14.1 shipped two descriptions with tag-like placeholders
+          # (docs/<book>/, STD-<PROJ>-BROKER-POLICY) and the org upload was
+          # rejected with "SKILL.md description cannot contain XML tags".
+          #   - description must not contain anything shaped like <...>
+          #   - description must be <= 1024 characters
+          #   - name must match [a-z0-9-]{1,64} and equal the directory name
+          # Only the front-matter is checked: the body may keep <...> placeholders.
+          fail=0
+          while IFS= read -r -d '' f; do
+            dir=$(basename "$(dirname "$f")")
+            fm=$(awk 'NR==1 && /^---[[:space:]]*$/ { in_fm = 1; next }
+                      in_fm && /^---[[:space:]]*$/ { exit }
+                      in_fm { print }' "$f")
+            if [[ -z "$fm" ]]; then
+              echo "::error file=$f::Missing YAML front-matter (first line must be '---')."
+              fail=1; continue
+            fi
+            name=$(printf '%s\n' "$fm" | sed -n 's/^name:[[:space:]]*//p' | head -1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")
+            desc=$(printf '%s\n' "$fm" | sed -n 's/^description:[[:space:]]*//p' | head -1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")
+
+            if ! printf '%s' "$name" | grep -qE '^[a-z0-9-]{1,64}$'; then
+              echo "::error file=$f::name '$name' must match [a-z0-9-]{1,64}."
+              fail=1
+            elif [[ "$name" != "$dir" ]]; then
+              echo "::error file=$f::name '$name' does not match its directory '$dir'."
+              fail=1
+            fi
+
+            if [[ -z "$desc" ]]; then
+              echo "::error file=$f::description is missing or empty."
+              fail=1
+            else
+              if printf '%s' "$desc" | grep -qE '<[^>]+>'; then
+                echo "::error file=$f::description contains an XML-like tag (claude.ai rejects it):"
+                printf '%s\n' "$desc" | grep -oE '<[^>]+>' | sed 's/^/  /'
+                fail=1
+              fi
+              len=$(printf '%s' "$desc" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')
+              if (( len > 1024 )); then
+                echo "::error file=$f::description is $len characters (max 1024)."
+                fail=1
+              fi
+            fi
+          done < <(find plugins/kvendra-skills/skills -name SKILL.md -print0)
+
+          if [[ $fail -ne 0 ]]; then
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Write placeholders in the description as {name}, not <name>."
+            echo "  - Keep 'name' lowercase/digits/hyphens and equal to the skill directory."
+            echo "  - Move detail out of the description into the SKILL.md body."
+            exit 1
+          fi
+          echo "Front-matter check passed for all SKILL.md files."
 
       - name: EN-only check
         id: en_only

@@ -4,6 +4,45 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.14.2] — 2026-09-25 — `/consultancy` becomes `/kvendra`, and the plugin uploads cleanly to a claude.ai organization
+
+### Changed
+
+- **`/consultancy` is now `/kvendra`** (minor breaking change, **no alias**).
+  The skill directory moved from `skills/consultancy/` to `skills/kvendra/`
+  and its `name` is now `kvendra`: the entry point of the plugin carries the
+  product's name, which is what a new user types first. Update any muscle
+  memory, docs or scripts that invoke `/consultancy`. References in
+  `env-check`, `user-help`, the README and the marketplace listing follow.
+  What did **not** change, on purpose: the KB-side markers `origin:
+  "consultancy"`, `trigger: "consultancy"` and the `## Consultancy: …`
+  output heading. They name the *kind of activity*, not the command, and
+  renaming them would split the filters and the history of existing KBs.
+  Entities the skill writes now carry `updated_by: "skill:kvendra"`.
+
+### Fixed
+
+- **The plugin was rejected by the claude.ai "Upload a plugin" validator**
+  with *"SKILL.md description cannot contain XML tags"*. Two front-matter
+  descriptions used tag-shaped placeholders: `docs/<book>/` in
+  `manual-writer` and `STD-<PROJ>-BROKER-POLICY` in `sync-claudemd`. They
+  now read `docs/{book}/` and `STD-{PROJ}-BROKER-POLICY`. Only the
+  `description` line changed; the SKILL.md bodies keep their `<...>`
+  placeholders, which the validator does not inspect.
+
+### Added
+
+- **Front-matter lint in CI** (`lint-skill-md.yml`, step *Front-matter
+  check*): fails when a SKILL.md `description` contains anything shaped like
+  `<...>`, is empty or exceeds 1024 characters, or when `name` does not match
+  `[a-z0-9-]{1,64}` or differs from its directory name. It mirrors the
+  claude.ai upload constraints so this class of regression is caught on the
+  PR instead of by an org admin.
+
+### Traceability
+
+- ISSUE: `ISSUE-KVD-SKILLS-C5F91C` · REL: `REL-KVD-SKILLS-1.14.2`
+
 ## [1.14.0] — 2026-09-10 — the hook stops bricking workspaces its own skills configured
 
 ### Fixed

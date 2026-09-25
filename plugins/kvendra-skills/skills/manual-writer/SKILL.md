@@ -1,6 +1,6 @@
 ---
 name: manual-writer
-description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/<book>/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots
+description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/{book}/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots
 user_invocable: true
 args: "[topic] [--genre=overview|user-manual|c4|...] [--depth=overview|standard|comprehensive] [--scope=project|CMP-...]"
 ---

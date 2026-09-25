@@ -72,7 +72,7 @@ AVAILABLE SKILLS
 ================
 
 ENTRY POINT
-  /consultancy [topic]     Explore an idea, doubt or problem with full
+  /kvendra [topic]         Explore an idea, doubt or problem with full
                            Kvendra KB context. Closes with 9 actionable
                            options.
 
@@ -295,5 +295,5 @@ If the query fails, suggest `/env-check` to verify the connection.
 - Adapt the detail level to the requested topic.
 - If the user asks something specific ("how do I create an ISSUE?"), answer
   directly without showing the full guide.
-- If the user seems lost, suggest `/consultancy` or `/to-do-summary`.
+- If the user seems lost, suggest `/kvendra` or `/to-do-summary`.
 - Always mention that `/user-help [topic]` gives more detail on a specific topic.

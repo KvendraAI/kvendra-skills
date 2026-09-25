@@ -163,7 +163,7 @@ find ~/.claude/plugins -name block-unsafe-ops.sh -path '*kvendra-skills*' 2>/dev
 ### 9. Skills available
 
 List the plugin's skills. Minimum:
-`/consultancy, /to-do, /bug, /new-feature, /implementer, /updater, /validator,
+`/kvendra, /to-do, /bug, /new-feature, /implementer, /updater, /validator,
 /release-manager, /tester, /analyzer, /onboard-project, /deploy, /version`.
 
 If any are missing: the plugin is not enabled or has not been refreshed
@@ -197,7 +197,7 @@ after install. Ask the user to run `/plugin list` and validate that
 ## Rules
 
 - **Do not modify anything without asking** — only diagnose and report.
-- **If all OK**, say: "Environment OK — ready to use /consultancy, /bug, /new-feature, etc."
+- **If all OK**, say: "Environment OK — ready to use /kvendra, /bug, /new-feature, etc."
 - **Be specific** about errors: cite the failing command and how to fix it.
 - **Distinguish the three connections**: hosted KB (operational writes) vs
   local broker (external ops with audit) vs skills (local files).

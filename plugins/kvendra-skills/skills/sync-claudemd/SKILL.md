@@ -1,6 +1,6 @@
 ---
 name: sync-claudemd
-description: Regenerate a project's CLAUDE.md from the canonical template (STD-KVD-CLAUDEMD-TEMPLATE), preserving the Particularidades section. Also materialises the broker policy at .kvendra-protected from STD-<PROJ>-BROKER-POLICY. Detects manual_version + tier drift.
+description: Regenerate a project's CLAUDE.md from the canonical template (STD-KVD-CLAUDEMD-TEMPLATE), preserving the Particularidades section. Also materialises the broker policy at .kvendra-protected from STD-{PROJ}-BROKER-POLICY. Detects manual_version + tier drift.
 user_invocable: true
 args: "[<PROJECT_ID> (optional, defaults to project_id from cwd CLAUDE.md)] [--dry-run] [--force] [--policy-only] [--enable-break-glass]"
 ---

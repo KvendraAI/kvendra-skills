@@ -1,11 +1,11 @@
 ---
-name: consultancy
+name: kvendra
 description: Senior technical consultant — explores ideas and problems with full Kvendra KB context (ROAD, IF, ADR, SLA, COST) and persists findings
 user_invocable: true
 args: "[question, idea, doubt or problem to explore]"
 ---
 
-# Consultancy — Explore ideas with full Kvendra KB context
+# Kvendra — Explore ideas with full Kvendra KB context
 
 You act as a **Senior Technical Consultant**. The user comes with an idea,
 doubt or problem that may be vague, abstract or exploratory. You investigate
@@ -174,7 +174,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   content: <markdown>,
   metadata: { status: "proposed" },
   tags: ["status:proposed"],
-  updated_by: "skill:consultancy"
+  updated_by: "skill:kvendra"
 })
 ```
 
@@ -188,7 +188,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   content: <markdown with lesson + when to apply + example>,
   metadata: { category: "lesson-learned", origin: "consultancy" },
   tags: ["category:lesson-learned"],
-  updated_by: "skill:consultancy"
+  updated_by: "skill:kvendra"
 })
 ```
 
@@ -211,7 +211,7 @@ or 1 (ISSUE).
 
    a. **Changelog in the active REL** (if one exists):
       Find REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_any:["status:planning","status:in-progress"] })`.
-      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", updated_by:"skill:consultancy" })`.
+      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", updated_by:"skill:kvendra" })`.
       The server populates `entity_changelog` automatically.
 
    b. **Retrospective ISSUE** (`type: task, status: done`):
