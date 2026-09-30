@@ -1433,16 +1433,25 @@ mxbai-embed-large
 kvendra-embedding-v1
 1024-dim
 403 forbidden_tier
-https://kvendra.ai
-https://kvendra.cloud
+https://app.kvendra.cloud/signup
+https://app.kvendra.cloud/docs/
 mcp__kvendra-platform__entity_query
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_query
 ## External-execution policy
 NEED
 if [[ "$need_ok" -eq 1 ]]; then
-  pass "T3d: every load-bearing string is present (escape hatch, both namespaces, both domains)"
+  pass "T3d: every load-bearing string is present (escape hatch, both namespaces, the signup and docs links)"
 else
   fail "T3d: missing load-bearing strings ($need_report)"
+fi
+
+# The wizard links only to app.kvendra.cloud: kvendra.ai is not a product
+# surface and the bare apex kvendra.cloud is not the account site.
+stale_links="$(grep -nE 'https://kvendra\.(ai|cloud)([^.a-z]|$)' "$SKILL_MD" || true)"
+if [[ -z "$stale_links" ]]; then
+  pass "T3d2: no link to kvendra.ai or to the bare kvendra.cloud apex survives in the skill"
+else
+  fail "T3d2: stale product link(s) ($(printf '%s' "$stale_links" | head -3 | tr '\n' '|'))"
 fi
 
 # The migration rationale names the MODELS and the dimension, never the vendor.
@@ -1506,8 +1515,10 @@ S7_EXPECTED="$(cat <<'S7EOF'
 If the user later wants to move from self-hosted to cloud (or vice versa), be
 honest about the cost: vectors are NOT portable across embedding models, so a
 backend switch requires **re-embedding** the whole KB. The open-core build has
-no export/import path for this. Point the user to https://kvendra.ai/docs for
-the supported migration story. Do not present a fake one-click switch.
+no export/import path for this. Point the user to
+https://app.kvendra.cloud/docs/troubleshooting/#self-hosted-and-hosted for the
+current state; there is no supported migration path yet. Do not present a fake
+one-click switch.
 S7EOF
 )"
 S7_ACTUAL="$(section '^### S7 ' '^### S8 ' | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}')"
@@ -1766,8 +1777,8 @@ else
   fail "T5c: .mcp.json tool count"
 fi
 
-if grep -q 'Pro tier required' "$MCP_JSON" && grep -q 'https://kvendra.ai' "$MCP_JSON"; then
-  pass "T5d: 'Pro tier required' survives and points at kvendra.ai (AC-7 posture)"
+if grep -q 'Pro tier required' "$MCP_JSON" && grep -q 'https://app.kvendra.cloud/docs/' "$MCP_JSON"; then
+  pass "T5d: 'Pro tier required' survives and points at the hosted guides on app.kvendra.cloud"
 else
   fail "T5d: Pro tier pointer in .mcp.json"
 fi

@@ -58,22 +58,26 @@ Ask the user which backend they want (skip if `$ARGUMENTS` already answered):
 - **Cloud (KB-managed)** — Kvendra hosts the KB engine. No Docker, no local
   containers. Authentication is browser OAuth against the already-bundled
   `kvendra-cloud` MCP server (no token is ever pasted). The account lives at
-  **https://kvendra.ai** and the hosted engine requires the Pro tier.
+  **https://app.kvendra.cloud/signup** and the hosted engine requires the Pro
+  tier.
 - **Self-hosted** — the user runs the Kvendra Platform locally via Docker
   (the reference stack). This skill registers a distinct MCP server named
   `kvendra-platform` alongside the bundled `kvendra-cloud` server.
 
-**Two domains, two different things. Signal it HERE, not later when a verify
+**One account, two different uses. Signal it HERE, not later when a verify
 fails:**
 
-| Domain | What it gives | Which branch |
+| Signup | What it gives | Which branch |
 |---|---|---|
-| `https://kvendra.ai` | the Kvendra **Pro** account that unlocks the hosted KB engine | Q1 = cloud |
-| `https://kvendra.cloud` | a free **embeddings API key** (200k tokens/month) for a stack the user hosts | Q2 = cloud free-tier |
+| `https://app.kvendra.cloud/signup` on a **Pro** plan | the account that unlocks the hosted KB engine | Q1 = cloud |
+| `https://app.kvendra.cloud/signup` on the **Free** plan | a free **embeddings API key** (200k tokens/month) for a stack the user hosts | Q2 = cloud free-tier |
 
-A free `kvendra.cloud` signup is NOT a way into the hosted KB engine: anything
-below Pro gets `403 forbidden_tier` there. It is only a source of an
-`EMBEDDINGS_API_KEY` for a self-hosted stack.
+A Free account is NOT a way into the hosted KB engine: anything below Pro gets
+`403 forbidden_tier` there. It is only a source of an `EMBEDDINGS_API_KEY` for
+a self-hosted stack.
+
+Hosted setup guides: https://app.kvendra.cloud/docs/ (self-hosted docs live on
+kvendra.dev).
 
 ### Cloud path (KB-managed, Pro)
 
@@ -89,9 +93,10 @@ account?** The two answers are two different executable paths.
 
 **C2 — no account yet.**
 
-1. Open `https://kvendra.ai` best-effort and ALWAYS print the URL as well, the
-   same way `S1c-2` does it: a headless or remote session has neither `open` nor
-   `xdg-open`, and a step that only launches a browser strands that user.
+1. Open `https://app.kvendra.cloud/signup` best-effort and ALWAYS print the URL
+   as well, the same way `S1c-2` does it: a headless or remote session has
+   neither `open` nor `xdg-open`, and a step that only launches a browser
+   strands that user.
 2. Say plainly what the wizard does NOT do: it does not create the account and
    it does not handle payment. Both of those happen on that site.
 3. PAUSE. No polling, no timeout. Resume only when the user confirms the account
@@ -104,10 +109,11 @@ wizard opens a URL, explains, and waits. It never logs anybody in, and it must
 never claim otherwise.
 
 **Tier note.** A verify that fails with `403 forbidden_tier` means the account
-sits below Pro: the hosted KB engine is Pro-only, so point at
-`https://kvendra.ai`. Do not confuse that 403 with the free `kvendra.cloud`
-embeddings key, which grants no access to the hosted KB at all. Never attempt to
-work around the 403.
+sits below Pro: the hosted KB engine is Pro-only, so point at the **Upgrade to
+Pro** action in https://app.kvendra.cloud/me/ and, for the full picture,
+https://app.kvendra.cloud/docs/troubleshooting/#forbidden-tier. Do not confuse
+that 403 with the Free-plan embeddings key, which grants no access to the
+hosted KB at all. Never attempt to work around the 403.
 
 The cloud path performs no local registration: the bundled server is used
 as-is. Skip the self-hosted automation entirely.
@@ -121,9 +127,9 @@ lead to DIFFERENT executable paths — this is a branch, not a preamble:
   anywhere. SKIP `S1c` entirely and go to `S2`, **Ollama branch**. The reference
   stack rewires `EMBEDDINGS_*` for the `mxbai-embed-large` model when it is
   brought up with the Ollama flag.
-- **Cloud free-tier** — a free key from `https://kvendra.cloud` (200k
-  tokens/month) drives the embeddings while the KB engine still runs on the
-  user's own machine. Go to **`S1c`** next: the wizard accompanies the signup,
+- **Cloud free-tier** — a free key from a Free account at
+  `https://app.kvendra.cloud/signup` (200k tokens/month) drives the embeddings
+  while the KB engine still runs on the user's own machine. Go to **`S1c`** next: the wizard accompanies the signup,
   asks for the key, writes it into the stack's `.env`, probes it, and only then
   brings the stack up in `S2`, **cloud branch**, with no Ollama flag.
 
@@ -495,7 +501,7 @@ picks the escape hatch of `S1c-3`.
 #### S1c-2 — Accompany the signup (the wizard cannot create the account)
 
 ```bash
-KVD_SIGNUP_URL="https://kvendra.cloud"
+KVD_SIGNUP_URL="https://app.kvendra.cloud/signup"
 echo "Free embeddings key (200k tokens/month): $KVD_SIGNUP_URL"
 if command -v open >/dev/null 2>&1; then
   open "$KVD_SIGNUP_URL" >/dev/null 2>&1 || true
@@ -907,8 +913,10 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"PRJ", limi
 If the user later wants to move from self-hosted to cloud (or vice versa), be
 honest about the cost: vectors are NOT portable across embedding models, so a
 backend switch requires **re-embedding** the whole KB. The open-core build has
-no export/import path for this. Point the user to https://kvendra.ai/docs for
-the supported migration story. Do not present a fake one-click switch.
+no export/import path for this. Point the user to
+https://app.kvendra.cloud/docs/troubleshooting/#self-hosted-and-hosted for the
+current state; there is no supported migration path yet. Do not present a fake
+one-click switch.
 
 ### S8 — Chain (offer, do not auto-run)
 

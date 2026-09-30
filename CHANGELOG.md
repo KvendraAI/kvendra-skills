@@ -4,6 +4,41 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.14.3] — 2026-09-30 — /setup sends new users to app.kvendra.cloud
+
+### Fixed
+
+- **The `/setup` wizard pointed new users at the wrong sites.** The cloud
+  branch sent someone without a Pro account to `https://kvendra.ai`, which is
+  not where accounts are created (it only redirects to the marketing site), and
+  the self-hosted free-tier branch opened the bare apex `https://kvendra.cloud`,
+  which does not serve anything. Both now open
+  **`https://app.kvendra.cloud/signup`** — the one account site, with the Pro
+  plan for the hosted KB engine and the Free plan for an embeddings key. The
+  "two domains" table in Q1 became "one account, two different uses", and Q1
+  now links the hosted setup guides at `https://app.kvendra.cloud/docs/`.
+- **`403 forbidden_tier` and the migration guard now link to real guides.**
+  The tier note points at the **Upgrade to Pro** action in
+  `https://app.kvendra.cloud/me/` and at
+  `/docs/troubleshooting/#forbidden-tier`; S7 points at
+  `/docs/troubleshooting/#self-hosted-and-hosted` instead of the nonexistent
+  `https://kvendra.ai/docs`, and says plainly that there is no supported
+  migration path yet.
+- **`.mcp.json`**: the `kvendra-cloud` server description now reads *"Pro tier
+  required — see https://app.kvendra.cloud/docs/."* instead of pointing at
+  `https://kvendra.ai`. Nothing else in the file changed.
+
+### Tests
+
+- `tests/setup/run-fixtures.sh`: T3d, T3k and T5d follow the new links, and
+  the new **T3d2** fails if the skill links to `kvendra.ai` or to the bare
+  `kvendra.cloud` apex again.
+
+### Traceability
+
+- ISSUE: `ISSUE-KVD-SKILLS-75BFCC` · REL: `REL-KVD-SKILLS-1.14.3` · REQ:
+  `REQ-KVD-DASHBOARD-EB6067`
+
 ## [1.14.2] — 2026-09-25 — `/consultancy` becomes `/kvendra`, and the plugin uploads cleanly to a claude.ai organization
 
 ### Changed
