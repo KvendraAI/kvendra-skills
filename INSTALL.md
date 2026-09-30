@@ -1,35 +1,19 @@
 # Install `kvendra-skills`
 
-Three steps. Total time ≈ 5 minutes after the Pro tier is in place.
+Three steps. Total time ≈ 5 minutes. This page covers the **hosted**
+service (Kvendra Cloud); the canonical, always-current version of these
+steps is <https://app.kvendra.cloud/docs/>. To run your own engine
+instead, see the **Self-hosted** note at the end.
 
-## 1. Make sure you have a Pro Kvendra account
+## 1. Sign up on a Pro or Team plan
 
-The Kvendra KB engine is Pro-only until the M2.6 billing milestone
-ships. To get on Pro right now:
+The hosted Kvendra KB engine needs a Pro or Team account. Sign up at
+<https://app.kvendra.cloud/signup> and pick a Pro or Team plan. If you
+already have a Free account, upgrade it from
+<https://app.kvendra.cloud/me/>.
 
-1. Sign up at <https://app.kvendra.cloud/signup/>. The default tier is
-   Free.
-2. Ask the Kvendra owner (`admin@kvendra.ai`) to promote the account.
-   They run:
-
-   ```bash
-   aws cognito-idp admin-add-user-to-group \
-     --profile aws_kvendra --region us-east-1 \
-     --user-pool-id us-east-1_Bh2YsJNif \
-     --username <your-cognito-sub-or-email> \
-     --group-name kvendra-pro
-   ```
-
-   (Tier is encoded as Cognito User Pool group membership — there are
-   `kvendra-pro` / `kvendra-team` / `kvendra-enterprise` groups, and a
-   user with none of them is free. `kvendra-staff` is orthogonal and
-   only gates admin endpoints.)
-
-3. Sign out and sign back in so the new `cognito:groups` claim with
-   `kvendra-pro` lands in your access token.
-
-The dashboard at <https://app.kvendra.cloud/kb/> will start showing the
-overview as soon as the upgrade is live.
+The dashboard at <https://app.kvendra.cloud/kb/> shows your KB overview
+once the plan is active.
 
 ## 2. Add the marketplace + install the plugin
 
@@ -42,14 +26,14 @@ In Claude Code:
 
 The `install` command:
 
-- Drops the 25 skills into `~/.claude/plugins/`.
+- Drops the 27 skills into `~/.claude/plugins/`.
 - Reads `.mcp.json` and adds the `kvendra-cloud` HTTP MCP server entry
   to `~/.claude.json`. The server is named `kvendra-cloud` (not
   `kvendra`) so it does not collide with users who already have a
   local `kvendra` CLI MCP server registered — Claude Code resolves
   same-name servers by scope precedence, and a Plugin server is
   eclipsed silently by any Local server with the same name. Tools
-  appear under the `mcp__kvendra-cloud__*` prefix.
+  appear under the `mcp__plugin_kvendra-skills_kvendra-cloud__*` prefix.
 
 ## 3. First MCP request triggers OAuth
 
@@ -66,37 +50,34 @@ opens, you confirm, the callback delivers an authorization code, the
 client exchanges it for an access token, and from then on Claude Code
 attaches the token to every `/mcp` request.
 
-If the auto-dance does not trigger in your build of Claude Code, the
-plugin ships a manual fallback skill (`/kvendra-skills:setup-auth`) —
-not yet implemented but tracked. Until then, paste the Bearer header
-directly into your `~/.claude.json` after running the OAuth flow once
-from any browser.
+You can also start the sign-in yourself: run `/mcp`, pick
+`kvendra-cloud` and choose sign in. If your session expires later, do
+the same again — see
+<https://app.kvendra.cloud/docs/troubleshooting/#reauth>.
 
 ## Verify
 
 Run any of the heavy-help skills to sanity-check the wiring:
 
 - `/kvendra-skills:user-help` — lists every available skill.
-- `/kvendra-skills:env-check` — confirms the MCP server is reachable,
-  the 14 tools are visible, your `kvendra:plan` claim is `pro`.
+- `/kvendra-skills:env-check` — confirms the `kvendra-cloud` MCP server
+  is connected and a real KB read works.
 - `/kvendra-skills:to-do` — fetches your open issues from the KB.
 
-If `env-check` fails the tier check, jump back to step 1.
+The hosted server exposes 20 tools. If a call is refused because of your
+plan, jump back to step 1 (see
+<https://app.kvendra.cloud/docs/troubleshooting/#forbidden-tier>).
 
 ## Known caveats
 
-- **Two backend tools missing**: `txn_get` and `check_duplicates` (used
-  by a handful of skills as a nice-to-have) are not yet exposed by the
-  hosted MCP server. They will surface as `not_found` errors when a
-  skill calls them. Tracked separately; the affected skills degrade
-  gracefully (they fall back to `txn_check_interrupted` + `entity_query`
-  for the same purpose).
 - **No primitives bundle**: this plugin does NOT ship the CLI primitives
   (`kvendra.git`, `kvendra.github`, `kvendra.aws`, …). Those still run
   via the `kvendra` Rust binary on your laptop in tier Free / Team
   workspace mode, and need a separate install (`brew install kvendra`
   when the formula is published — pending CLI 0.1.0 stable).
-- **No `backend-deploy` / `setup` skills**: removed for this plugin
-  because they were Winking Owl-specific. The Kvendra equivalent of
-  `setup` is this install flow; `backend-deploy` is autonomous per
-  CLAUDE.md.
+- **Self-hosted**: to run your own engine instead of the hosted one,
+  follow the self-hosted quickstart at
+  <https://kvendra.dev/docs/getting-started/> (for AI agents:
+  <https://kvendra.dev/llms.txt>).
+
+The canonical hosted guide is <https://app.kvendra.cloud/docs/>.

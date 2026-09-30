@@ -4,6 +4,46 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.15.0] — 2026-09-30 — /setup retired: install guides live in the docs
+
+### Removed
+
+- **The `/kvendra-skills:setup` wizard** (`skills/setup/`) and its fixture
+  suite (`tests/setup/run-fixtures.sh`). It did nothing the published install
+  guides don't already cover, and running it against a working install could
+  break an existing Pro account or plugin configuration. The plugin now ships
+  27 skills.
+
+### Changed
+
+- **README.md, INSTALL.md, marketplace listing**: skill count is now 27.
+  README links the hosted guide and the self-hosted quickstart, and its
+  tool table lists all 20 hosted tools (the stale `txn_get` /
+  `check_duplicates` note is gone).
+- **INSTALL.md rewritten**: step 1 is now "sign up on a Pro or Team plan at
+  `https://app.kvendra.cloud/signup`" (the old manual account-promotion
+  procedure is gone); the MCP tool prefix is the real
+  `mcp__plugin_kvendra-skills_kvendra-cloud__*`; the nonexistent
+  `setup-auth` fallback is replaced by "`/mcp` → `kvendra-cloud` → sign in";
+  the tool count is 20; a self-hosted pointer replaces the old
+  "no setup skill" caveat.
+
+### Migration
+
+- **Nothing to undo.** If you registered a self-hosted `kvendra-platform`
+  server with `/setup`, that registration lives in your Claude Code config
+  (not in the plugin) and keeps working after `/plugin update`. Only the
+  `/kvendra-skills:setup` command disappears.
+- Where the steps live now:
+  - Hosted (Kvendra Cloud): <https://app.kvendra.cloud/docs/>
+  - Self-hosted: <https://kvendra.dev/docs/getting-started/>
+  - For AI agents (self-hosted, end to end): <https://kvendra.dev/llms.txt>
+
+### Traceability
+
+- ISSUE: `ISSUE-KVD-SKILLS-323F7B` · REQ: `REQ-KVD-SKILLS-0FC608` · REL:
+  `REL-KVD-SKILLS-1.15.0`
+
 ## [1.14.3] — 2026-09-30 — /setup sends new users to app.kvendra.cloud
 
 ### Fixed

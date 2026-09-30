@@ -8,11 +8,11 @@ installable through the native `/plugin` command.
 
 | Slot | Content |
 |---|---|
-| `plugins/kvendra-skills/skills/<name>/SKILL.md` | 25 skills: orchestrators (`feature`, `bug`, `incident`, `release`, `regression`), subagents (`planner`, `implementer`, `validator`, `tester`, `updater`, `analyzer`, …), doc + reporting (`manual-writer`, `doc-indexer`, `doc-validator`, `translator`, `changelog`, `to-do`, `to-do-summary`, `user-help`), consultancy (`kvendra`, `requirements-analyst`, `interface-validator`) and environment (`env-check`). |
+| `plugins/kvendra-skills/skills/<name>/SKILL.md` | 27 skills: orchestrators (`new-feature`, `bug`, `incident-manager`, `release-manager`, `regression`), subagents (`planner`, `implementer`, `validator`, `tester`, `updater`, `analyzer`, …), doc + reporting (`manual-writer`, `doc-indexer`, `changelog`, `to-do`, `to-do-summary`, `user-help`), consultancy (`kvendra`, `requirements-analyst`, `interface-validator`), CLAUDE.md lifecycle (`onboard-project`, `sync-claudemd`, `lint-claudemd`) and environment (`env-check`, `version`, `deploy`). |
 | `plugins/kvendra-skills/.claude-plugin/plugin.json` | Plugin manifest (`name`, `description`, `version`, author, repo). |
 | `.claude-plugin/marketplace.json` | Marketplace listing at the repo root — so a user can do `/plugin marketplace add KvendraAI/kvendra-skills` and pick up the plugin via its `./plugins/kvendra-skills` source path. |
 | `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra-cloud` HTTP MCP server (`https://api.kvendra.cloud/mcp`). `/plugin install` adds it to the user's `~/.claude.json` automatically. The server is named `kvendra-cloud` (not `kvendra`) so it does not collide with users who already have the local `kvendra` CLI MCP server registered — Claude Code resolves same-name servers by scope precedence and a Plugin server is eclipsed silently by any Local server with the same name. |
-| `INSTALL.md` | Step-by-step setup (signup → Pro tier → `/plugin marketplace add` → first OAuth dance). |
+| `INSTALL.md` | Install guide: hosted (Kvendra Cloud) and a pointer to the self-hosted docs. |
 
 ## Install
 
@@ -21,9 +21,13 @@ installable through the native `/plugin` command.
 /plugin install kvendra-skills@kvendra-marketplace
 ```
 
-See [INSTALL.md](./INSTALL.md) for the full flow including how to get
-on Pro tier and how the OAuth/PKCE dance against
-`auth.kvendra.cloud` works.
+See [INSTALL.md](./INSTALL.md) for the full flow, including how the
+OAuth/PKCE sign-in against `auth.kvendra.cloud` works.
+
+- **Hosted (Kvendra Cloud)** — step-by-step guide:
+  <https://app.kvendra.cloud/docs/>
+- **Self-hosted** (run your own engine) — quickstart:
+  <https://kvendra.dev/docs/getting-started/>
 
 ## Architecture
 
@@ -33,7 +37,7 @@ Claude Code (local)              api.kvendra.cloud/mcp (Lambda)
     │  POST /mcp                       │
     │  Authorization: Bearer …         │
     ├─────────────────────────────────►│  → routes JSON-RPC `tools/call`
-    │                                  │    to the 14 KB engine handlers
+    │                                  │    to the 20 KB engine handlers
     │  401 + WWW-Authenticate          │  → which talk to Aurora
     │◄─────────────────────────────────┤    (tenant_<id> schema)
     │
@@ -51,12 +55,12 @@ Claude Code (local)              api.kvendra.cloud/mcp (Lambda)
 The plugin does NOT bundle the Kvendra CLI Rust binary that handles
 local primitives (`kvendra.git`, `kvendra.github`, `kvendra.aws`, …) —
 those operate on your laptop's filesystem by construction and need to
-run locally. The KB tools that the 25 skills invoke are 100% cloud and
+run locally. The KB tools that the 27 skills invoke are 100% cloud and
 work with just this plugin + a Pro account.
 
 ## Tools exposed
 
-All 14 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
+All 20 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 
 | Tool | Purpose |
 |---|---|
@@ -71,10 +75,12 @@ All 14 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 | `whoami` | Identity + tier + role + auth_mode. |
 | `config_get` | Per-user / per-project config. |
 | `help` | Static protocol topics (`bootstrap`, `naming`, `txn`, `errors`, …). |
+| `export` | Export your KB as a `tar.gz` archive (async job). |
+| `check_notifications` | Pull changes other writers made to entities you reserved, plus your dispute inbox. |
+| `raise_dispute` / `resolve_dispute` | Record and resolve a disagreement over an entity. |
+| `approve_proposal` / `reject_proposal` | Approve or reject staged governance proposals. |
 
-Two more tools (`txn_get`, `check_duplicates`) are referenced by a few
-skills and will be added in a backend follow-up — they degrade
-gracefully today.
+A self-hosted engine (Kvendra Platform) exposes the first 14 of these.
 
 ## License
 
