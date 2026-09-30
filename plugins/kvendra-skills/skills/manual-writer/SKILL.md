@@ -276,6 +276,10 @@ Use **relative** paths since the `.md` is co-located with `assets/`:
 *Figure 1: Login screen*
 ```
 
+Screenshots stay in `assets/screenshots/` — they are versioned with the book.
+Never paste image bytes (base64 / data-URIs) into a KB entity; the engine
+refuses them.
+
 ## Step 6 — Mermaid diagrams (optional, if architectural)
 
 Embed Mermaid blocks directly in the Markdown:

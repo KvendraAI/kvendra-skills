@@ -301,7 +301,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   component_id: "<COMP>",
   title: "<title derived from SPEC>",
   content: <markdown>,
-  metadata: { type:"task", status:"draft" },
+  metadata: { type:"task", status:"draft", attachments: <validator Evidence attachments array, if non-empty> },
   tags: ["type:task"],
   relations: [
     { type:"implements", target:"REQ-<PROJ>-<NN>" }

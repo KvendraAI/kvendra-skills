@@ -27,16 +27,23 @@ Expected states:
 - `! Needs authentication` → run `/mcp` from Claude Code and complete the OAuth flow.
 - `✗ Failed to connect` → verify https://api.kvendra.cloud is reachable + check token TTL.
 
-### 2. The 14 KB tools from `kvendra-cloud` available
+### 2. The 25 KB tools from `kvendra-cloud` available
 
 Look in the registered tool list for the prefix
-`mcp__plugin_kvendra-skills_kvendra-cloud__*`. Expected tools (14):
+`mcp__plugin_kvendra-skills_kvendra-cloud__*`. Expected tools (25):
 
 `entity_create, entity_update, entity_get, entity_query, entity_search,
 entity_archive, entity_related, txn_create, txn_activate, txn_cancel,
-txn_check_interrupted, whoami, config_get, help`
+txn_check_interrupted, whoami, config_get, help, export,
+check_notifications, raise_dispute, resolve_dispute, approve_proposal,
+reject_proposal, file_upload_init, file_complete, file_get_url, file_list,
+file_delete`
 
-If you see `authenticate` / `complete_authentication` instead of the 14: the
+A self-hosted Kvendra Platform server exposes only the first 14. Seeing 20
+(no `file_*`) on hosted means the MCP session predates the server update:
+reconnect with `/mcp`.
+
+If you see `authenticate` / `complete_authentication` instead of the 25: the
 MCP is not authenticated. Resolve with `/mcp` from Claude Code.
 
 ### 3. Real KB read test
@@ -178,7 +185,7 @@ after install. Ask the user to run `/plugin list` and validate that
 | # | Component | Status | Detail |
 |---|-----------|--------|--------|
 | 1 | MCP kvendra-cloud (KB) | OK / NEEDS_AUTH / FAIL | <state> |
-| 2 | 14 KB tools | OK / N/14 / N/A | <missing list> |
+| 2 | 25 KB tools | OK / N/25 / N/A | <missing list> |
 | 3 | KB read test | OK / FAIL | <N projects / error> |
 | 4 | MCP kvendra (broker) | OK / FAIL | <cause> |
 | 5 | 7 broker primitives | OK / N/7 / N/A | <missing list> |

@@ -37,7 +37,7 @@ Claude Code (local)              api.kvendra.cloud/mcp (Lambda)
     │  POST /mcp                       │
     │  Authorization: Bearer …         │
     ├─────────────────────────────────►│  → routes JSON-RPC `tools/call`
-    │                                  │    to the 20 KB engine handlers
+    │                                  │    to the 25 KB engine handlers
     │  401 + WWW-Authenticate          │  → which talk to Aurora
     │◄─────────────────────────────────┤    (tenant_<id> schema)
     │
@@ -60,7 +60,7 @@ work with just this plugin + a Pro account.
 
 ## Tools exposed
 
-All 20 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
+All 25 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 
 | Tool | Purpose |
 |---|---|
@@ -79,6 +79,9 @@ All 20 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 | `check_notifications` | Pull changes other writers made to entities you reserved, plus your dispute inbox. |
 | `raise_dispute` / `resolve_dispute` | Record and resolve a disagreement over an entity. |
 | `approve_proposal` / `reject_proposal` | Approve or reject staged governance proposals. |
+| `file_upload_init` / `file_complete` | Upload a file to Workspace Files (short-lived presigned PUT, then size/sha256 verification). |
+| `file_get_url` | Mint a fresh 300 s download URL (never stored). |
+| `file_list` / `file_delete` | Page the file registry (no URLs) / delete a file. |
 
 A self-hosted engine (Kvendra Platform) exposes the first 14 of these.
 

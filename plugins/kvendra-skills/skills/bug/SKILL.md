@@ -235,12 +235,14 @@ For each confirmed bug:
 
 ## PHASE 6 — KB update + TXN activation
 
-Launch `updater` with VALIDATED_BUGS + FIX_SUMMARY + list of TEST IDs.
+Launch `updater` with VALIDATED_BUGS + FIX_SUMMARY + list of TEST IDs + the
+validator's Evidence attachments array (if any).
 
 updater applies:
 - Relations: ISSUE→implements REQ, TEST→fixes ISSUE, IF/CMP→part_of, etc.
 - CMP.fulfills update if it's a feature.
 - REG.tests update if regression-cases were created.
+- metadata.attachments on the bug ISSUE (step 3f).
 
 ### Activate TXN
 

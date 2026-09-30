@@ -122,6 +122,16 @@ If regression-case TESTs were created:
 If a bug yields a generalisable lesson:
 - `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, component_id:<COMP from the originating ISSUE, or omit if the lesson generalises>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
 
+### 3f — Evidence attachments
+
+If the changes to record carry an `attachments` array (validator evidence
+forwarded by the orchestrator), merge it into `metadata.attachments[]` of the
+entity it documents (the bug ISSUE, or the entity named in the summary): read
+the entity (with `include_drafts:true` when it is a draft created in the
+current TXN), append only entries whose `file_id` is not already present, and
+write back with the guarded update (`expected_version`). Never add URLs; the
+entries are `{ file_id, kind, title, mime, size_bytes, sha256 }` as received.
+
 ## Step 4 — Final verification
 
 1. Are there created entities without relations (orphans)? → report.

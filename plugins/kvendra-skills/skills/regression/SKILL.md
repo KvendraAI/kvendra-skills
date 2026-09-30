@@ -88,7 +88,8 @@ Rules:
 For each test:
 1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"TEST-..." })` — read the full entry.
 2. Verify the test's preconditions.
-3. Execute the steps as defined in the process.
+3. Execute the steps as defined in the process; heavy evidence follows
+   **Evidence attachments** below.
 4. Evaluate each validation.
 5. Record result: pass | warning | fail | blocked.
 
@@ -104,6 +105,57 @@ Compare against SLA if available:
 - `performance` tests → against SLA targets.
 - If SLA is exceeded → warning (not fail, unless blocking).
 
+<!-- kvendra:evidence-attachments v1 -->
+## Evidence attachments
+
+Heavy evidence goes to Workspace Files, never into entity text. The engine
+refuses large inline base64 runs and data-URIs in `content` and `metadata`
+(above its size limits; 400 with `help.topic:"files"`) and caps `content` at
+200000 characters.
+
+- **Upload when** the evidence is binary (screenshot, PDF, HAR, video,
+  archive) of any size, or text larger than about 16 KB (logs, dumps, long
+  responses). Keep inline only the summary, the verdict and a short excerpt
+  (about 40 lines at most).
+- **Availability.** The `file_*` tools exist only on hosted Pro, Team and
+  Enterprise servers. If `file_upload_init` is not in your tool list, or a
+  call returns 403 (plan or `insufficient_privilege`) or 422
+  `files_quota_exceeded`, or the byte upload fails or is blocked by policy,
+  do NOT fail the run: keep the file on disk, reference its local path, and
+  write `evidence not uploaded: <reason>` next to it.
+- **Recipe.** Wire details live in `help({topic:"files"})`; read it once per
+  session before the first upload.
+  1. Measure the local file: size in bytes and sha256 (64 hex characters).
+  2. `file_upload_init({ name, mime, size_bytes, sha256 })`. Omit
+     `entity_id`: the entity is written after the upload.
+  3. Send the bytes with the method it returns. `PUT`: to `upload.url` with
+     exactly the headers in `upload.headers`, no more and no fewer.
+     `MULTIPART` (over 100 MB): follow the help topic. The URLs expire after
+     300 s; call `file_upload_init` again if they lapse.
+  4. `file_complete({ file_id })` must answer `status:"ready"`.
+  5. Add `{ file_id, kind:"kvendra-file", title, mime, size_bytes, sha256 }`
+     to `metadata.attachments[]` of the entity you write next.
+- **Never** write an upload or download URL into an entity, a report or a
+  log. Readers mint a fresh one with `file_get_url({ file_id })`.
+- If the entity write that should carry the attachments fails, call
+  `file_delete({ file_id })` for each file uploaded for it.
+
+```bash
+# size and sha256 (macOS and Linux)
+wc -c < "$FILE" | tr -d ' '
+{ shasum -a 256 "$FILE" 2>/dev/null || sha256sum "$FILE"; } | cut -d' ' -f1
+# PUT: one -H per entry of upload.headers, names and values copied verbatim.
+# When sha256 was declared there are THREE entries; omitting any one of them
+# makes the signature fail (403 SignatureDoesNotMatch). $CHECKSUM is the
+# x-amz-checksum-sha256 value exactly as returned (base64, not the hex digest).
+curl -sS -f -X PUT --upload-file "$FILE" \
+  -H "content-type: $MIME" \
+  -H "content-length: $SIZE" \
+  -H "x-amz-checksum-sha256: $CHECKSUM" \
+  "$UPLOAD_URL"
+```
+<!-- /kvendra:evidence-attachments -->
+
 ## Step 5 — Persist RUN
 
 Create a RUN entry (no embedding by default):
@@ -114,7 +166,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   project_id: "<PROJ>",
   component_id: "<COMP>",
   title: "RUN-<PROJ>-<COMP>-<auto>: regression <REG-id> <date>",
-  content: <markdown with per-test result, timings, evidence, SLA compliance>,
+  content: <markdown with per-test result, timings, evidence summary, SLA compliance>,
   metadata: {
     reg_id: "REG-<PROJ>-<COMP>-<SEQ>",   // human-readable mirror of the fulfills edge
     started_at: "<ISO>",
@@ -123,7 +175,8 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
     test_results: [
       { test_id, result, duration_ms, validations: [...] }
     ],
-    rel_id: "REL-<PROJ>-<VER>"           // mirror of the part_of edge; if active
+    rel_id: "REL-<PROJ>-<VER>",          // mirror of the part_of edge; if active
+    attachments: [ ... ]                 // Evidence attachments entries, if any
   },
   tags: ["result:<result>"],
   relations: [

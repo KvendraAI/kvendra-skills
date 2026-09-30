@@ -369,3 +369,33 @@ jobs:
 
           if [[ "$fail" -ne 0 ]]; then exit 1; fi
           echo "No-false-engine-claims check passed: no invented restriction, no bad component_id shape. Header check is warn-only until ISSUE-KVD-SKILLS-6D1A39 closes."
+
+      - name: Evidence-attachments canonical block check
+        id: evidence_attachments
+        shell: bash
+        run: |
+          set -euo pipefail
+          # REQ-KVD-SKILLS-B138BA: the upload recipe is duplicated verbatim
+          # (no cross-skill include exists). Every carrier must be identical
+          # and the three evidence producers must carry it.
+          open='<!-- kvendra:evidence-attachments v1 -->'
+          close='<!-- /kvendra:evidence-attachments -->'
+          required="tester validator regression"
+          tmp=$(mktemp -d); fail=0; ref=""
+          carriers=$(grep -lF "$open" plugins/kvendra-skills/skills/*/SKILL.md || true)
+          for s in $required; do
+            f="plugins/kvendra-skills/skills/$s/SKILL.md"
+            grep -qF "$open" "$f" || { echo "::error file=$f::missing canonical Evidence attachments block"; fail=1; }
+          done
+          for f in $carriers; do
+            out="$tmp/$(basename "$(dirname "$f")").blk"
+            awk -v o="$open" -v c="$close" 'index($0,o){on=1} on{print} index($0,c){on=0}' "$f" > "$out"
+            grep -qF "$close" "$out" || { echo "::error file=$f::block not closed"; fail=1; continue; }
+            if [[ -z "$ref" ]]; then ref="$out"; elif ! cmp -s "$ref" "$out"; then
+              echo "::error file=$f::Evidence attachments block differs from $(basename "$ref" .blk):"; diff "$ref" "$out" || true; fail=1; fi
+          done
+          # No presigned URL may ever be committed into a skill.
+          if grep -rnE 'X-Amz-(Signature|Credential)|amazonaws\.com/[^ ]*\?' plugins/kvendra-skills/skills/*/SKILL.md; then
+            echo "::error::A SKILL.md contains what looks like a presigned URL."; fail=1; fi
+          [[ $fail -eq 0 ]] || exit 1
+          echo "Evidence-attachments check passed."

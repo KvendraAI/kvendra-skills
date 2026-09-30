@@ -4,6 +4,33 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.16.0] — 2026-09-30 — Evidence goes to Workspace Files
+
+### Added
+- **Evidence attachments** in `tester`, `validator` and `regression`: binary
+  evidence (screenshots, PDFs, HAR, video) and text over ~16 KB is uploaded
+  with `file_upload_init` → PUT → `file_complete` and referenced by `file_id`
+  in `metadata.attachments[]`; only the summary, verdict and a short excerpt
+  stay inline. Wire details: `help({topic:"files"})`.
+- `updater` step 3f merges validator attachments into the entity it records;
+  `new-feature` and `bug` forward them.
+- CI: `Evidence-attachments canonical block check` (block identical in every
+  carrier; no presigned URL in any SKILL.md).
+
+### Changed
+- Tool counts: README table, INSTALL, `/env-check` and `/user-help` list the
+  25 hosted tools (self-hosted Platform: 14).
+- `manual-writer`: screenshots stay in the book; explicit note that image
+  bytes never go inline into the KB.
+
+### Migration
+- Nothing to do. On Free / self-hosted, or when the MCP session predates the
+  server update (reconnect with `/mcp`), the skills keep evidence on disk and
+  say so.
+
+### Traceability
+REQ-KVD-SKILLS-B138BA · ROAD-KVD-908EFB (F2) · REL-KVD-SKILLS-1.16.0 · partial ISSUE-KVD-SKILLS-98260B
+
 ## [1.15.0] — 2026-09-30 — /setup retired: install guides live in the docs
 
 ### Removed
