@@ -4,6 +4,36 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.16.1] — 2026-09-30 — Multi-account URL ships with the plugin
+
+### Fixed
+- **Plugin updates no longer drop users onto the wrong account.** The
+  `kvendra-cloud` server URL is now
+  `https://api.kvendra.cloud/mcp${KVENDRA_WS:-}`. Until 1.16.0 the
+  plugin shipped the bare URL and multi-account users had to patch the
+  cached `.mcp.json` by hand; updating to 1.16.0 overwrote the patch and
+  sessions fell back silently to the default account (entities "not
+  found", and writes would have gone to the wrong tenant). Without
+  `KVENDRA_WS` the URL is byte-identical to before: no re-authentication.
+
+### Added
+- `/env-check` check 10, **Account routing**: reports `whoami`
+  (`tenant_id`, `tier`), the `KVENDRA_WS` label and the URL of the
+  installed plugin; flags `ERROR (account fallback)` when the variable is
+  set but ignored, and blocks the `/onboard-project` suggestion while the
+  session may be on the wrong account.
+- CI `lint-mcp-json`: pins the URL byte for byte and checks that the
+  default expansion is still the historical URL.
+- INSTALL: "Several Kvendra accounts" section.
+
+### Migration
+- If you patched `.mcp.json` by hand, update the plugin and restart
+  Claude Code; the patch is no longer needed. Credentials already signed
+  in with a `?ws=` label keep working (same URL).
+
+### Traceability
+ISSUE-KVD-SKILLS-CB5530 (items 1 and 2) · PAT-KVD-SKILLS-CEDB12 · REL-KVD-SKILLS-1.16.1
+
 ## [1.16.0] — 2026-09-30 — Evidence goes to Workspace Files
 
 ### Added

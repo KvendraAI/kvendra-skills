@@ -68,6 +68,38 @@ The hosted server exposes 25 tools. If a call is refused because of your
 plan, jump back to step 1 (see
 <https://app.kvendra.cloud/docs/troubleshooting/#forbidden-tier>).
 
+## Several Kvendra accounts (optional)
+
+A token is one identity and one tenant: the server resolves the workspace
+from your membership, so an account cannot be switched from inside a
+session. If you use more than one account (a personal Pro plan plus one or
+more Team workspaces), keep one credential per account and pick it by
+directory.
+
+The plugin's server URL is `https://api.kvendra.cloud/mcp${KVENDRA_WS:-}`.
+Without the variable it expands to the plain URL, so single-account users
+notice nothing. To add an account, declare a label in the
+`.claude/settings.json` (or `settings.local.json`) of the directory you
+work from:
+
+```json
+{ "env": { "KVENDRA_WS": "?ws=acme" } }
+```
+
+Start Claude Code **from that directory**, run `/mcp`, pick
+`kvendra-cloud` and sign in **with that account**. Each distinct label is a
+separate, persistent credential.
+
+Rules worth knowing:
+
+- Project settings are not inherited by subdirectories. Start Claude Code
+  from the exact directory that holds `.claude/`.
+- The label does not choose the account; the sign-in does. Confirm with
+  `/kvendra-skills:env-check` (check 10 prints the real `tenant_id`).
+- A `KVENDRA_WS` exported in your shell overrides every directory.
+- Do not hand-edit the plugin's cached `.mcp.json`: plugin updates
+  overwrite it. Since 1.16.1 the variable is part of the published URL.
+
 ## Known caveats
 
 - **No primitives bundle**: this plugin does NOT ship the CLI primitives

@@ -2,8 +2,8 @@
   "mcpServers": {
     "kvendra-cloud": {
       "type": "http",
-      "url": "https://api.kvendra.cloud/mcp",
-      "description": "Kvendra hosted KB engine. 20 MCP tools (entity_*, txn_*, whoami, config_get, help, export, check_notifications, raise_dispute, resolve_dispute, approve_proposal, reject_proposal). Auth: OAuth 2.1 + PKCE against auth.kvendra.cloud (Cognito Hosted UI). Pro tier required — see https://app.kvendra.cloud/docs/. Server name is `kvendra-cloud` (not `kvendra`) to avoid colliding with the local `kvendra` CLI MCP server — Claude Code resolves same-name servers by scope precedence and Local > Plugin, so a same-name plugin server gets eclipsed silently."
+      "url": "https://api.kvendra.cloud/mcp${KVENDRA_WS:-}",
+      "description": "Kvendra hosted KB engine. 25 MCP tools (entity_*, txn_*, whoami, config_get, help, export, check_notifications, raise_dispute, resolve_dispute, approve_proposal, reject_proposal, file_*). Auth: OAuth 2.1 + PKCE against auth.kvendra.cloud (Cognito Hosted UI). Pro tier required — see https://app.kvendra.cloud/docs/. Server name is `kvendra-cloud` (not `kvendra`) to avoid colliding with the local `kvendra` CLI MCP server — Claude Code resolves same-name servers by scope precedence and Local > Plugin, so a same-name plugin server gets eclipsed silently. The `${KVENDRA_WS:-}` suffix is the multi-account switch (PAT-KVD-SKILLS-CEDB12): unset it expands to the bare URL byte for byte, so existing credentials stay valid; set it (e.g. `?ws=acme`) per directory to keep one OAuth credential per account. Do not remove it — see CI step `mcp-json-url`."
     }
   }
 }

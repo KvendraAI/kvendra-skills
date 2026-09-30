@@ -1,6 +1,6 @@
 ---
 name: env-check
-description: Verify the environment is correctly configured — MCPs (kvendra-cloud KB + kvendra broker), tools, skills, CLAUDE.md, workspace marker, PreToolUse hook
+description: Verify the environment is correctly configured — MCPs (kvendra-cloud KB + kvendra broker), tools, skills, CLAUDE.md, workspace marker, PreToolUse hook, account routing (multi-account)
 user_invocable: true
 ---
 
@@ -25,6 +25,8 @@ claude mcp list 2>&1 | grep -E '^kvendra-cloud:|plugin.*kvendra-cloud'
 Expected states:
 - `✓ Connected` → OK.
 - `! Needs authentication` → run `/mcp` from Claude Code and complete the OAuth flow.
+  With several Kvendra accounts this may just be a secondary account that has
+  not signed in yet (see check 10) — it is not necessarily a defect.
 - `✗ Failed to connect` → verify https://api.kvendra.cloud is reachable + check token TTL.
 
 ### 2. The 25 KB tools from `kvendra-cloud` available
@@ -108,6 +110,11 @@ If all OK, validate that the PRJ exists in the KB:
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<value>" })
 ```
 
+If the PRJ is **not found**, run check 10 before concluding anything. The
+most common cause is not a missing project but a session authenticated
+against the wrong account. Never suggest `/onboard-project` while check 10
+is not OK: it would create the project in the wrong tenant.
+
 ### 7. Broker-policy marker in CWD or an ancestor
 
 The canonical marker is `.kvendra-protected`. `.kvendra-workspace` is the
@@ -177,6 +184,58 @@ If any are missing: the plugin is not enabled or has not been refreshed
 after install. Ask the user to run `/plugin list` and validate that
 `kvendra-skills` appears as enabled.
 
+### 10. Account routing (multi-account)
+
+The plugin's MCP URL is `https://api.kvendra.cloud/mcp${KVENDRA_WS:-}`. A
+user with several Kvendra accounts sets `env.KVENDRA_WS` (e.g. `?ws=acme`)
+in the `.claude/settings.json` of each base directory; each distinct URL
+keeps its own OAuth credential. The label is only a client-side
+discriminator — the server ignores it and the account is whatever was
+typed at sign-in (`PAT-KVD-SKILLS-CEDB12`). Always report what the session
+is really connected to:
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__whoami({})
+```
+
+Then compare the variable with the URL the **installed** plugin declares:
+
+```bash
+echo "KVENDRA_WS=${KVENDRA_WS-<unset>}"
+python3 - <<'EOF'
+import json, os
+reg = json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))
+for inst in reg.get("plugins", reg).get("kvendra-skills@kvendra-marketplace", []):
+    mcp = json.load(open(os.path.join(inst["installPath"], ".mcp.json")))
+    print(inst["version"], mcp["mcpServers"]["kvendra-cloud"]["url"])
+EOF
+```
+
+- `KVENDRA_WS` unset → **OK (single account)**. Report `tenant_id` and `tier`.
+- `KVENDRA_WS` set and the installed URL contains `${KVENDRA_WS` → **OK**.
+  Report the label next to `tenant_id` and `tier` so the user can confirm the
+  pairing (the label cannot prove it).
+- `KVENDRA_WS` set and the installed URL does **not** contain it → **ERROR
+  (account fallback)**. The variable is ignored and this session is on the
+  default account, whatever the directory says. Plugin versions before
+  1.16.1 shipped the bare URL; a hand-patched cache is overwritten by every
+  plugin update. Remediation: update the plugin to 1.16.1 or later
+  (`/plugin`), then restart Claude Code from the directory that holds the
+  settings. **Stop KB writes until it is fixed.**
+- The file is read from disk, but the MCP connection keeps the URL it had
+  when the session started. After updating the plugin (or if `whoami`
+  shows a tenant that does not match the label), restart Claude Code before
+  trusting an OK.
+- The directory's `CLAUDE.md` project is not found (check 6) while this
+  check is OK → ask the user which account the project lives in; the
+  directory is probably labelled for another one.
+
+Rules that explain most surprises: project settings apply only when
+Claude Code is started from the exact directory that holds `.claude/` (no
+inheritance into subdirectories); a `KVENDRA_WS` exported in the shell
+overrides every directory's settings; `claude -p` ignores project
+settings, so never verify this check with it.
+
 ## Required output
 
 ```
@@ -193,6 +252,7 @@ after install. Ask the user to run `/plugin list` and validate that
 | 7 | Broker-policy marker | OK / OK (broker-less) / WARN / ERROR (legacy) | <path or cause> |
 | 8 | PreToolUse hook | INSTALLED / MISSING | <path> |
 | 9 | Skills | OK / N skills | <list or missing> |
+| 10 | Account routing | OK / OK (single account) / ERROR (account fallback) | tenant_id, tier, KVENDRA_WS, installed URL |
 
 ### Detected problems
 - [prioritised list]
@@ -206,5 +266,7 @@ after install. Ask the user to run `/plugin list` and validate that
 - **Do not modify anything without asking** — only diagnose and report.
 - **If all OK**, say: "Environment OK — ready to use /kvendra, /bug, /new-feature, etc."
 - **Be specific** about errors: cite the failing command and how to fix it.
+- **Never recommend creating KB content** (onboarding, fixes) while check 10
+  is ERROR — the write would land in the wrong account.
 - **Distinguish the three connections**: hosted KB (operational writes) vs
   local broker (external ops with audit) vs skills (local files).

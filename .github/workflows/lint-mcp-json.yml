@@ -1,0 +1,68 @@
+name: lint-mcp-json
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/kvendra-skills/.mcp.json'
+      - '.github/workflows/lint-mcp-json.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/kvendra-skills/.mcp.json'
+
+jobs:
+  mcp-json-url:
+    name: .mcp.json keeps the multi-account URL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: kvendra-cloud URL is exactly the parametrised form
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Regression gate for ISSUE-KVD-SKILLS-CB5530 item 1 and the 2026-09-30
+          # incident (see REL-KVD-SKILLS-1.16.1). Up to 1.16.0 the plugin shipped
+          # the bare URL and multi-account users kept `${KVENDRA_WS:-}` as a LOCAL
+          # patch of the cached .mcp.json. Every plugin update overwrote it, and
+          # the session silently fell back to the default account: reads returned
+          # "not found" and writes would have landed in the wrong tenant.
+          #
+          # The value is pinned byte for byte, on purpose:
+          #   - dropping the suffix brings the incident back;
+          #   - any other form (e.g. `mcp?ws=${KVENDRA_WS:-default}`) changes the
+          #     default URL, and Claude Code keys the OAuth credential by
+          #     sha256({type,url,headers}) -> every existing user re-authenticates.
+          expected='https://api.kvendra.cloud/mcp${KVENDRA_WS:-}'
+          f=plugins/kvendra-skills/.mcp.json
+
+          actual=$(jq -r '.mcpServers["kvendra-cloud"].url // empty' "$f")
+          type=$(jq -r '.mcpServers["kvendra-cloud"].type // empty' "$f")
+
+          fail=0
+          if [[ "$type" != "http" ]]; then
+            echo "::error file=$f::mcpServers.kvendra-cloud.type is '$type', expected 'http'."
+            fail=1
+          fi
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error file=$f::mcpServers.kvendra-cloud.url is '$actual'."
+            echo "  expected exactly: $expected"
+            echo ""
+            echo "Why this is pinned:"
+            echo "  - Without the \${KVENDRA_WS:-} suffix, users with several Kvendra accounts"
+            echo "    silently fall back to their default account after updating the plugin."
+            echo "  - With any other default, every existing user must re-authenticate."
+            echo "  See PAT-KVD-SKILLS-CEDB12 and REL-KVD-SKILLS-1.16.1."
+            fail=1
+          fi
+
+          # The default expansion must stay byte-identical to the historical URL.
+          default_expansion=$(KVENDRA_WS= bash -c 'printf %s "https://api.kvendra.cloud/mcp${KVENDRA_WS:-}"')
+          if [[ "$default_expansion" != "https://api.kvendra.cloud/mcp" ]]; then
+            echo "::error::The default expansion is '$default_expansion', not the historical URL."
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "mcp-json-url check passed: $actual"
