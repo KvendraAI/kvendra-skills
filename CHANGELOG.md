@@ -4,6 +4,64 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.18.0] — 2026-10-01 — Component books + English card
+
+### Added
+- **`manual-writer` KB book mode**: `/manual-writer book {PROJ} {COMP}
+  [--from={repo-docs-dir}] [--no-pause]` writes the English book of one
+  component — its real manual (overview, architecture with Mermaid/C4, main
+  flows, operation and configuration, reference, glossary) — as DOC chapters
+  in the KB. Sources: the component's code (repo from
+  `CMP.metadata.workspace_subdir`, commit recorded in `metadata.source`) and
+  its KB (CMP, IF, ADR, REQ, STD, GLO, DOC; never COST/CFG/ENV/RUN or
+  security/incident ISSUEs). Without a registered repo the book is derived
+  from the KB only, and chapter 1 says so. `--from` rewrites an existing repo
+  manual in English, checked against the code.
+- Each chapter is a DOC with `component_id` = the component,
+  `metadata.book` (one slug per component), a unique integer
+  `metadata.chapter` (1..999, gaps allowed), `metadata.locale: "en"`,
+  optional `book_title`/`chapter_slug`, tags `book:{slug}`,
+  `doc:genre:book-chapter`, `locale:en`, and relations `part_of → CMP` +
+  `derives_from → PRJ`. Chapters cite the component's entities by id.
+  Re-runs update the same chapters with the Guarded update (CAS) rule; the
+  skill never deletes, archives or renumbers chapters without the owner.
+- The skill mirrors the publication engine's book gate (policy `pf-2`): one
+  book per component, no empty or `TODO:`-only chapter, at most 200 chapters,
+  200,000 characters per chapter and 3,000,000 per book, English prose, no
+  personal data (`publisher_identity`) and no secrets or infrastructure ids.
+  It ends with a `READY` / `NOT READY` verification of the book.
+
+### Changed
+- **`manual-writer` publication mode writes one English card.** The
+  publication manual is now the publication's **card**: a single project-wide
+  DOC tagged `publication-manual` with `metadata.locale: "en"`, the seven
+  sections under English headings only. No project language, no Spanish
+  heading aliases, no English secondary, no "Translated from" notice. The
+  review suggestions now cover the book chapters too, and the mode checks
+  that every selected component has a book (pointing to
+  `/manual-writer book {PROJ} {COMP}` when one is missing). It still never
+  publishes.
+- The default `manual-writer` mode (files under `docs/{book}/`) is now named
+  **Docs mode**; its behaviour is unchanged.
+- `user-help` lists the two KB modes of `manual-writer`.
+
+### Removed
+- **`onboard-project` no longer asks for the KB language** and no longer
+  writes `PRJ.metadata.locale` (both added in 1.17.0 only for the manual
+  pair).
+
+### Migration
+- An existing English publication manual from 1.17.0 becomes the card: the
+  next publication-mode run updates it in place (removes the translation
+  notice and `is_primary`). A manual in another language is not the card;
+  the skill offers to mark it `metadata.superseded_by` and never archives it.
+- `PRJ.metadata.locale` written by 1.17.0 is ignored; nothing to clean up.
+- Every component of a publication needs a book: run
+  `/manual-writer book {PROJ} {COMP}` once per component before publishing.
+
+### Traceability
+REQ-KVD-962E6E · ADR-KVD-ENTERPRISE-BC96E7 · DOC-KVD-ENTERPRISE-E8C5B0 §5.9 · IF-KVD-ENTERPRISE-952002 2.0.0 · TXN-KVD-20261001-019
+
 ## [1.17.0] — 2026-10-01 — Publication manuals
 
 ### Added

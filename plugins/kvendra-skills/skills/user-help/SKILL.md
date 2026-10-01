@@ -114,6 +114,10 @@ DOCUMENTATION
   /manual-writer          Configurable doc "books" by genre x depth
                           (overview | user-manual | c4 | ...); English;
                           docs/<book>/
+                          `book <PROJ> <COMP>`: English component book
+                          as KB DOC chapters (mandatory to publish)
+                          `publication <PROJ> <COMP...>`: English card
+                          of a KB publication
   /doc-indexer            Index docs/ as KB DOC entries + regenerate the
                           docs/README.md library super-index
   /changelog              Cross-entity / REL / date change query
