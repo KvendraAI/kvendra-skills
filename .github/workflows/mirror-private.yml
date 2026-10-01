@@ -1,0 +1,78 @@
+name: mirror-private
+
+# Keeps a private copy of this repo (KvendraAI/kvendra-skills-org) in sync so a
+# claude.ai organization can add the marketplace with "Sync from GitHub", which
+# only lists private/internal repos ("fork it to a private repo first").
+#
+# Push-from-public by design: a scheduled pull inside the private repo cannot
+# work, because GITHUB_TOKEN is not allowed to push changes under
+# .github/workflows/ and an exact mirror would delete its own sync workflow.
+#
+# Setup (one-time, owner):
+#   - private repo KvendraAI/kvendra-skills-org, Actions DISABLED there (the
+#     mirrored workflows must not run in the copy);
+#   - write deploy key on the private repo, private half stored here as the
+#     MIRROR_DEPLOY_KEY secret.
+# Without the secret the job skips with a notice instead of failing.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-private
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: Push main + tags to the private mirror
+    if: github.repository == 'KvendraAI/kvendra-skills'
+    runs-on: ubuntu-latest
+    env:
+      MIRROR_REPO: git@github.com:KvendraAI/kvendra-skills-org.git
+      MIRROR_DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
+    steps:
+      - name: Check secret
+        id: secret
+        shell: bash
+        run: |
+          if [[ -z "${MIRROR_DEPLOY_KEY}" ]]; then
+            echo "::notice::MIRROR_DEPLOY_KEY is not set; skipping the private mirror sync."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.secret.outputs.present == 'true'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push to mirror
+        if: steps.secret.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          key="$RUNNER_TEMP/mirror_key"
+          hosts="$RUNNER_TEMP/known_hosts"
+          printf '%s\n' "$MIRROR_DEPLOY_KEY" > "$key"
+          chmod 600 "$key"
+          # GitHub's published host key (api.github.com/meta), pinned: no TOFU keyscan.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
+
+          # Push the current tip of main, not the event SHA: with back-to-back
+          # pushes a late run must never roll the mirror back.
+          git fetch --force --tags origin main
+          git push --force "$MIRROR_REPO" "refs/remotes/origin/main:refs/heads/main"
+          git push --force "$MIRROR_REPO" "refs/tags/*:refs/tags/*"
+
+          echo "Mirror main -> $(git rev-parse refs/remotes/origin/main)"
+          rm -f "$key"
