@@ -8,11 +8,14 @@ name: mirror-private
 # work, because GITHUB_TOKEN is not allowed to push changes under
 # .github/workflows/ and an exact mirror would delete its own sync workflow.
 #
+# Credential: an org-owned GitHub App installed ONLY on kvendra-skills-org with
+# Contents + Workflows read/write (deploy keys are disabled by KvendraAI org
+# policy; a PAT would expire and break the sync silently).
+#
 # Setup (one-time, owner):
 #   - private repo KvendraAI/kvendra-skills-org, Actions DISABLED there (the
 #     mirrored workflows must not run in the copy);
-#   - write deploy key on the private repo, private half stored here as the
-#     MIRROR_DEPLOY_KEY secret.
+#   - repository variable MIRROR_APP_ID + secret MIRROR_APP_PRIVATE_KEY here.
 # Without the secret the job skips with a notice instead of failing.
 
 on:
@@ -34,45 +37,52 @@ jobs:
     if: github.repository == 'KvendraAI/kvendra-skills'
     runs-on: ubuntu-latest
     env:
-      MIRROR_REPO: git@github.com:KvendraAI/kvendra-skills-org.git
-      MIRROR_DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
+      MIRROR_OWNER: KvendraAI
+      MIRROR_NAME: kvendra-skills-org
     steps:
-      - name: Check secret
-        id: secret
+      - name: Check credentials
+        id: creds
         shell: bash
+        env:
+          APP_ID: ${{ vars.MIRROR_APP_ID }}
+          APP_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
         run: |
-          if [[ -z "${MIRROR_DEPLOY_KEY}" ]]; then
-            echo "::notice::MIRROR_DEPLOY_KEY is not set; skipping the private mirror sync."
+          if [[ -z "${APP_ID}" || -z "${APP_KEY}" ]]; then
+            echo "::notice::MIRROR_APP_ID / MIRROR_APP_PRIVATE_KEY not set; skipping the private mirror sync."
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Mint installation token
+        id: app
+        if: steps.creds.outputs.present == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.MIRROR_APP_ID }}
+          private-key: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
+          owner: ${{ env.MIRROR_OWNER }}
+          repositories: ${{ env.MIRROR_NAME }}
+
       - uses: actions/checkout@v5
-        if: steps.secret.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true'
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Push to mirror
-        if: steps.secret.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true'
         shell: bash
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
         run: |
           set -euo pipefail
-
-          key="$RUNNER_TEMP/mirror_key"
-          hosts="$RUNNER_TEMP/known_hosts"
-          printf '%s\n' "$MIRROR_DEPLOY_KEY" > "$key"
-          chmod 600 "$key"
-          # GitHub's published host key (api.github.com/meta), pinned: no TOFU keyscan.
-          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$hosts"
-          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
+          mirror="https://x-access-token:${TOKEN}@github.com/${MIRROR_OWNER}/${MIRROR_NAME}.git"
 
           # Push the current tip of main, not the event SHA: with back-to-back
           # pushes a late run must never roll the mirror back.
           git fetch --force --tags origin main
-          git push --force "$MIRROR_REPO" "refs/remotes/origin/main:refs/heads/main"
-          git push --force "$MIRROR_REPO" "refs/tags/*:refs/tags/*"
+          git push --force "$mirror" "refs/remotes/origin/main:refs/heads/main"
+          git push --force "$mirror" "refs/tags/*:refs/tags/*"
 
           echo "Mirror main -> $(git rev-parse refs/remotes/origin/main)"
-          rm -f "$key"
