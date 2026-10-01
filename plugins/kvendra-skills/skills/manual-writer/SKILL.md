@@ -1,8 +1,8 @@
 ---
 name: manual-writer
-description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/{book}/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots
+description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/{book}/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots. Publication mode prepares the mandatory manual of a KB publication (project language plus English) as project-wide DOCs, scoped to the selected components, with redaction suggestions
 user_invocable: true
-args: "[topic] [--genre=overview|user-manual|c4|...] [--depth=overview|standard|comprehensive] [--scope=project|CMP-...]"
+args: "[topic] [--genre=overview|user-manual|c4|...] [--depth=overview|standard|comprehensive] [--scope=project|CMP-...] | publication {PROJ} {COMP...} [--include={ENTITY_ID,...}] [--manual={DOC_ID}]"
 ---
 
 # Manual Writer — Write project documentation as Markdown
@@ -33,6 +33,7 @@ Identify `project_id` from the `CLAUDE.md` of the current directory.
 
 - Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
   `X-Kvendra-Skill` header is added by the MCP client automatically.
+- **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
@@ -50,6 +51,359 @@ This skill respects the project'''s broker policy declared in
 See `help({topic:"broker-policy"})` for the schema and resolution
 order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
 pointing to the required broker primitive.
+
+## Mode selection
+
+- **Book mode** (default): any argument that does not start with the word
+  `publication`. Follow Steps 1–10 below.
+- **Publication mode**: `publication {PROJ} {COMP...}`. Follow the
+  "Publication mode" section below INSTEAD of Steps 1–10. It writes no file
+  under `docs/` and does not call `doc-indexer`.
+
+## Publication mode — prepare the manual of a KB publication
+
+A Kvendra **publication** is a frozen, versioned snapshot of some components of
+a project, shared by an unlisted link (REQ-KVD-EF9812). Every publication MUST
+carry a manual. In this mode you draft that manual from the KB, limited to the
+components the user selected, store it as a project-wide `DOC` tagged
+`publication-manual`, and attach redaction suggestions for the publisher
+(ADR-KVD-ENTERPRISE-1B2A48). The publisher then picks this DOC in the
+dashboard publish wizard.
+
+A publication carries **one or two manuals** (REQ-KVD-EF9812
+`manual_locales`): the **primary** manual in the project language
+(`PRJ.metadata.locale`), and — only when that language is not English — a
+**secondary** manual in English. Never more than two. Only the manual is
+translated; entities are published as they are.
+
+**You never publish anything.** No publication endpoint, no link, no
+confirmation: this mode only prepares the manual. Publishing is a human
+decision taken in the dashboard after the preview.
+
+### Arguments
+
+```
+publication {PROJ} {COMP...} [--include={ENTITY_ID,...}] [--manual={DOC_ID}]
+```
+
+| Argument | Meaning |
+|----------|---------|
+| `{PROJ}` | project id (e.g. `KVD`); defaults to the CLAUDE.md project if omitted |
+| `{COMP...}` | one or more BARE component codes (e.g. `CLI SKILLS`), never `CMP-KVD-CLI` |
+| `--include=` | project-wide entities (no `component_id`) the user explicitly wants as sources, one by one |
+| `--manual=` | an existing manual DOC to update instead of searching for one |
+
+There is **no default selection**. If no component is given, ask the user which
+components to publish and stop until they answer — never assume "all".
+
+### P1 — Resolve the selection
+
+1. `entity_get({ entity_id: "PRJ-{PROJ}" })`. If `not_found`, stop: the project
+   is not onboarded.
+2. For each component: `entity_get({ entity_id: "CMP-{PROJ}-{COMP}" })`. If one
+   does not exist, stop and list the valid components from
+   `entity_query({ entity_type: "CMP", project_id: "{PROJ}" })`.
+3. For each `--include` id: `entity_get` it and check that its `component_id`
+   is empty (project-wide). An id that belongs to a non-selected component is
+   refused with a message (selecting a component is the only way in).
+4. **Resolve the project language** from `PRJ.metadata.locale` (an ISO 639-1
+   code such as `en` or `es`; this is one of the few metadata values the skill
+   reads, and it never goes into the manual text).
+   - If it is missing, ASK the user for the main language of the KB (propose
+     the language most entity content is written in, and let them confirm),
+     then store it on the PRJ with the **Guarded update (CAS)** rule:
+
+     ```
+     mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+       entity_id: "PRJ-{PROJ}",
+       expected_version: <version from the entity_get of step 1>,
+       metadata: { locale: "{iso-639-1}", updated_by: "skill:manual-writer" },
+       txn_id: "<txn_id>"
+     })
+     ```
+
+     Projects onboarded before 1.17.0 have no locale: this happens once, the
+     first time (the dashboard publish wizard asks the same question).
+   - Manual set: `locale == "en"` → one manual (primary, `en`).
+     Otherwise → primary in `{locale}` + secondary in `en`.
+
+### P2 — Read ONLY the selected scope
+
+The scope is: entities whose `component_id` is in the selection, plus the
+CMP entities themselves, plus the explicit `--include` ids. Nothing else.
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  project_id: "{PROJ}",
+  component_id: "{COMP}",
+  limit: 100,
+  offset: 0
+})
+```
+
+Page with `offset` until exhausted, once per selected component. Drafts,
+proposed and archived entities are never sources (the query excludes them by
+default — do not pass `drafts` or `archived`).
+
+Scope rules — they mirror what the server will publish (RF-9, AC-11):
+
+- **No project-wide sweep.** Do not read PRJ content, transversal ADR/ROAD/STD
+  or any entity without `component_id` unless it is in `--include`. The PRJ
+  entity is used only to confirm the project exists.
+- **`entity_search` is unscoped** (it has no `component_id` filter). If you use
+  it to find a topic, DISCARD every hit whose `component_id` is not in the
+  selection and that is not in `--include` — do not read it, do not quote it.
+- **Do not follow relations out of the scope.** A relation to a non-selected
+  entity will be rendered by the server as a locked "[private entity]", without
+  id or title. Do not name it in the manual either.
+- **Restricted types are not sources**: `COST`, `CFG`, `ENV`, `RUN` and `ISSUE`
+  tagged `type:security` or `type:incident` are excluded from publications by
+  default. Read them only to produce review suggestions (P4), never to write
+  manual prose.
+- **Only `title`, `content` and `tags` feed the manual.** Never `metadata`,
+  `history`, `actors`, `created_by`/`updated_by` or any `human:`/`agent:`
+  identifier, even though `entity_get` returns them.
+
+Large entities follow the same rule as book mode: read them through a
+subagent that returns a summary.
+
+### P3 — Draft the seven mandatory sections
+
+The server validates the manual deterministically (policy `pf-1`): each
+section must be present, and the "What is included" section must name every
+published component. Each manual uses EXACTLY these level-2 headings, in this
+order, **in its own language**: the English manual uses the canonical column,
+a Spanish manual uses the `es` column. The server validates each manual with
+the heading set of its locale.
+
+| # | Canonical heading (`en`) | Heading (`es`) | Content |
+|---|-------------------------------|---------------------|---------|
+| 1 | `## What it is and what problem it solves` | `## Qué es y qué problema resuelve` <!-- lint-allow-es --> | purpose of the published components, the problem, who it is for |
+| 2 | `## How to use it and fork it` | `## Cómo usarlo y forkearlo` <!-- lint-allow-es --> | how a reader navigates the publication and reuses or forks it |
+| 3 | `## KB structure` | `## Estructura del KB` <!-- lint-allow-es --> | entity types present, how they relate, where to start reading |
+| 4 | `## Licenses` | `## Licencias` <!-- lint-allow-es --> | code license of each component repo + content license, both as SPDX ids |
+| 5 | `## Maintainer` | `## Mantenedor` <!-- lint-allow-es --> | who maintains it and how to reach them |
+| 6 | `## Version` | `## Versión` <!-- lint-allow-es --> | snapshot date and component versions; the publication version is assigned on publish |
+| 7 | `## What is included and what is not` | `## Qué incluye y qué no` <!-- lint-allow-es --> | bullet list of the published components (one per selected `CMP`), types included, what is deliberately left out |
+
+Writing rules for the manual:
+
+- **Licenses**: the content license defaults to `CC-BY-4.0`. Take each code
+  license from the component's `content`/`tags`; if it is not stated there,
+  ASK — never guess a license. Always write SPDX identifiers.
+- **Maintainer**: ask the user. Never derive it from actors or history.
+- **What is not included**: say that other components of the project are not
+  part of the publication, without naming them (their existence can be
+  private). Name a non-selected component only if the user asks for it.
+- **No entity ids of unpublished entities.** Prefer names and prose. Any id
+  that is not in the publication is replaced by the server with
+  "[private entity]", which reads badly in a manual.
+- **Never** include secrets, credentials, vault profile names, account ids,
+  personal paths, internal hostnames, customer names, prices, `metadata`
+  values, history or actors. The server scans the manual with the same
+  blocking scanner as the entities: a secret in the manual blocks the whole
+  publication.
+- **Do not invent data.** If a section lacks a source in the scope, ask the
+  user. While the answer is pending, mark the gap with an explicit
+  `TODO: <what is missing>` line naming the exact datum (e.g.
+  `TODO: maintainer name and contact`, `TODO: code license of CLI`). A `TODO:`
+  is a placeholder, never an acceptable final state: the server (`pf-1`)
+  rejects a section that only contains a `TODO:` (reason `todo_only`), so the
+  manual is not publishable until P7 clears every one.
+- **Languages**: write the primary manual in the project locale first, then
+  the English secondary (when required) as a faithful translation of the
+  confirmed primary — same facts, same structure, nothing added or dropped.
+  The secondary opens, right under its title, with the notice:
+  `> Translated from the {primary language} manual. In case of discrepancy,
+  the {primary language} version prevails.`
+- **Locales without a heading set**: `pf-1` defines headings for `en` and `es`
+  only. If the project locale is another language, write the primary body in
+  that language but keep the canonical English headings, and tell the user
+  (the server validates a locale it has no aliases for against `en`).
+- Size: each manual must stay under 200,000 characters.
+- Genre: if the project defines an `STD-TPL-DOC-GENRE-*` for genre
+  `publication-manual`, follow its principles inside the seven sections
+  (Tier-1 override, see Step 3); the seven headings are never removed.
+
+### P4 — Review pass: redaction suggestions
+
+Re-read the scoped entities (and your draft) looking for semantically
+sensitive passages the deterministic scanner cannot see. These are
+**suggestions** for the publisher — non-blocking, the publisher decides.
+
+| `category` | Flag when the text… |
+|------------|---------------------|
+| `customer` | names a customer, prospect or partner, or describes a deal |
+| `pricing` | states internal prices, margins, costs, discounts or revenue |
+| `open-vulnerability` | describes an unfixed security weakness, attack path or open security ISSUE |
+| `other` | anything else that looks private (internal people, incidents, contracts) |
+
+Each suggestion is `{ entity_id, excerpt, category, reason }`:
+
+- `entity_id` — the entity where the passage lives (use the manual DOC id, or
+  the literal `"manual"` before the DOC exists, for passages in the manual).
+  Review the primary manual and the entities; suggestions live on the
+  primary manual DOC only (the secondary is a translation of it).
+- `excerpt` — at most 200 characters, enough to locate the passage. If the
+  passage contains a credential-shaped string, mask it (`AKIA****`) — never copy
+  a secret into a suggestion.
+- `reason` — one sentence: why it may be private.
+
+An open `ISSUE` of type security in the selection is excluded by default; flag
+it anyway if another included entity describes it in prose.
+
+### P5 — Mandatory pause
+
+Present, before writing anything to the KB:
+
+1. The selection (components, `--include` ids) and the number of entities read
+   per component.
+2. The resolved locale and the manual set (primary only, or primary + `en`).
+3. The full draft of the primary manual (the English secondary is produced
+   after the primary is confirmed, and shown before writing).
+4. The suggestions list.
+5. The open questions: every `TODO:` line, each with the exact datum it needs
+   (maintainer, code license per component, ...). Ask for them now; the
+   answers usually remove the TODOs before anything is written.
+
+**Wait for the user to confirm or edit.**
+
+### P6 — Create or update the manual DOCs
+
+Find an existing manual (unless `--manual` was given):
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_type: "DOC",
+  project_id: "{PROJ}",
+  tags_all: ["publication-manual"]
+})
+```
+
+Keep only the results with an empty `component_id`, and match them by
+`metadata.locale`. If more than one candidate remains for the same locale, ask
+which one to update. Create the ones that are missing. Write the **primary
+first**, then the secondary (its relation needs the primary id).
+
+Create (project-wide: OMIT `component_id`) — primary:
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+  entity_type: "DOC",
+  project_id: "{PROJ}",
+  title: "Publication manual ({locale}): {PROJ} ({COMP list})",
+  content: <the confirmed manual, Markdown, starting with "# {title}">,
+  tags: ["publication-manual", "doc:genre:publication-manual", "locale:{locale}"],
+  metadata: {
+    updated_by: "skill:manual-writer",
+    locale: "{locale}",
+    is_primary: true,
+    publication_components: ["{COMP}", ...],
+    publication_review: [ { entity_id, excerpt, category, reason }, ... ],
+    publication_review_at: "<ISO timestamp>"
+  },
+  relations: [
+    { type: "part_of", target: "PRJ-{PROJ}" },
+    { type: "affects", target: "CMP-{PROJ}-{COMP}" }   // one per selected component
+  ],
+  txn_id: "<txn_id>"            // only when an orchestrator passed one
+})
+```
+
+Secondary (only when `locale != "en"`): same call with `locale: "en"`,
+`is_primary: false`, the `locale:en` tag, the English content, NO
+`publication_review` (it lives on the primary only), and one extra relation to
+the primary:
+
+```
+relations: [
+  { type: "part_of", target: "PRJ-{PROJ}" },
+  { type: "affects", target: "CMP-{PROJ}-{COMP}" },
+  { type: "derives_from", target: "<primary manual DOC id>" }
+]
+```
+
+If the locale is `en`, there is no secondary; if a stale English secondary
+exists from a previous locale, tell the user instead of archiving it.
+
+Update (apply the **Guarded update (CAS)** rule):
+
+```
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+  entity_id: "<manual DOC id>",
+  expected_version: <version from the entity_get you just did>,
+  content: <the confirmed manual>,
+  metadata: {
+    updated_by: "skill:manual-writer",
+    publication_components: [...],
+    publication_review: [...],          // replaces the previous list
+    publication_review_at: "<ISO timestamp>"   // primary only
+  },
+  relations_add: [ { type: "affects", target: "CMP-{PROJ}-{COMP}" } ],
+  txn_id: "<txn_id>"
+})
+```
+
+- Update the primary and the secondary together, so both describe the same
+  snapshot; the server binds both manuals to the same publication version and
+  scans and validates each one.
+- `publication_review` lives ONLY in metadata. The server copies it to a
+  private review sidecar of the draft and never into the published artifact;
+  the manual DOC itself is published as the manual text, not as an entity.
+- Standalone run (no `txn_id` from an orchestrator): run
+  `txn_check_interrupted` and `txn_create` before the write and `txn_activate`
+  after it, as in the Kvendra rules.
+- Saving a manual that still has `TODO:` lines is allowed (it keeps the work),
+  but it is NOT ready — continue with P7.
+
+### P7 — Completeness gate (no `TODO:` left)
+
+After writing, search every manual of the set (primary and secondary) for
+`TODO:`.
+
+- **If any remains**, the manual is **not ready**. List to the user exactly
+  what is missing, one line per TODO: manual (locale), section heading, and the
+  datum needed — e.g. "Maintainer: name and contact", "Licenses: code license
+  of CLI (SPDX id)". Ask for those data. With the answers, replace the TODOs in
+  the primary, update the English secondary to match (same facts), and write
+  both again with the Guarded update (CAS) rule. Repeat until no `TODO:`
+  remains in any manual.
+- **Never** declare the manual ready, report it as prepared, or point the user
+  to the publish wizard while any `TODO:` remains. Never remove a TODO by
+  inventing a value or by deleting the section: only real data from the user
+  (or from the scoped KB) clears it.
+- If the user stops before answering, end with status `NOT READY` and the list
+  of pending TODOs; a later run of the same command resumes from the stored
+  DOCs.
+- **When zero TODOs remain**, the manual is ready. Tell the user the next step:
+  open the dashboard publish wizard, select the same components, and pick the
+  manual DOC(s) in the Manual step. The preview shows the server scan and these
+  suggestions before anything is published.
+
+### Publication mode — required output
+
+```
+### PUBLICATION MANUAL: READY | NOT READY (never published by this skill)
+- Project: {PROJ}
+- Components: {COMP list}
+- Explicit project-wide includes: N (ids)
+- Entities read: N per component
+- Project locale: {locale} (read / asked and stored on PRJ)
+- Primary manual: DOC-... ({locale}, created/updated, version N, N characters)
+- Secondary manual: DOC-... (en, derives_from primary) / none (locale is en)
+- Sections: 7/7 headings of each manual's locale present
+- Review suggestions: N (customer N · pricing N · open-vulnerability N · other N)
+- Remaining TODOs: N   (READY requires 0)
+
+### MISSING DATA (only when NOT READY)
+- [{locale}] {section heading}: {exact datum needed}
+- ...
+
+### NEXT STEP (only when READY)
+Dashboard → Publications → New: select the same components and this manual.
+The server scans the manual and the entities again; blocking findings stop the
+publication.
+```
 
 ## Step 1 — Gather KB context (the KB is your richest source)
 
@@ -536,7 +890,7 @@ docs/<book-slug>/
   dense levels → flowchart, and always validate the render.
 - **Backward-compatible.** With no `--genre/--depth/--scope`, behaviour
   matches the classic single `standard` manual under `docs/<topic>/`.
-- **Single language: English.** No multi-locale generation. The runtime
+- **Single language: English (book mode).** No multi-locale generation. The runtime
   agent translates to the project's CLAUDE.md language.
 - **Single source of truth: filesystem + KB.** The output lives as `.md`
   files under `docs/<book-slug>/` and as DOC entries in the Kvendra KB.
@@ -554,3 +908,13 @@ docs/<book-slug>/
   documentation, STOP and ask the user. Never publish inconsistent content.
 - **Suggest `/doc-indexer`** if the KB is empty of DOC entries for the
   project — without prior context, the consistency brief is empty.
+- **Publication mode is scoped and read-only towards the outside.** It reads
+  only the selected components (plus explicit includes), writes one
+  project-wide `publication-manual` DOC per locale (primary in
+  `PRJ.metadata.locale`, plus an English secondary when that is not `en`;
+  max two), keeps redaction suggestions in the primary's
+  `metadata.publication_review`, translates only the manual (never entities),
+  and never publishes. The seven headings, in each manual's language, are
+  mandatory; the server validates them and scans every manual. A manual with
+  any `TODO:` left is NOT ready (the server rejects `todo_only` sections):
+  ask the user for the missing data until none remains.

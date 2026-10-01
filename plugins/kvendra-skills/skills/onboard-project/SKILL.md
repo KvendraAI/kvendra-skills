@@ -219,6 +219,8 @@ Ask ONLY what cannot be inferred. The auto-detected tier is NEVER re-asked.
 
 1. **Workspace layout** (only new project): `siblings` (default), `monorepo`, `mixed`, or custom string. Affects `PRJ.metadata.workspace_layout`.
 2. **`owner_handle`**: pre-fill from `whoami.identity.preferred_username` if cloud + Track A available; ask as fallback (default = local OS user).
+3. **Main KB language** (only new project): the language the project's KB content is written in, as an ISO 639-1 code (`en`, `es`, ...). Detect a proposal — the `## Particularidades` language of an existing CLAUDE.md, the language of the existing `docs/`/README, or the language the owner is writing in — and ask the owner to confirm or correct it; never store an unconfirmed guess. Stored as `PRJ.metadata.locale`. It decides the language of the primary manual of a KB publication (`manual-writer` publication mode adds an English secondary when it is not `en`).
+   - **Existing projects** (onboarded before kvendra-skills 1.17.0) have no `locale`. Nothing to migrate: `manual-writer` publication mode, or the dashboard publish wizard, asks for it the first time and stores it on the PRJ. In `add-component` mode, if the PRJ has no `locale`, you may offer to set it now (same question; write it with the Guarded update (CAS) rule inside the TXN) — optional, never blocking.
 
 ### Per-component questions
 
@@ -401,7 +403,8 @@ txn_create({
          "<STD-BROKER-POLICY entity_id from step 2b>"
        ],
        owner_handle: <whoami or asked>,
-       workspace_layout: <answered>
+       workspace_layout: <answered>,
+       locale: <confirmed ISO 639-1 code, e.g. "en" or "es">
      },
      txn_id, updated_by
    })
@@ -534,6 +537,9 @@ tier:<free|pro|team|enterprise>  (via whoami)
 - Sections: 3/3 (Manual marked, Project marked, Particularidades present)
 - manual_version: 1.0
 - tier: <tier>
+
+### Project language
+- PRJ.metadata.locale: <iso-639-1> (confirmed by the owner)
 
 ### Verified against GLO
 - New terms: N

@@ -4,6 +4,53 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.17.0] — 2026-10-01 — Publication manuals
+
+### Added
+- **`manual-writer` publication mode**: `/manual-writer publication {PROJ}
+  {COMP...} [--include=...] [--manual=...]` drafts the mandatory manual of a
+  KB publication. It reads only the selected components (plus project-wide
+  entities the user includes one by one), writes the seven mandatory sections
+  under canonical English headings (what it is · how to use and fork it · KB
+  structure · licenses with SPDX ids, content default `CC-BY-4.0` ·
+  maintainer · version · what is included and what is not), and stores the
+  result as a project-wide `DOC` tagged `publication-manual`.
+- Redaction suggestions (customers, pricing, open vulnerabilities, other) in
+  `metadata.publication_review` of that DOC, as
+  `{entity_id, excerpt, category, reason}`. Non-blocking: the publisher
+  decides in the dashboard preview.
+- **Manual languages**: the primary manual is written in the project
+  language (`PRJ.metadata.locale`); when that is not English, an English
+  secondary manual is added (two at most). Each manual uses the seven
+  headings of its own language (`en` canonical, `es` aliases), carries
+  `metadata.locale` + `metadata.is_primary`, and the secondary
+  `derives_from` the primary and opens with a "translated from" notice.
+  Only the manual is translated, never the entities. If the PRJ has no
+  `locale`, the skill asks once and stores it on the PRJ.
+- **No manual is "ready" with a `TODO:` left.** The server rejects sections
+  that only hold a `TODO:` (`todo_only`), so publication mode ends with a
+  completeness gate: it lists exactly what is missing (maintainer, code
+  license per component, ...), asks the user for it, updates both manuals,
+  and reports `READY` only when no `TODO:` remains; otherwise `NOT READY`
+  with the pending list.
+- **`onboard-project` asks for the main KB language** (detected, then
+  confirmed by the owner) and stores it as `PRJ.metadata.locale` (ISO 639-1).
+- `manual-writer` now carries the Guarded update (CAS) rule, since the
+  publication mode updates an existing manual DOC and the PRJ locale.
+
+### Notes
+- The skill never publishes: publishing stays a human step in the dashboard
+  wizard, where the server validates the sections and scans the manual.
+- Book mode (Steps 1–10) is unchanged.
+
+### Migration
+- Projects onboarded before 1.17.0 have no `PRJ.metadata.locale`. Nothing
+  to do: `manual-writer` publication mode or the dashboard publish wizard
+  asks for it the first time.
+
+### Traceability
+REQ-KVD-EF9812 (RF-5, RF-9) · ADR-KVD-ENTERPRISE-1B2A48 · DOC-KVD-ENTERPRISE-45C50D §5 · TXN-KVD-20261001-017
+
 ## [1.16.1] — 2026-09-30 — Multi-account URL ships with the plugin
 
 ### Fixed
