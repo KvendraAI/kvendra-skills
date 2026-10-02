@@ -6,6 +6,8 @@ Kvendra KB with the same content plus traceability links.
 
 ## [1.19.0] — 2026-10-02 — Files in books and cards
 
+> Limits: video and audio files are capped at 50 MB each on every tier (engine security review, egress cost).
+
 ### Added
 - **`manual-writer` KB files** (KB book and publication modes): screenshots,
   raster diagrams, PDFs, video and audio are uploaded to Workspace Files

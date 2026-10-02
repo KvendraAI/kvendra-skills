@@ -112,7 +112,8 @@ publication engine as `type_not_allowed`):
 - Password-protected or encrypted PDFs are refused. A scanned PDF without a
   text layer needs the publisher's confirmation (`pdf_no_text`).
 - **Limits per publication version**: Pro 100 MB per file, 1 GB in total, 100
-  files; Team and Enterprise 250 MB, 2 GB, 200 files. Published files count
+  files; Team and Enterprise 250 MB, 2 GB, 200 files. Video and audio files
+  are capped at 50 MB each on every tier. Published files count
   against the workspace Files quota. Prefer compressed screenshots and short
   clips; keep each file well below the limit.
 
