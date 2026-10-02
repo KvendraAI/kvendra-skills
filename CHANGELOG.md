@@ -4,6 +4,41 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.19.0] — 2026-10-02 — Files in books and cards
+
+### Added
+- **`manual-writer` KB files** (KB book and publication modes): screenshots,
+  raster diagrams, PDFs, video and audio are uploaded to Workspace Files
+  (`file_upload_init` → PUT with the exact headers → `file_complete`),
+  linked in `metadata.attachments[]` of the chapter or card DOC
+  (`{file_id, kind: "kvendra-file", title, mime, size_bytes, sha256}`) and
+  referenced in the Markdown as `![<alt text>](file:<file_id>)`, which the
+  publication reader renders as an image, a PDF viewer or a video/audio
+  player. Only linked files enter a publication; a reference to an unlinked
+  file renders as "[private file]".
+- Rules mirrored from the publication engine (policy `pf-3`): only PNG,
+  JPEG, WebP, GIF, PDF, MP4, WebM, MP3, M4A, OGG and WAV (never SVG, HEIC,
+  TIFF, BMP, QuickTime); limits per version Pro 100 MB/file, 1 GB, 100 files
+  and Team/Enterprise 250 MB, 2 GB, 200 files; no encrypted PDFs; extension
+  must match the content. Export without personal metadata where possible
+  (the engine strips it anyway); check every image for visible secrets or
+  personal data before uploading; descriptive English file names.
+- Mandatory alt text on every file reference; a transcript or brief
+  description after every video and audio; one sentence after every PDF.
+- Fallback when Files is unavailable (no tool, 403, 422 quota, policy): no
+  local path and no `file:` reference in the KB — prose instead, and the
+  file is reported as not uploaded in the run report.
+- **`manual-writer` book chapters end with `## Related entities`**: the
+  publishable entities of the component that detail the chapter (`CMP`,
+  `IF`, `REQ`, `GLO`, `STD`, `DOC`, and `ADR`s meant to be published).
+  Checked in the book verification step.
+
+### Changed
+- Publication mode lists the files linked to the scope in the pause and the
+  output, and reviews images for visible secrets in the suggestions.
+- Example ids in `manual-writer` use `<PROJ>`/`<COMP>` placeholders instead
+  of ids with a real shape.
+
 ## [1.18.0] — 2026-10-01 — Component books + English card
 
 ### Added

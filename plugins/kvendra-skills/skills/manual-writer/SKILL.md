@@ -1,6 +1,6 @@
 ---
 name: manual-writer
-description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/{book}/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots. KB book mode writes the mandatory English book of one component as DOC chapters in the KB, from the component's code and KB. Publication mode prepares the English card of a KB publication, scoped to the selected components, with redaction suggestions
+description: Manual writer — generates a configurable documentation "book" (genre x depth) under docs/{book}/ of a project (English source), consulting Kvendra DOC entries and STD-TPL-DOC-GENRE templates; Mermaid diagrams incl. C4, optional screenshots. KB book mode writes the mandatory English book of one component as DOC chapters in the KB, from the component's code and KB, ending each chapter with its related entities. Publication mode prepares the English card of a KB publication, scoped to the selected components, with redaction suggestions. Both KB modes upload images, PDFs, video and audio to Workspace Files and reference them as file links
 user_invocable: true
 args: "[topic] [--genre=overview|user-manual|c4|...] [--depth=overview|standard|comprehensive] [--scope=project|CMP-...] | book {PROJ} {COMP} [--from={repo-docs-dir}] [--no-pause] | publication {PROJ} {COMP...} [--include={ENTITY_ID,...}] [--manual={DOC_ID}]"
 ---
@@ -79,6 +79,128 @@ copy (ADR-KVD-ENTERPRISE-BC96E7): the publication engine rejects a card or a
 book that is not in English. Entities are published as they are, in whatever
 language they were written.
 
+## KB files — images, PDFs, video and audio (KB book and publication modes)
+
+Screenshots, raster diagrams, PDFs, video and audio of a KB book chapter or
+of the card live in **Workspace Files**, never inside the entity text and
+never as local paths. You upload each file, **link** it to the chapter or
+card DOC that uses it, and **reference** it in the Markdown. A publication
+carries a linked file as a frozen copy (ADR-KVD-ENTERPRISE-CB526C). Docs mode
+does not use this section: its screenshots stay under
+`docs/{book}/assets/screenshots/`.
+
+Mermaid diagrams stay as Mermaid text. Upload a diagram as a file only when
+it cannot be written as Mermaid, and then as PNG — never SVG.
+
+### Allowed files
+
+Only these types can be published (any other type is refused by the
+publication engine as `type_not_allowed`):
+
+| Kind | Types (extension → mime) |
+|------|--------------------------|
+| image | `.png` image/png · `.jpg` image/jpeg · `.webp` image/webp · `.gif` image/gif |
+| document | `.pdf` application/pdf |
+| video | `.mp4` video/mp4 (H.264 + AAC plays everywhere) · `.webm` video/webm |
+| audio | `.mp3` audio/mpeg · `.m4a` audio/mp4 · `.ogg` audio/ogg · `.wav` audio/wav |
+
+- **Never**: SVG, HEIC, TIFF, BMP, QuickTime (`.mov`), `audio/webm`, Office
+  files, archives. Convert first (an SVG or a HEIC capture → PNG, `.mov` →
+  MP4).
+- The extension and mime must match the real content: the engine reads the
+  first bytes and refuses a mismatch (`type_mismatch`).
+- Password-protected or encrypted PDFs are refused. A scanned PDF without a
+  text layer needs the publisher's confirmation (`pdf_no_text`).
+- **Limits per publication version**: Pro 100 MB per file, 1 GB in total, 100
+  files; Team and Enterprise 250 MB, 2 GB, 200 files. Published files count
+  against the workspace Files quota. Prefer compressed screenshots and short
+  clips; keep each file well below the limit.
+
+### Personal metadata and visible content
+
+- **Export without metadata** whenever the tool allows it (screenshots
+  without location or author data, PDFs without author/creator fields, media
+  without tags). The engine removes all metadata (EXIF, GPS, XMP, IPTC,
+  document info, container tags) from the published copy anyway, and refuses
+  a file it cannot clean — never rely on the original being clean.
+- **Look at every image and frame before you upload it.** No secrets, tokens,
+  keys, account ids, hostnames, personal paths, emails, person names, user
+  handles, customer data or prices may be visible. Use synthetic data, crop or
+  redact. The engine cannot read images, video or audio: it asks the
+  publisher to confirm each one (`file_unscannable`).
+- The **file name** is published and scanned: name it after its content in
+  English (e.g. `project-list-screen.png`), never after a person, a customer
+  or a local path.
+- **PDF text** is scanned with the same blocking scanner as the chapters: a
+  secret inside a PDF blocks the publication.
+
+### Upload
+
+The `file_*` tools exist only on hosted Pro, Team and Enterprise servers.
+Wire details live in `help({topic:"files"})`; read it once per session before
+the first upload.
+
+1. Measure the local file: size in bytes and sha256 (64 hex characters).
+2. `file_upload_init({ name, mime, size_bytes, sha256 })`. Omit `entity_id`.
+3. Send the bytes with the method it returns. `PUT`: to `upload.url` with
+   exactly the headers in `upload.headers`, no more and no fewer.
+   `MULTIPART` (over 100 MB): follow the help topic. The URLs expire after
+   300 s; call `file_upload_init` again if they lapse.
+4. `file_complete({ file_id })` must answer `status:"ready"`.
+5. **Never** write an upload or download URL into a chapter, the card, a
+   report or a log. Readers mint a fresh one with `file_get_url({ file_id })`.
+
+```bash
+# size and sha256 (macOS and Linux)
+wc -c < "$FILE" | tr -d ' '
+{ shasum -a 256 "$FILE" 2>/dev/null || sha256sum "$FILE"; } | cut -d' ' -f1
+# PUT: one -H per entry of upload.headers, names and values copied verbatim
+# (with sha256 declared there are three entries; the checksum value is the
+# base64 one returned by file_upload_init, not the hex digest).
+curl -sS -f -X PUT --upload-file "$FILE" \
+  -H "content-type: $MIME" \
+  -H "content-length: $SIZE" \
+  -H "x-amz-checksum-sha256: $CHECKSUM" \
+  "$UPLOAD_URL"
+```
+
+### Link and reference
+
+- **Link** every file to the DOC that uses it — the chapter, or the card — in
+  `metadata.attachments[]`:
+  `{ file_id, kind: "kvendra-file", title, mime, size_bytes, sha256 }`.
+  On an update, send the complete `attachments` array (the entries already
+  there plus the new ones) with the Guarded update (CAS) rule; never drop an
+  entry you did not add.
+- **Reference** it where it belongs in the Markdown, with the same syntax for
+  every kind: `![<alt text>](file:<file_id>)`. The reader renders it by type:
+  an inline image with a zoom viewer, a PDF viewer, or native video and audio
+  players.
+- Only linked files enter a publication. A `file:` reference to a file that
+  is not linked, or that the publisher leaves out, is rendered as a locked
+  "[private file]". Every referenced file must be linked, and every linked
+  file referenced.
+- **Alt text is mandatory** for every reference: a short English description
+  of what the file shows (e.g.
+  `![Project list with two components and their book status](file:<file_id>)`),
+  without secrets or personal data. Never an empty `![](...)`.
+- **Video and audio** also need, right after the reference, a short
+  transcript or a brief description of what is said and shown (a few lines, or
+  a bulleted summary for a long clip). Readers who cannot play the media, and
+  the publisher who reviews it, rely on it.
+- A PDF reference is followed by one sentence saying what the document is.
+- If the entity write that should carry the attachments fails, call
+  `file_delete({ file_id })` for each file uploaded for it.
+
+### When Files is not available
+
+If `file_upload_init` is not in your tool list, or a call returns 403 (plan or
+`insufficient_privilege`) or 422 `files_quota_exceeded`, or the upload is
+blocked by policy, do NOT fail the run and do NOT write a local path or a
+`file:` reference into the KB: describe the content in prose in the chapter or
+card, and list each file as `file not uploaded: <local path> — <reason>` in
+the run report (never in the KB). The book or card stays usable without it.
+
 ## KB book mode — write the English book of a component
 
 A KB publication carries one **book per selected component**
@@ -103,8 +225,8 @@ book {PROJ} {COMP} [--from={repo-docs-dir}] [--no-pause]
 
 | Argument | Meaning |
 |----------|---------|
-| `{PROJ}` | project id (e.g. `KVD`); defaults to the CLAUDE.md project if omitted |
-| `{COMP}` | ONE bare component code (e.g. `CLI`), never `CMP-KVD-CLI` |
+| `{PROJ}` | project id (`<PROJ>`); defaults to the CLAUDE.md project if omitted |
+| `{COMP}` | ONE bare component code (`<COMP>`), never `CMP-<PROJ>-<COMP>` |
 | `--from=` | an existing manual directory of the component repo (e.g. `docs/manual-{name}`) to use as a source; it is rewritten in English, never copied as is |
 | `--no-pause` | skip the plan pause (B4); only for orchestrated pipelines that run without gates |
 
@@ -245,11 +367,29 @@ Writing rules:
   define terms before use, explain the why and why-not from `ADR`), terse
   style for reference chapters.
 - **Cite entities by literal id** where they are the source of a fact
-  (e.g. `ADR-KVD-...`, `IF-KVD-...`). Cite only ids of entities of this
-  component (`component_id` = `{COMP}`, or `CMP-{PROJ}-{COMP}`) and ids of the
-  book's own chapters: the reader links them. Any other id is replaced by the
-  engine with a locked "[private entity]" if it is not published — describe
-  those in prose instead.
+  (e.g. `IF-<PROJ>-<COMP>-<ID>`, `REQ-<PROJ>-<ID>`). Cite only ids of
+  entities of this component (`component_id` = `{COMP}`, or
+  `CMP-{PROJ}-{COMP}`) and ids of the book's own chapters: the reader links
+  them. Any other id is replaced by the engine with a locked
+  "[private entity]" if it is not published — describe those in prose
+  instead. In examples and templates, write ids as placeholders
+  (`<PROJ>`/`<COMP>`), never ids with a real shape.
+- **Every chapter ends with `## Related entities`**: a bullet list of the
+  publishable entities of this component that detail the chapter —
+  `CMP`, `IF`, `REQ`, `GLO`, `STD`, `DOC` — one per line,
+  `- <entity id> — <title, or one line on what it details>`. Add the
+  component's `ADR`s only when they are meant to be published (an `ADR` the
+  publisher leaves out renders as "[private entity]"). Never list `COST`,
+  `CFG`, `ENV`, `RUN`, security/incident `ISSUE`s or the book's own chapters
+  there. If no entity details the chapter, write the heading with the single
+  line `- None.`
+- **Files**: screenshots, raster diagrams, PDFs, video and audio follow
+  "KB files" above — uploaded to Workspace Files, linked in the chapter's
+  `metadata.attachments[]`, referenced as `![<alt text>](file:<file_id>)`
+  with mandatory alt text, plus a transcript or brief description for video
+  and audio. Never a local path, never image bytes. To capture a screen, use
+  the protocol of Step 5 (browser MCP), save the capture outside the
+  repository, check it, then upload it.
 - **No personal data**: no person names, emails, user handles or account
   names. The engine flags the publisher's and the team members' names, emails
   and handles (`publisher_identity`) in every chapter.
@@ -264,9 +404,9 @@ Writing rules:
 - Respect the limits: chapter numbers 1..999 and unique, at most 200 chapters,
   200,000 characters per chapter, 3,000,000 per book. Split a chapter that
   grows too large.
-- Each chapter's `content` starts with `# {NN}. {Chapter title}` and is
-  self-contained Markdown (Mermaid allowed; follow the Mermaid hard rules of
-  Step 6).
+- Each chapter's `content` starts with `# {NN}. {Chapter title}`, ends with
+  `## Related entities`, and is self-contained Markdown (Mermaid allowed;
+  follow the Mermaid hard rules of Step 6).
 
 ### B4 — Pause with the plan
 
@@ -274,8 +414,10 @@ Present, before writing anything to the KB:
 
 1. Component, repository and commit (or "KB only"), and the `--from` source.
 2. Book slug and title (new, or the existing one being updated).
-3. The chapter plan: number, title, slug, sources (code paths and entity ids)
-   and whether each chapter is created, updated or unchanged.
+3. The chapter plan: number, title, slug, sources (code paths and entity ids),
+   the related entities each chapter will list, the files it will upload or
+   keep (name, kind, size) and whether each chapter is created, updated or
+   unchanged.
 4. Existing chapters that are not in the new plan (they are never deleted or
    renumbered without the owner's decision).
 5. Open questions and any contradiction found between code, KB and `--from`.
@@ -298,7 +440,8 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   project_id: "{PROJ}",
   component_id: "{COMP}",
   title: "{Book title} — {NN}. {Chapter title}",
-  content: <the chapter, Markdown, starting with "# {NN}. {Chapter title}">,
+  content: <the chapter, Markdown, starting with "# {NN}. {Chapter title}"
+            and ending with "## Related entities">,
   tags: ["book:{slug}", "doc:genre:book-chapter", "locale:en"],
   metadata: {
     book: "{slug}",
@@ -307,6 +450,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
     chapter_slug: "{chapter-slug}",
     locale: "en",
     source: { repo: "{workspace_subdir}" | null, commit: "{sha}" | null, paths: ["src/...", ...] },
+    attachments: [ { file_id, kind: "kvendra-file", title, mime, size_bytes, sha256 }, ... ],  // only when files were uploaded (see "KB files")
     updated_by: "skill:manual-writer"
   },
   relations: [
@@ -326,7 +470,9 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   expected_version: <version from the entity_get you just did>,
   title: "{Book title} — {NN}. {Chapter title}",
   content: <the new chapter>,
-  metadata: { book, book_title, chapter, chapter_slug, locale: "en", source, updated_by: "skill:manual-writer" },
+  metadata: { book, book_title, chapter, chapter_slug, locale: "en", source,
+              attachments: [ ...existing entries, ...new entries ],   // only when files change
+              updated_by: "skill:manual-writer" },
   txn_id: "<txn_id>"
 })
 ```
@@ -349,9 +495,16 @@ is open) and check what the engine will check:
 2. No chapter empty or only `TODO:`; sizes within the limits.
 3. Every chapter is written in English (no paragraph in another language).
 4. Cited entity ids exist and belong to the component (or are chapters of the
-   book).
+   book); every chapter ends with `## Related entities` listing only
+   publishable types (`CMP`, `IF`, `REQ`, `GLO`, `STD`, `DOC`, and `ADR`
+   meant to be published).
 5. No person names, emails, handles, home paths, account ids, hostnames or
    secrets.
+6. Files: every `file:` reference has a matching entry in the chapter's
+   `metadata.attachments[]` and vice versa; each file is `ready`, of an
+   allowed type and within the limits; every reference has alt text; every
+   video and audio has a transcript or brief description; no local path or
+   URL is written in a chapter.
 
 The book is `READY` only when all checks pass and no `TODO:` line remains;
 otherwise `NOT READY` with the exact list of what is missing.
@@ -367,12 +520,16 @@ otherwise `NOT READY` with the exact list of what is missing.
 - Chapters: N (created N · updated N · unchanged N) — numbers {list}
 - Characters: N (max 3,000,000); largest chapter N (max 200,000)
 - Entities cited: N (ids)
+- Files: N uploaded · N linked · N not uploaded (reasons, local paths in this report only)
 - Chapters out of the plan (kept, owner decision): {ids} | none
 - Remaining TODOs: N   (READY requires 0)
 - TXN: {txn_id} (own | orchestrator)
 
 ### CHAPTERS
 | # | DOC id | Title | Characters | Status |
+
+### FILES (only when present)
+| file_id | Name | Kind | Size | Chapter | Status |
 
 ### MISSING DATA / CONTRADICTIONS (only when present)
 - ...
@@ -409,8 +566,8 @@ publication {PROJ} {COMP...} [--include={ENTITY_ID,...}] [--manual={DOC_ID}]
 
 | Argument | Meaning |
 |----------|---------|
-| `{PROJ}` | project id (e.g. `KVD`); defaults to the CLAUDE.md project if omitted |
-| `{COMP...}` | one or more BARE component codes (e.g. `CLI SKILLS`), never `CMP-KVD-CLI` |
+| `{PROJ}` | project id (`<PROJ>`); defaults to the CLAUDE.md project if omitted |
+| `{COMP...}` | one or more BARE component codes (`<COMP> <COMP2>`), never `CMP-<PROJ>-<COMP>` |
 | `--include=` | project-wide entities (no `component_id`) the user explicitly wants as sources, one by one |
 | `--manual=` | an existing card DOC to update instead of searching for one |
 
@@ -474,6 +631,11 @@ Scope rules — they mirror what the server will publish (RF-9, AC-11):
 - **Book chapters** (DOCs with `metadata.book`) are published as the books, not
   as entities. Read them for P4 (they are reviewed too), and to summarise each
   book in the card.
+- **Linked files**: the one `metadata` field you read is `attachments[]`
+  (only `file_id` and `kind`) of the scoped entities, the chapters and the
+  card, to list the files the publication will carry. The engine preselects
+  every file linked to an included entity, chapter or card; nothing else
+  enters unless the publisher picks it in the wizard.
 
 Large entities follow the same rule as Docs mode: read them through a
 subagent that returns a summary.
@@ -522,10 +684,15 @@ Writing rules for the card:
 - **Do not invent data.** If a section lacks a source in the scope, ask the
   user. While the answer is pending, mark the gap with an explicit
   `TODO: <what is missing>` line naming the exact datum (e.g.
-  `TODO: maintainer name and contact`, `TODO: code license of CLI`). A `TODO:`
+  `TODO: maintainer name and contact`, `TODO: code license of <COMP>`). A `TODO:`
   is a placeholder, never an acceptable final state: the server (`pf-2`)
   rejects a section that only contains a `TODO:` (reason `todo_only`), so the
   card is not publishable until P7 clears every one.
+- **Files** in the card (a screenshot, a diagram as PNG, a PDF, a demo clip)
+  follow "KB files" above: uploaded, linked in the card's
+  `metadata.attachments[]`, referenced as `![<alt text>](file:<file_id>)`
+  with mandatory alt text, plus a transcript or brief description for video
+  and audio. Keep the card light: the books carry most of the files.
 - Size: the card must stay under 200,000 characters.
 - Genre: if the project defines an `STD-TPL-DOC-GENRE-*` for genre
   `publication-manual`, follow its principles inside the seven sections
@@ -558,6 +725,14 @@ Each suggestion is `{ entity_id, excerpt, category, reason }`:
 An open `ISSUE` of type security in the selection is excluded by default; flag
 it anyway if another included entity or a chapter describes it in prose.
 
+**Files**: list every linked file of the scope (entities, chapters, card) with
+its kind and size. Look at each image (and the frames of a video you can
+inspect) for visible secrets or personal data, and flag one with `entity_id` =
+the entity, chapter or card that links it and the `file_id` in `reason`.
+Remind the publisher that every image, video and audio needs an explicit
+confirmation in the wizard, and that the file limits per version apply (see
+"KB files").
+
 ### P5 — Mandatory pause
 
 Present, before writing anything to the KB:
@@ -567,7 +742,7 @@ Present, before writing anything to the KB:
 2. The book status per component (slug, chapters — or missing / ambiguous,
    with the `/manual-writer book` command to run).
 3. The full draft of the card.
-4. The suggestions list.
+4. The suggestions list and the linked files (count, total size, kinds).
 5. The open questions: every `TODO:` line, each with the exact datum it needs
    (maintainer, code license per component, ...). Ask for them now; the
    answers usually remove the TODOs before anything is written.
@@ -615,7 +790,8 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
     locale: "en",
     publication_components: ["{COMP}", ...],
     publication_review: [ { entity_id, excerpt, category, reason }, ... ],
-    publication_review_at: "<ISO timestamp>"
+    publication_review_at: "<ISO timestamp>",
+    attachments: [ { file_id, kind: "kvendra-file", title, mime, size_bytes, sha256 }, ... ]  // only when the card uses files
   },
   relations: [
     { type: "part_of", target: "PRJ-{PROJ}" },
@@ -637,7 +813,8 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
     locale: "en",
     publication_components: [...],
     publication_review: [...],          // replaces the previous list
-    publication_review_at: "<ISO timestamp>"
+    publication_review_at: "<ISO timestamp>",
+    attachments: [ ...existing entries, ...new entries ]   // only when the card's files change
   },
   relations_add: [ { type: "affects", target: "CMP-{PROJ}-{COMP}" } ],
   txn_id: "<txn_id>"
@@ -659,7 +836,7 @@ After writing, search the card for `TODO:`.
 
 - **If any remains**, the card is **not ready**. List to the user exactly what
   is missing, one line per TODO: section heading and the datum needed — e.g.
-  "Maintainer: name and contact", "Licenses: code license of CLI (SPDX id)".
+  "Maintainer: name and contact", "Licenses: code license of <COMP> (SPDX id)".
   Ask for those data. With the answers, replace the TODOs and write the card
   again with the Guarded update (CAS) rule. Repeat until no `TODO:` remains.
 - **Never** declare the card ready, report it as prepared, or point the user
@@ -690,6 +867,7 @@ After writing, search the card for `TODO:`.
 - Sections: 7/7 English headings present
 - Books: {COMP} → {slug} (N chapters) | MISSING | AMBIGUOUS — one line per component
 - Review suggestions: N (customer N · pricing N · open-vulnerability N · other N)
+- Linked files: N (image N · pdf N · video N · audio N), total size N MB; card files N
 - Remaining TODOs: N   (READY requires 0 and every book present)
 
 ### MISSING DATA (only when NOT READY)
@@ -1224,6 +1402,15 @@ docs/<book-slug>/
   deletes, archives or renumbers chapters without the owner. No chapter is
   empty or only `TODO:`; limits 200 chapters, 200,000 characters per chapter,
   3,000,000 per book.
+- **KB files are uploaded, linked and referenced.** In KB book and
+  publication modes, images, PDFs, video and audio go to Workspace Files,
+  are linked in the DOC's `metadata.attachments[]` and referenced as
+  `![<alt text>](file:<file_id>)`; only the publication types and limits;
+  mandatory alt text and a transcript or description for video and audio;
+  exported without metadata where possible (the engine strips it anyway);
+  never a local path, a URL or image bytes in the KB.
+- **Related entities.** Every KB book chapter ends with `## Related entities`
+  listing the publishable entities of the component that detail it.
 - **Publication mode is scoped and read-only towards the outside.** It reads
   only the selected components (plus explicit includes), writes ONE
   project-wide English card (`publication-manual` tag, `metadata.locale:
