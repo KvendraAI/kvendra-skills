@@ -4,6 +4,52 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.20.0] — 2026-10-07 — Private values: references, never values
+
+> Requires the hosted engine with wire 1.26 (IF-KVD-ENTERPRISE-060D2B):
+> entity reads never resolve, `private_value_resolve` exists and unescaped
+> display markers are rejected on write. Older clients keep working (reads are
+> raw), but only 1.20.0 resolves values through the new op.
+
+### Added
+- **Private values rule** in the `## Kvendra rules (summary)` of all 23 skills
+  that carry it: private identifiers (account ids, local paths, profile ids,
+  person names, case numbers…) are written into KB text as `{{cfg:<key>}}`
+  references; `entity_get` returns them raw and they are written back as-is;
+  display markers are never written (`400 private_marker_in_text`); mentions
+  of the syntax or a marker are escaped with a leading backslash; values are
+  resolved only with `private_value_resolve({keys, project_id})`, used
+  in-process and never pasted into KB text, change summaries, commits, PRs or
+  chat; credentials go to the vault, never to CFG; `private_value_suggested`
+  and `private_ref_undefined` warnings are acted on.
+- **CI gate** `Private-values rule check` (`lint-skill-md`): every Kvendra-rules
+  carrier must hold the canonical bullet, identical across skills; no SKILL.md
+  may show an unescaped display marker or a concrete, unescaped reference.
+
+### Changed
+- `updater`: rewrites keep references and escaped mentions byte for byte; a
+  `private_marker_in_text` rejection is re-read and fixed, never retried
+  blindly; the report gains a mandatory **Private values** line.
+- `deploy`: references in the playbook are resolved in one
+  `private_value_resolve` batch, substituted in memory only, and an undefined
+  key stops the deploy before any step runs.
+- `implementer`: resolves with `private_value_resolve` when it needs a value to
+  operate; never hard-codes a value in code, commits, PRs or the report.
+- `kvendra`: proposes a CFG key for a private identifier the user brings and
+  points to the dashboard's private values editor; persists references only.
+- `manual-writer`: KB chapters and cards carry references (`pf-5` substitutes
+  them at publish time); `docs/` files never hold resolved values; mentions are
+  escaped.
+- `onboard-project`: proposes `<proj>.<area>.<name>` keys before writing PRJ,
+  CMP, STD and ENV, and writes references.
+- `to-do`, `release-manager`, `incident-manager`, `doc-indexer`: rewrites keep
+  references; incident RCA/postmortem and indexed DOCs use references for
+  account ids, case numbers and paths.
+- `env-check`: expects 26 hosted tools (adds `private_value_resolve`) and the
+  `private-values` help topic.
+- `user-help`: explains the convention; tool list at 26.
+- README and INSTALL: 26 hosted tools.
+
 ## [1.19.0] — 2026-10-02 — Files in books and cards
 
 > Limits: video and audio files are capped at 50 MB each on every tier (engine security review, egress cost).

@@ -106,6 +106,17 @@ what is missing or suspect — the pack is an optimization, not a cage."
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ### Interrupted check
 

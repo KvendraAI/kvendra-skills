@@ -34,6 +34,17 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -91,6 +102,18 @@ For each file:
 - **Do not add comments** to code that did not have them.
 - **Do not refactor** unrelated code.
 - If the project requires i18n: add keys in all supported languages.
+- **Private values**: the spec, STD or IF may carry references
+  `{{cfg:<key>}}` (account ids, profile ids, paths…). When you need the value
+  to operate (run a command, call the broker, open a path), resolve the keys
+  in one batch with
+  `mcp__plugin_kvendra-skills_kvendra-cloud__private_value_resolve({ keys:[...], project_id:<PROJ> })`
+  and use the value in-process only. Never hard-code a resolved value in
+  source, config, tests, fixtures, commit messages or PR text, and never
+  echo it in your report — cite the key. If the code itself needs the value
+  at runtime, wire it through the project's configuration mechanism (env,
+  parameter store, secrets manager) as the STD prescribes. A key in
+  `state:"undefined"` → mark the implementation Blocked and name the key.
+  An escaped mention (leading backslash) is documentation, not a reference.
 
 ## Step 4 — Output
 

@@ -45,6 +45,17 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -72,6 +83,19 @@ For every entity mentioned:
 3. **Naming**: new fields follow GLO (see `interface-validator`).
 
 ## Step 3 — Apply coherent changes
+
+**Private values in rewrites.** Every rewrite of `content`, `title` or tags
+below starts from the text `entity_get` returned and keeps it byte for byte
+outside the part you change: a private-value reference (`{{cfg:<key>}}`)
+stays a reference and an escaped mention (a leading backslash before the
+syntax or a display marker) stays escaped. Never replace a reference with a
+value, never drop the backslash of a mention, never type a display marker.
+If a write fails with `400 private_marker_in_text` (body carries `field` and
+`position`), do NOT retry the same payload: re-read the entity, find the
+marker at that position in your draft, put back the original reference (or
+escape it if it was a mention), then write again. Collect every
+`private_value_suggested` / `private_ref_undefined` warning the writes return
+for the report.
 
 ### 3a — New relations
 
@@ -161,4 +185,11 @@ entries are `{ file_id, kind, title, mime, size_bytes, sha256 }` as received.
 - Broken relations: 0
 - Bugs without test: 0
 - Complete changelog: OK
+
+### Private values
+- Warnings received: none | <entity_id>: private_ref_undefined (<field>, <key>) | <entity_id>: private_value_suggested (<field>, <suggested_key>)
+- Rejected writes corrected: none | <entity_id>: private_marker_in_text at <field>:<position> → re-read and fixed
 ```
+
+The **Private values** line is mandatory, even when it says `none`. Never
+put a resolved value in it — keys and field names only.

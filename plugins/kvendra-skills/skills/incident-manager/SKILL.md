@@ -46,6 +46,17 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -157,6 +168,15 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 - PAT: ...
 ```
 
+**Private values in the incident text.** Incidents attract identifiers:
+cloud account ids, support case numbers, hostnames, local paths, people's
+names. In the Impact, Timeline, RCA and Postmortem write each one as a
+reference (`{{cfg:<proj>.aws.account}}`, `{{cfg:<proj>.support.case}}` —
+placeholders shown here; a real reference uses a concrete lowercase key) and
+propose the missing CFG keys to the user. The same applies to the derived RUN,
+REQ and PAT of Step 5 and to every `change_summary`. If you quote a log line
+that contains a value, replace the value by its reference before writing.
+
 ## Step 4 — Manage the lifecycle
 
 As things progress, call `entity_update` with updated tags and `change_summary`:
@@ -165,6 +185,11 @@ As things progress, call `entity_update` with updated tags and `change_summary`:
 3. `mitigating` → temporary solution applied.
 4. `resolved` → service restored.
 5. `postmortem-done` → RCA completed, derived entities created.
+
+Each update that rewrites `content` is read-modify-write on the raw text
+`entity_get` returned: keep references and escaped mentions as they are. On
+`400 private_marker_in_text`, re-read, fix the marker at the reported
+`field`/`position` and write again.
 
 ## Step 5 — Generate derived entities (at postmortem)
 

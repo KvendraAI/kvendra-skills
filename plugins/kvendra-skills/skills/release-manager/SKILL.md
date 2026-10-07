@@ -34,6 +34,17 @@ Identify `project_id` from the `CLAUDE.md`.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -162,6 +173,14 @@ Process:
    regression-case TEST.
 4. Update ROAD if any item was completed: `entity_update` on the ROAD with `status:done`.
 5. Set `metadata.deployed_date` on the REL.
+
+**Private values in REL text.** The changelog and description copy titles
+and summaries from other entities: copy them as `entity_get` returned them, so
+private-value references (`{{cfg:<key>}}`) and escaped mentions survive
+unchanged. Any edit of the REL `content` is read-modify-write on the raw text.
+Never resolve a reference to write a release note. On
+`400 private_marker_in_text`, re-read, fix the marker at the reported
+`field`/`position` and write again.
 
 ## Output (varies per action)
 

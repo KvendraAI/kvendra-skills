@@ -29,6 +29,17 @@ The same skill orchestrates a `CMP-KVD-WEB` deploy or a `CMP-KVD-ENTERPRISE` sta
 - Identify in every write: `updated_by: "skill:deploy"`. The MCP client adds `X-Kvendra-Skill` automatically.
 - This skill does NOT open a TXN by default — a deploy is a runtime operation, not a structural change. Optional: open a TXN if the playbook itself creates KB entities (rare; only some `STD-*-DEPLOY-PROCESS` variants do this).
 - On any error with `error.help.topic`: call `help({topic})`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -89,6 +100,17 @@ Verify pre-conditions:
 ## Step 4 — Substitute variables
 
 Read the `## Variables` table from the playbook content. Each row has `{NAME}` placeholder → value. Build a substitution map.
+
+**Private-value references.** The playbook text comes back raw, so a value
+or a step may hold a reference `{{cfg:<key>}}` (account id, profile id,
+path…). Collect every reference that is not escaped (a leading backslash marks
+a mention — leave it alone), call
+`mcp__plugin_kvendra-skills_kvendra-cloud__private_value_resolve({ keys:[...], project_id:<PROJ> })`
+once for the whole playbook, and substitute the returned `value`s in memory.
+Any key in `state:"undefined"` → STOP before Step 5 and report the key (never
+guess a value). Resolved values live only in the arguments you pass to the
+broker: when you surface a substituted command to the user, in the Output, in
+a TXN, a commit or any KB write, print the reference, not the value.
 
 Walk the `## Steps` content and substitute every `{VAR}` placeholder with its value. Surface the substituted command(s) to the user **before** executing each one if `autonomous: false` or if any step is in `requires_confirmation`.
 

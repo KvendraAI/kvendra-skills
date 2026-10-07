@@ -33,6 +33,17 @@ Read `help({topic:"workspace-layout"})` to refresh the canonical metadata conven
 - Before opening a TXN: `txn_check_interrupted({project_id, component_id?})`. If an in-progress TXN exists: ask Resume / Cancel / Ignore.
 - IDs are server-emitted. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - On any error with `error.help.topic`: call `help({topic})`. Topic list: `bootstrap, identity, naming, txn, validation, errors, embeddings, tools, examples, entity_types, workspace-layout, skill-playbooks, install, tier`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -385,6 +396,28 @@ txn_create({
 ```
 
 ## Step 5 — Create entities (drafts inside the TXN)
+
+### Private values (before writing any PRJ / CMP / STD text)
+
+The answers of Step 3 and the detection of Step 1.5 often carry private
+identifiers: cloud account ids, AWS/CLI profile ids, absolute local paths,
+people's names, support case numbers. Before writing any entity:
+
+1. Propose one CFG key per identifier, named `<proj>.<area>.<name>` in
+   lowercase (e.g. `<proj>.aws.account`, `<proj>.aws.profile`,
+   `<proj>.<comp>.workspace_path` — placeholders; a real key is concrete,
+   such as `acme.aws.account`, and matches `[a-z0-9][a-z0-9._-]{0,127}`).
+   Show the list to the owner.
+2. Recommend entering the values in the dashboard's private values editor
+   (they never pass through the LLM). If the owner already typed a value in
+   this conversation, you may create the CFG inside the TXN
+   (`entity_type:"CFG"`, `metadata:{kind:"private_value", key, scope, value}`).
+   Credentials never become CFG: they go to the vault.
+3. Write the PRJ, CMP, STD (deploy policy, broker policy, deploy process) and
+   ENV `content` with the reference `{{cfg:<key>}}` wherever the value would
+   appear. A CFG created in this same TXN is still a draft, so the engine may
+   warn `private_ref_undefined` for it until `txn_activate`; that warning is
+   expected here — report it, do not "fix" it by writing the value.
 
 ### For a new project
 

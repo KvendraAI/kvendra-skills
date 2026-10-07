@@ -48,6 +48,17 @@ If the topic is cross-project, work without a component.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -142,6 +153,17 @@ NOT invent variants or combine options on the fly. If none fits exactly
 after the user clarifies, re-ask which of the 9 they prefer.
 
 ## Step 5 — Execute decision and persist
+
+**Private identifiers the user brings.** If the user gives you a private
+identifier (account id, local path, profile id, person name, case number…),
+propose a CFG key for it (`<proj>.<area>.<name>`, e.g.
+`<proj>.aws.account`) and recommend entering it in the dashboard's private
+values editor, so the value never has to pass through an LLM. If the value is
+already in this conversation, you may create the CFG yourself (`entity_create`
+with `entity_type:"CFG"`, `metadata:{kind:"private_value", key, scope, value}`;
+needs `cfg:write`). Either way, every entity you persist below carries the
+reference `{{cfg:<key>}}`, never the value. Credentials (tokens, passwords,
+keys) go to the vault, never to CFG.
 
 ### ISSUE:
 ```

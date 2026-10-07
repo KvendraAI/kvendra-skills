@@ -32,6 +32,17 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -84,6 +95,13 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
 ```
 
 If there is an active REL, the server populates `entity_changelog` automatically.
+
+When you send `content`, build it from the text `entity_get` returned: keep
+every private-value reference (`{{cfg:<key>}}`) and every escaped mention as
+they are. New identifiers the user gives you (account ids, paths, case
+numbers…) go in as references, not values. On `400 private_marker_in_text`,
+re-read, fix the marker at the reported `field`/`position` and write again —
+never retry the same payload.
 
 ### CLOSE — Close an ISSUE
 

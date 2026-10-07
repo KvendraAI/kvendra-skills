@@ -289,6 +289,66 @@ jobs:
           fi
           echo "Guarded-update CAS adoption check passed: all entity_update writers carry the rule."
 
+      - name: Private-values rule check
+        id: private_values
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # REQ-KVD-9FBB1F P2 / ADR-KVD-ENTERPRISE-E2A36C (V3b): every SKILL.md
+          # that carries '## Kvendra rules (summary)' must carry the canonical
+          # '**Private values**' bullet INSIDE that section, and every copy must
+          # be identical (no cross-skill include exists, so drift is the risk).
+          # The guarantee lives in the tool, not in reviewer discipline.
+          tmp=$(mktemp -d); fail=0; ref=""
+          while IFS= read -r -d '' f; do
+            grep -q '^## Kvendra rules (summary)' "$f" || continue
+            out="$tmp/$(basename "$(dirname "$f")").blk"
+            awk '
+              /^## Kvendra rules \(summary\)/ { sec = 1; next }
+              sec && /^#/ { sec = 0 }
+              sec && /^- \*\*Private values\*\*/ { on = 1; print; next }
+              on && (/^- / || /^[[:space:]]*$/ || /^#/) { on = 0 }
+              on { print }
+            ' "$f" > "$out"
+            if [[ ! -s "$out" ]]; then
+              echo "::error file=$f::missing the canonical '**Private values**' bullet in '## Kvendra rules (summary)'."
+              fail=1; continue
+            fi
+            for tok in '{{cfg:<key>}}' 'private_marker_in_text' 'private_value_resolve' 'private_ref_undefined' 'help({topic:"private-values"})'; do
+              grep -qF "$tok" "$out" || { echo "::error file=$f::Private values bullet lacks '$tok'."; fail=1; }
+            done
+            if [[ -z "$ref" ]]; then ref="$out"; elif ! cmp -s "$ref" "$out"; then
+              echo "::error file=$f::Private values bullet differs from $(basename "$ref" .blk):"; diff "$ref" "$out" || true; fail=1; fi
+          done < <(find plugins/kvendra-skills/skills -name SKILL.md -print0 | sort -z)
+
+          # Display markers are rendering artefacts: the engine rejects them
+          # unescaped (400 private_marker_in_text). A SKILL.md must never show
+          # one unescaped, or an agent will copy it into the KB.
+          if grep -nE '(^|[^\\])‹(private value|undefined value:)' plugins/kvendra-skills/skills/*/SKILL.md; then
+            echo "::error::A SKILL.md contains an unescaped private-value display marker. Write it with a leading backslash."
+            fail=1
+          fi
+
+          # Examples must not be live references either: a concrete key
+          # (one that matches the key grammar) copied by an agent into the KB
+          # becomes a real reference. Use the generic {{cfg:<key>}} form, a
+          # placeholder key with <...>, or escape the example.
+          if grep -nE '(^|[^\\])\{\{cfg:[a-z0-9][a-z0-9._-]*\}\}' plugins/kvendra-skills/skills/*/SKILL.md; then
+            echo "::error::A SKILL.md contains a concrete, unescaped private-value reference. Use {{cfg:<key>}} or escape the example."
+            fail=1
+          fi
+
+          if [[ $fail -ne 0 ]]; then
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Copy the '**Private values**' bullet verbatim from any skill that"
+            echo "    passes (e.g. updater) into the '## Kvendra rules (summary)' list."
+            echo "  - To change its wording, change it in EVERY carrier in the same PR."
+            exit 1
+          fi
+          echo "Private-values rule check passed: canonical bullet present and identical in every Kvendra-rules carrier."
+
       - name: No-false-engine-claims check
         id: no_false_engine_claims
         shell: bash

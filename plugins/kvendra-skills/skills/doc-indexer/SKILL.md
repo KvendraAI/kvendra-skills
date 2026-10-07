@@ -51,6 +51,17 @@ tree regardless of scope.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -316,6 +327,17 @@ After all files are processed, report:
 - **Idempotent** — update if a DOC with the same `file_path` already
   exists. Re-running is safe.
 - **Always relative paths** — `file_path` is relative to the project root.
+- **Private values in DOC entries** — the summary, key facts and terminology
+  you write are KB text. A private identifier found in a source `.md`
+  (account id, absolute local path, profile id, person name, case number…)
+  goes into the DOC as a reference `{{cfg:<key>}}`, never copied as a value;
+  propose the missing key in the report. A source file that *documents* the
+  reference syntax or a display marker is quoted as a mention: escape it with
+  a leading backslash, or the engine reads it as a live reference (and rejects
+  a bare marker with `400 private_marker_in_text`). When updating an existing
+  DOC, start from the raw text `entity_get` returned and keep its references
+  and escaped mentions as they are. Never write a resolved value back into a
+  `docs/` file.
 - **English only** — the source files in `docs/` are English (per
   ADR-KVD-SKILLS-244215). DOC entries' content is English. The runtime
   agent translates output to the project's CLAUDE.md language.

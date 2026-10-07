@@ -32,6 +32,17 @@ Identify `project_id` from the `CLAUDE.md` if present.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -245,7 +256,7 @@ ENTITY TYPES (20)
   PRJ, CMP, IF, REQ, TEST, REG, ISSUE, REL, SLA, ROAD, GLO, STD, PAT, ADR,
   RUN, UX, DOC, TXN, ENV, COST
 
-KVENDRA TOOLS (hosted: 25 — self-hosted Platform: the first 14)
+KVENDRA TOOLS (hosted: 26 — self-hosted Platform: the first 14)
   entity_create        Create entity (auto-id)
   entity_update        Atomic update (change_summary required)
   entity_archive       Soft archive (reversible)
@@ -266,6 +277,31 @@ KVENDRA TOOLS (hosted: 25 — self-hosted Platform: the first 14)
   approve_proposal / reject_proposal   Governance proposals (hosted)
   file_upload_init / file_complete     Upload to Workspace Files (hosted Pro+)
   file_get_url / file_list / file_delete  Download URL, registry, delete
+  private_value_resolve  Resolve private-value keys (batch <= 50, hosted)
+
+PRIVATE VALUES
+  Private identifiers (account ids, local paths, profile ids, person
+  names, case numbers...) never go into KB text as values. They live in a
+  CFG entity (kind: private_value, one key each, entered in the dashboard's
+  private values editor) and KB text carries a reference:
+      {{cfg:<key>}}        key = [a-z0-9][a-z0-9._-]{0,127}, e.g. <proj>.aws.account
+  - Reads never resolve: entity_get returns the reference as written, so
+    editing and writing the text back keeps it intact.
+  - The value comes out only through private_value_resolve({keys,
+    project_id}) (or config_get for one key), for roles with cfg:resolve.
+    Skills use it in-process and never paste it into KB text, commits,
+    PRs or chat.
+  - Display markers (the dashboard's "private value" / "undefined value"
+    placeholders) must never be written: the engine rejects them with
+    400 private_marker_in_text.
+  - To MENTION the syntax or a marker in KB text (docs, specs), put a
+    backslash in front: a backslash before {{cfg:...}} or before a marker
+    turns it into plain text.
+  - Warnings on write: private_value_suggested (a value that looks
+    private was pasted) and private_ref_undefined (a reference to a key
+    that does not exist yet).
+  - Credentials (tokens, passwords, keys) go to the vault, never to CFG.
+  - Full topic: help({topic:"private-values"}).
 
 ERROR ENVELOPE
   { code: 'VALIDATION'|'NOT_FOUND'|'CONFLICT'|'INTEGRITY'|'INTERNAL', ... }

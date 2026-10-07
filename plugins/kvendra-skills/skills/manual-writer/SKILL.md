@@ -51,6 +51,17 @@ Identify `project_id` from the `CLAUDE.md` of the current directory.
 - If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
+- **Private values** — never write private identifiers (account ids, local
+  paths, profile ids, person names, case numbers…) into KB text: write a
+  reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
+  returns references raw — edit and write them back as-is. Never write the
+  display markers (the engine rejects them: `private_marker_in_text`); to
+  *mention* the syntax or a marker, escape it with a leading backslash. When
+  you need a value to operate, call `private_value_resolve({keys, project_id})`
+  and use it in-process only — never paste it into KB text, change_summary,
+  commits, PRs or chat. Credentials go to the vault, never to CFG. Act on
+  `private_value_suggested` / `private_ref_undefined` warnings. Topic:
+  `help({topic:"private-values"})`.
 
 ## External-execution policy
 
@@ -78,6 +89,33 @@ only**. There is no project language, no second language and no translated
 copy (ADR-KVD-ENTERPRISE-BC96E7): the publication engine rejects a card or a
 book that is not in English. Entities are published as they are, in whatever
 language they were written.
+
+## Private values (all modes)
+
+KB entities return private-value references raw (`{{cfg:<key>}}`); nothing
+you read is ever resolved, and you never resolve anything to write a manual.
+
+- **KB book and publication modes** (chapters and card DOCs are KB text):
+  write private identifiers (account ids, absolute local paths, profile ids,
+  person names, case numbers…) as references `{{cfg:<key>}}`. When a source
+  entity already carries a reference, copy the reference, not a guess of its
+  value. The publication engine (policy `pf-5`) substitutes references at
+  publish time, so the reader sees the published value or the redaction the
+  publisher chose.
+- **Docs mode** (files under `docs/` in a repository): a file there **never**
+  contains a resolved value. Where the KB source carries a reference, keep the
+  reference or rephrase without the identifier (e.g. "the project's AWS
+  account"). Never call `private_value_resolve` for documentation.
+- **Mentions**: a chapter, card or doc that *explains* the reference syntax
+  or a display marker writes it escaped with a leading backslash, so the
+  engine treats it as text (an unescaped marker is rejected with
+  `400 private_marker_in_text`; an unescaped example reference to a key that
+  does not exist comes back as a `private_ref_undefined` warning — escape it).
+  The renderers show the mention without the backslash.
+- Updating an existing chapter or card is read-modify-write on the raw text:
+  keep its references and escaped mentions as they are.
+- P4 suggestions: never put a resolved value in an `excerpt`; a reference in
+  the text is already redacted and needs no suggestion.
 
 ## KB files — images, PDFs, video and audio (KB book and publication modes)
 
