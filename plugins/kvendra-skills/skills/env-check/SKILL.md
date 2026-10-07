@@ -1,6 +1,6 @@
 ---
 name: env-check
-description: Verify the environment is correctly configured — MCPs (kvendra-cloud KB + kvendra broker), tools, skills, CLAUDE.md, workspace marker, PreToolUse hook, account routing (multi-account)
+description: Verify the environment is correctly configured — MCPs (kvendra-cloud KB + kvendra broker), tools, skills, CLAUDE.md, workspace marker, plugin hooks, account routing (multi-account), local variables and vault deny rules
 user_invocable: true
 ---
 
@@ -78,8 +78,12 @@ States:
     (recommended, macOS) or env var `KVENDRA_MCP_PASSWORD`. Stdio MCP cannot
     prompt interactively.
   - **Bug `session token store error: decode`** in versions 0.4.0-alpha.x: the
-    file `~/.kvendra/sessions/<workspace>.token` is written as a JWT but read
-    as JSON. Workaround: move `pro.token` to `.bak`, retry.
+    session token file under the vault directory is written as a JWT but read
+    as JSON. This is an **owner-manual** fix: the agent never reads, moves or
+    edits files under the vault directory (the plugin hooks deny it). Ask the
+    owner to upgrade the `kvendra` CLI; as a workaround, the owner renames the
+    affected `.token` file under `sessions/` to `.bak` from their own terminal
+    and retries.
   - **Corrupt vault**: run `kvendra unlock` interactively from a terminal;
     if it fails, recover with the BIP-39 mnemonic.
 
@@ -174,11 +178,17 @@ echo "protected: ${PROT:-NONE}"; echo "legacy: ${LEGACY:-NONE}"
 ### 8. PreToolUse hook from the plugin installed
 
 ```bash
-# Look for the hook script in installed-plugin locations
-find ~/.claude/plugins -name block-unsafe-ops.sh -path '*kvendra-skills*' 2>/dev/null
+# Look for the hook scripts in installed-plugin locations
+find ~/.claude/plugins -path '*kvendra-skills*' \( -name block-unsafe-ops.sh \
+  -o -name deny-vault-paths.sh -o -name 'lvr-scan-*.sh' \) 2>/dev/null
 ```
 
-- **Found and executable** → hook active.
+- **Found and executable** → hook active. From 1.21.0 the plugin ships four
+  scripts: `block-unsafe-ops.sh` (Bash policy + built-in vault-path rule),
+  `deny-vault-paths.sh` (file tools), `lvr-scan-tool-input.sh` (KB writes) and
+  `lvr-scan-subagent.sh` (subagent reports). The last three are **brakes, not
+  controls**: the guarantee that a local value never leaves the machine is in
+  the `kvendra` broker. Missing `lvr-scan-*` on 1.21.0+ → WARN (reinstall).
 - **Not found** → the `kvendra-skills` plugin is not installed or is
   incomplete. Reinstall with `/plugin install kvendra-skills` or equivalent.
 
@@ -244,6 +254,75 @@ inheritance into subdirectories); a `KVENDRA_WS` exported in the shell
 overrides every directory's settings; `claude -p` ignores project
 settings, so never verify this check with it.
 
+### 11. Local variables (`{{lvr:<key>}}`)
+
+Compares the local variables the KB declares for this project with the ones
+stored on this machine. **Value-free**: the agent never sees, asks for or
+prints a value.
+
+1. Declarations (CFG with `metadata.kind:"local_var"`, no value):
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+     entity_type:"CFG", project_id:"<PROJECT>",
+     tags_all:["cfg-kind:local_var"], limit:100 })
+   ```
+   Build `[{"key":<metadata.key>,"type":<metadata.type>}, …]`. None declared →
+   **N/A** (the project uses no local variables).
+2. Local status — pipe that JSON to the CLI (requires broker 0.7.0+):
+   ```bash
+   printf '%s' '<declared JSON>' | kvendra vars status --declared-stdin --json
+   ```
+   - exit 0 → stdout `{"vars":[{key, declared_type, present, stored_type,
+     verified, type_ok}], "undeclared_local":[key…]}`.
+   - exit 4 → vault locked → **WARN** ("vault locked — the owner runs
+     `kvendra unlock` in their terminal"). Do not retry in a loop.
+   - exit 2 or "unrecognized subcommand" → broker older than 0.7.0 → **WARN**
+     (upgrade the CLI).
+3. Classify, by key only:
+   - `present:false` → **missing**.
+   - `present:true, verified:false` → **unverified** (typical after a backup
+     restore).
+   - `type_ok:false` → **wrong type** (stored type differs from the declared
+     one, or the value no longer validates).
+   - `undeclared_local` → stored on this machine but not declared in the KB
+     (INFO: declare it, or the owner removes it).
+4. Remedy — always **owner-manual**, in the owner's own terminal (a real TTY
+   and the master password are required; an agent cannot run them):
+   `kvendra vars set <key> --type <type>` (missing / wrong type) and
+   `kvendra vars verify <key>` (unverified). Save the handoff text with the
+   pending item in the KB, not only in the chat.
+
+OK = every declared key present, verified and `type_ok`; WARN otherwise.
+
+### 12. Recommended `permissions.deny` entries (read-only)
+
+A plugin cannot declare `permissions.deny`, so the plugin hooks
+(`deny-vault-paths.sh` + the built-in rule of `block-unsafe-ops.sh`) are the
+first brake and the owner's settings are the second. Check — **read only, never
+edit** — that the user settings carry the recommended entries:
+
+```bash
+python3 - <<'EOF'
+import json, os
+want = ["Read(~/.kvendra/**)", "Edit(~/.kvendra/**)"]
+p = os.path.expanduser("~/.claude/settings.json")
+try:
+    deny = json.load(open(p)).get("permissions", {}).get("deny", [])
+except (OSError, ValueError):
+    deny = []
+for w in want:
+    print(("present " if w in deny else "missing ") + w)
+EOF
+```
+
+- Both present → **OK**.
+- Any missing → **WARN** with the exact entries. The owner adds them by hand
+  to `permissions.deny` in their user settings (`Edit` rules also cover
+  Write, MultiEdit and NotebookEdit; Glob and Grep honour `Read` rules). Never
+  write the settings file yourself.
+- These entries, like the hooks, are a brake and not a control: the values
+  are protected by the vault's encryption and the broker.
+
 ## Required output
 
 ```
@@ -261,6 +340,8 @@ settings, so never verify this check with it.
 | 8 | PreToolUse hook | INSTALLED / MISSING | <path> |
 | 9 | Skills | OK / N skills | <list or missing> |
 | 10 | Account routing | OK / OK (single account) / ERROR (account fallback) | tenant_id, tier, KVENDRA_WS, installed URL |
+| 11 | Local variables | OK / WARN / N/A | missing, unverified, wrong type, undeclared (keys only, never values) |
+| 12 | Vault `permissions.deny` | OK / WARN | missing entries |
 
 ### Detected problems
 - [prioritised list]
@@ -272,6 +353,9 @@ settings, so never verify this check with it.
 ## Rules
 
 - **Do not modify anything without asking** — only diagnose and report.
+- **Never touch the vault directory** (`~/.kvendra`): no read, move, edit or
+  listing of its files. Every remedy there is owner-manual, in their terminal.
+- **Never print a local value**: checks 11 and 12 report keys and entries only.
 - **If all OK**, say: "Environment OK — ready to use /kvendra, /bug, /new-feature, etc."
 - **Be specific** about errors: cite the failing command and how to fix it.
 - **Never recommend creating KB content** (onboarding, fixes) while check 10

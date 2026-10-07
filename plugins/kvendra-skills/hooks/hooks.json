@@ -9,6 +9,34 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/block-unsafe-ops.sh"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*kvendra-cloud__(entity_create|entity_update)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/lvr-scan-tool-input.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/deny-vault-paths.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/lvr-scan-subagent.sh"
+          }
+        ]
       }
     ]
   }

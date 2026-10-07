@@ -39,6 +39,10 @@
 #   that previously covered the transition window was removed in
 #   v1.2.0-alpha.2.
 #
+# Built-in rule (REQ-KVD-11F906 RF-SK-4, before any policy/marker lookup):
+#   a Bash command naming the vault directory (`~/.kvendra`, `…/.kvendra/…`,
+#   case-insensitive) → exit 2. Textual brake, not a control.
+#
 # Fail-safe:
 #   - stdin malformed / `tool_name` != Bash / no marker found → exit 0.
 #   - YAML malformed / schema_version unsupported → exit 2 (fail-closed).
@@ -63,6 +67,29 @@ TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty')"
 COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')"
 CWD="$(printf '%s' "$INPUT" | jq -r '.cwd // empty')"
 [[ -z "$CWD" ]] && CWD="$PWD"
+
+# Built-in rule (REQ-KVD-11F906 RF-SK-4): Bash never touches the local vault
+# directory (`~/.kvendra`, `$HOME/.kvendra`, any `…/.kvendra/…` component).
+# Independent of the policy and of the marker, so it applies everywhere.
+# Textual, so a brake and not a control (STD-KVD-D31D54): the vault's
+# encryption and the broker protect the values. `.kvendra-protected` /
+# `.kvendra-workspace` markers and the `kvendra` binary are not matched.
+VAULT_RE='(^|[^A-Za-z0-9_.-])\.kvendra($|/|[[:space:]"'"'"';|&)<>`])'
+shopt -s nocasematch
+VAULT_HIT=0; [[ "$COMMAND" =~ $VAULT_RE ]] && VAULT_HIT=1
+shopt -u nocasematch
+if [[ $VAULT_HIT -eq 1 ]]; then
+  cat >&2 <<EOF
+[KVD-PROTECTED] Bash access to the Kvendra vault directory (~/.kvendra) is blocked by the kvendra-skills built-in rule (RF-SK-4). Local values and credentials live there: use \`kvendra vars status\` / \`kvendra vars list\` (value-free) or ask the owner to run the command in their own terminal.
+Para ver un allowlist usa \`kvendra secret show-allowlist <profile_id>\` (CLI ≥ 0.7.0).
+
+Command: ${COMMAND}
+
+This rule is a local brake, not a control: the protection of the values is
+the vault's encryption and the broker.
+EOF
+  exit 2
+fi
 
 # Walk up from $CWD looking first for .kvendra-protected, then legacy
 # .kvendra-workspace. Resolution is session-cwd-scoped per PAT-KVD-C995E9 L2.

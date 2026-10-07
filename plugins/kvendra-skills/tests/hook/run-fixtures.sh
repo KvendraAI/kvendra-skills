@@ -326,6 +326,8 @@ ALL_FIXTURES=(
   # …while genuinely broken indentation must stay fail-closed.
   malformed-known-key
   malformed-orphan-nested
+  # REQ-KVD-11F906 RF-SK-4 — built-in vault-path rule, independent of policy.
+  builtin-vault-path
 )
 
 if [[ $# -gt 0 ]]; then

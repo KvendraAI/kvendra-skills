@@ -134,6 +134,13 @@ A reference is never a defect, and this skill never resolves one.
 - Found, but the note is missing → WARNING ("file contains private-value
   references without the private-refs note — run `/sync-claudemd`").
 - Note present but no reference left → INFO ("stale private-refs note").
+- Local references (`{{lvr:<key>}}`, same key grammar, not preceded by a
+  backslash) are per-machine values the `kvendra` broker substitutes from the
+  owner's local vault. They are never a defect and need no note → INFO,
+  listing the keys (this skill cannot read a value, and never tries).
+- A literal home path (`/Users/<name>/…`, `/home/<name>/…`) → WARNING
+  ("machine-specific path: use `~/`, a path relative to the workspace marker,
+  or a `{{lvr:<key>}}` if the broker consumes it").
 
 ## Output
 
@@ -165,6 +172,8 @@ A reference is never a defect, and this skill never resolves one.
 
 ### Private values
 - References:                    ✅ none | ℹ️ <N> kept (keys: <list>) | ⚠️ note missing
+- Local references:              ✅ none | ℹ️ <N> (keys: <list>)
+- Literal home paths:            ✅ none | ⚠️ <N> (lines: <list>)
 
 ### Findings detail
 <one bullet per finding with line number if applicable>

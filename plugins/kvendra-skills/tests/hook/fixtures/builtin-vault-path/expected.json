@@ -1,0 +1,18 @@
+{
+  "_comment": "RF-SK-4 built-in rule: Bash access to the vault directory is blocked with or without a policy marker (no marker in this fixture). Markers and the kvendra binary are not matched.",
+  "tool_name": "Bash",
+  "command": "cat ~/.kvendra/vars.blob",
+  "expected_exit": 2,
+  "expected_stderr_regex": "^\\[KVD-PROTECTED\\] Bash access to the Kvendra vault directory",
+  "extra_cases": [
+    { "command": "ls $HOME/.kvendra/sessions", "expected_exit": 2, "expected_stderr_regex": "built-in rule \\(RF-SK-4\\)" },
+    { "command": "cat ~/.kvendra/allowlists/aws.yaml", "expected_exit": 2, "expected_stderr_regex": "kvendra secret show-allowlist <profile_id>` \\(CLI ≥ 0\\.7\\.0\\)" },
+    { "command": "kvendra secret show-allowlist aws.kvendra.staging-deploy", "expected_exit": 0 },
+    { "command": "cp -r /Users/someone/.KVENDRA /tmp/x", "expected_exit": 2 },
+    { "command": "tar czf out.tgz ~/.kvendra", "expected_exit": 2 },
+    { "command": "cat .kvendra-protected", "expected_exit": 0 },
+    { "command": "ls .kvendra-workspace", "expected_exit": 0 },
+    { "command": "kvendra vars status --declared-stdin --json", "expected_exit": 0 },
+    { "command": "ls ~/Develop/Kvendra/kvendra-skills", "expected_exit": 0 }
+  ]
+}

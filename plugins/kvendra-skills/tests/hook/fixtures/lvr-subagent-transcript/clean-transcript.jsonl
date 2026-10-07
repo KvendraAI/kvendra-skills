@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"Implement the change and report."}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## Report\nFiles touched under ~/work/src (relative paths only).\nAll tests pass."}]}}

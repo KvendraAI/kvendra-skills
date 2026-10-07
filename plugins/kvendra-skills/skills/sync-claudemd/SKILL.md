@@ -62,6 +62,12 @@ Step 6.6 for `.kvendra-protected`). When no reference remains, the note is
 removed, so the output stays idempotent. List the keys found in the report;
 never their values.
 
+Local references (`{{lvr:<key>}}`) follow the same rule: copied verbatim,
+never resolved, never replaced. They do not trigger the private-refs note —
+they are per-machine values that only the `kvendra` broker substitutes, at
+call time, from the owner's local vault; there is nothing to resolve in the
+KB. List their keys in the report too.
+
 ## Step 1 — Load canonical template
 
 The canonical template ships **bundled with the plugin** at `<plugin-root>/CLAUDE.md.template`. The KB STD entity is an optional discoverable mirror used for cross-session/cross-project audit and version comparison.

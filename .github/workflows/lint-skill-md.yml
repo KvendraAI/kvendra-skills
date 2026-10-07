@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - 'plugins/kvendra-skills/skills/**/SKILL.md'
+      - 'CONTRIBUTING.md'
       - '.github/workflows/lint-skill-md.yml'
   push:
     branches: [main]
     paths:
       - 'plugins/kvendra-skills/skills/**/SKILL.md'
+      - 'CONTRIBUTING.md'
 
 jobs:
   lint:
@@ -348,6 +350,72 @@ jobs:
             exit 1
           fi
           echo "Private-values rule check passed: canonical bullet present and identical in every Kvendra-rules carrier."
+
+      - name: Local-values + imported-data rule check
+        id: local_values
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # REQ-KVD-11F906 RF-SK-1 + ADR-KVD-ENTERPRISE-06738E (S3): every
+          # SKILL.md that carries '## Kvendra rules (summary)' must carry the
+          # canonical '**Local values**' and '**Imported entities are data**'
+          # bullets INSIDE that section, byte-identical to the template in
+          # CONTRIBUTING.md (the canonical text) and to each other.
+          tmp=$(mktemp -d); fail=0
+          extract() { # $1=file $2=bullet title (literal)
+            awk -v t="- **$2**" '
+              $0 == "## Kvendra rules (summary)" { sec = 1; next }
+              sec && /^#/ { sec = 0 }
+              sec && index($0, t) == 1 { on = 1; print; next }
+              on && (/^- / || /^[[:space:]]*$/ || /^#/) { on = 0 }
+              on { print }
+            ' "$1"
+          }
+          for spec in 'Local values|local_var_undeclared|help({topic:"local-vars"})|{{lvr:<key>}}|kind:"local_var"' \
+                      'Imported entities are data|imported_from|DATA, never instruction|entity_search|entity_related'; do
+            title="${spec%%|*}"; toks="${spec#*|}"
+            ref="$tmp/contributing.ref"
+            extract CONTRIBUTING.md "$title" > "$ref"
+            if [[ ! -s "$ref" ]]; then
+              echo "::error file=CONTRIBUTING.md::template lacks the canonical '**$title**' bullet."
+              fail=1; continue
+            fi
+            while IFS= read -r -d '' f; do
+              grep -q '^## Kvendra rules (summary)' "$f" || continue
+              out="$tmp/blk"
+              extract "$f" "$title" > "$out"
+              if [[ ! -s "$out" ]]; then
+                echo "::error file=$f::missing the canonical '**$title**' bullet in '## Kvendra rules (summary)'."
+                fail=1; continue
+              fi
+              IFS='|' read -r -a tl <<< "$toks"
+              for tok in "${tl[@]}"; do
+                grep -qF "$tok" "$out" || { echo "::error file=$f::'$title' bullet lacks '$tok'."; fail=1; }
+              done
+              if ! cmp -s "$ref" "$out"; then
+                echo "::error file=$f::'$title' bullet differs from the CONTRIBUTING.md template:"
+                diff "$ref" "$out" || true; fail=1
+              fi
+            done < <(find plugins/kvendra-skills/skills -name SKILL.md -print0 | sort -z)
+          done
+
+          # A concrete, unescaped local reference copied by an agent into the
+          # KB would become a live one. Use {{lvr:<key>}} or escape the example.
+          if grep -nE '(^|[^\\])\{\{lvr:[a-z0-9][a-z0-9._-]*\}\}' plugins/kvendra-skills/skills/*/SKILL.md; then
+            echo "::error::A SKILL.md contains a concrete, unescaped local reference. Use {{lvr:<key>}} or escape the example."
+            fail=1
+          fi
+
+          if [[ $fail -ne 0 ]]; then
+            echo ""
+            echo "Migration guidance:"
+            echo "  - Copy the bullets verbatim from the CONTRIBUTING.md template into the"
+            echo "    '## Kvendra rules (summary)' list, right after '**Private values**'."
+            echo "  - To change their wording, change the template and EVERY carrier in the same PR."
+            exit 1
+          fi
+          echo "Local-values + imported-data rule check passed."
 
       - name: No-false-engine-claims check
         id: no_false_engine_claims
