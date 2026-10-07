@@ -23,7 +23,13 @@
 #              {"error":"input_not_utf8"|"stdin_unreadable"}  → "error de
 #                entrada"
 #              no JSON (clap usage error: CLI without `vars`) → "error"
-#   Every non-hit outcome is FAIL-OPEN with a warning (decision O3).
+#   Every non-hit outcome is FAIL-OPEN with a warning (decision O3), EXCEPT
+#   the two non-events below, which pass in SILENCE (no systemMessage, no
+#   stderr):
+#     - `kvendra` not on the PATH: the CLI is optional on Pro (mandatory on
+#       Team). Without the CLI there is no broker, so there are no local
+#       variables and nothing to filter (owner decision 2026-10-07, 1.21.1).
+#     - exit 4 {"error":"no_local_vars"}: CLI present, no vars.blob.
 #
 # Portable: bash 3.2 + jq; no GNU coreutils (no `timeout`, no GNU realpath).
 
@@ -36,13 +42,14 @@ LVR_SKIPPED_LOCKED="scan omitido: vault bloqueado"
 #   LVR_KEYS   comma-separated keys with hits (only when LVR_STATE=hits; may
 #              be empty if the CLI answer was unreadable — still a hit)
 #   LVR_WARN   human warning when LVR_STATE=skipped ("" when the skip is a
-#              non-event, e.g. no local variables on this machine)
+#              non-event: no `kvendra` CLI, or no local variables on this
+#              machine)
 lvr_scan() {
   local text="$1" out rc err
   LVR_STATE="skipped"; LVR_KEYS=""; LVR_WARN=""
 
   if ! command -v kvendra >/dev/null 2>&1; then
-    LVR_WARN="scan omitido: kvendra no está en el PATH"
+    LVR_WARN=""            # no CLI → no broker → no local values: silent
     return 0
   fi
 

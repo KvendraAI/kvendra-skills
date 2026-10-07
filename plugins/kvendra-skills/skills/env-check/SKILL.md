@@ -256,6 +256,15 @@ settings, so never verify this check with it.
 
 ### 11. Local variables (`{{lvr:<key>}}`)
 
+**CLI gate (checks 11 and 12).** Run `command -v kvendra` once. The `kvendra`
+CLI is **optional on Pro** and **mandatory on Team**. Without the CLI there is
+no broker, so there are no local variables and no vault to protect: report
+checks 11 and 12 as **N/A (no kvendra CLI)** — never as a failure or a
+warning — and skip their steps. The plugin's lvr scan hooks stay silent in
+that case too. On a **Team** workspace (tier from check 6/10) a missing CLI is
+not "N/A" for the environment: it is the failure reported by check 4 (the CLI
+is mandatory there), and checks 11 and 12 do apply once it is installed.
+
 Compares the local variables the KB declares for this project with the ones
 stored on this machine. **Value-free**: the agent never sees, asks for or
 prints a value.
@@ -295,6 +304,9 @@ prints a value.
 OK = every declared key present, verified and `type_ok`; WARN otherwise.
 
 ### 12. Recommended `permissions.deny` entries (read-only)
+
+Applies only when the `kvendra` CLI is installed (see the CLI gate in
+check 11); without it → **N/A (no kvendra CLI)**.
 
 A plugin cannot declare `permissions.deny`, so the plugin hooks
 (`deny-vault-paths.sh` + the built-in rule of `block-unsafe-ops.sh`) are the
@@ -340,8 +352,8 @@ EOF
 | 8 | PreToolUse hook | INSTALLED / MISSING | <path> |
 | 9 | Skills | OK / N skills | <list or missing> |
 | 10 | Account routing | OK / OK (single account) / ERROR (account fallback) | tenant_id, tier, KVENDRA_WS, installed URL |
-| 11 | Local variables | OK / WARN / N/A | missing, unverified, wrong type, undeclared (keys only, never values) |
-| 12 | Vault `permissions.deny` | OK / WARN | missing entries |
+| 11 | Local variables | OK / WARN / N/A / N/A (no kvendra CLI) | missing, unverified, wrong type, undeclared (keys only, never values) |
+| 12 | Vault `permissions.deny` | OK / WARN / N/A (no kvendra CLI) | missing entries |
 
 ### Detected problems
 - [prioritised list]

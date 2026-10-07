@@ -8,14 +8,19 @@
 # text contains the value of a local variable, the write is denied and the
 # agent is told which KEY to reference instead — never the value.
 #
-# A brake (freno), not a control: the guarantee is in the broker. With the
-# vault locked, without `kvendra`, or on any scan error the hook FAILS OPEN
+# A brake (freno), not a control: the guarantee is in the broker. Without
+# `kvendra` on the PATH (CLI optional on Pro) or without local variables it
+# passes in silence. With the vault locked or on any scan error it FAILS OPEN
 # with a warning that says the scan was skipped (O3) — never that the text is
 # clean. See lvr-scan-lib.sh for the full contract.
 
 set -euo pipefail
 
 INPUT="$(cat)"
+
+# No `kvendra` CLI (optional on Pro): no broker, no local values → silent,
+# even before the jq check (see lvr-scan-lib.sh).
+command -v kvendra >/dev/null 2>&1 || exit 0
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "[kvendra-skills] scan omitido: jq no disponible (freno local; la garantía está en el broker)" >&2

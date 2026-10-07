@@ -87,7 +87,8 @@ fi
 PASS=0; FAIL=0; FAILED=()
 
 # run_case <name> <hook> <stdin-json> <mode|absent> <expect> [extra-env]
-# expect: deny | block | warn:<ERE> | silent | nocall
+# expect: deny | block | warn:<ERE> | silent | quiet | nocall
+#   silent = no stdout;  quiet = no stdout AND no stderr (no warning at all)
 run_case() {
   local name="$1" hook="$2" stdin="$3" mode="$4" expect="$5" extra="${6:-}"
   local path="$PATH_WITH" out err rc ok=1
@@ -112,6 +113,8 @@ run_case() {
       jq -e '.hookSpecificOutput.permissionDecision? // .decision? // empty' "$out" >/dev/null 2>&1 && ok=0 ;;
     silent)
       [[ -s "$out" ]] && ok=0 ;;
+    quiet)
+      [[ -s "$out" || -s "$err" ]] && ok=0 ;;
     nocall)
       [[ -s "$out" || -s "$CALLS" ]] && ok=0 ;;
   esac
@@ -148,7 +151,7 @@ run_case "kb-create-hit-deny"          lvr-scan-tool-input.sh "$(pre_kb entity_c
 run_case "kb-update-hit-deny"          lvr-scan-tool-input.sh "$(pre_kb entity_update "$LEAK")"  scan    deny
 run_case "kb-create-clean"             lvr-scan-tool-input.sh "$(pre_kb entity_create "$CLEAN")" scan    silent
 run_case "kb-locked-failopen"          lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  locked  'warn:scan omitido: vault bloqueado'
-run_case "kb-novars-silent"            lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  novars  silent
+run_case "kb-novars-quiet"             lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  novars  quiet
 run_case "kb-ratelimit-failopen"       lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  ratelim 'warn:^\[kvendra-skills\] scan omitido: rate limit .*NO se ha revisado'
 run_case "kb-short-failopen"           lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  short   'warn:scan omitido: entrada fuera de rango \(texto menor de 16 bytes\)'
 run_case "kb-large-failopen"           lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  large   'warn:scan omitido: entrada fuera de rango \(texto mayor de 1 MiB\)'
@@ -168,7 +171,9 @@ for m in ratelim short large notutf8 oldcli locked; do
 done
 run_case "sub-ratelimit-failopen"      lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" ratelim 'warn:scan omitido: rate limit'
 run_case "sub-large-failopen"          lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" large   'warn:scan omitido: entrada fuera de rango'
-run_case "kb-nobinary-failopen"        lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  absent  'warn:scan omitido: kvendra no est'
+# No CLI (Pro without `kvendra`): no broker, no local values → total silence (1.21.1).
+run_case "kb-nobinary-quiet"           lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  absent  quiet
+run_case "kb-update-nobinary-quiet"    lvr-scan-tool-input.sh "$(pre_kb entity_update "$CLEAN")" absent  quiet
 run_case "kb-unreadable-hits-deny"     lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  badhits deny
 run_case "kb-other-tool-nocall"        lvr-scan-tool-input.sh "$(jq -nc '{tool_name:"mcp__plugin_kvendra-skills_kvendra-cloud__entity_get", tool_input:{entity_id:"PAT-KVD-1"}}')" scan nocall
 run_case "kb-deny-reason-has-ref"      lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  scan    deny
@@ -180,7 +185,10 @@ run_case "sub-transcript-hit-block"    lvr-scan-subagent.sh "$(sub_tr "$FIX/agen
 run_case "sub-transcript-clean"        lvr-scan-subagent.sh "$(sub_tr "$FIX/clean-transcript.jsonl")" scan silent
 run_case "sub-loopguard-pass-warn"     lvr-scan-subagent.sh "$(sub_msg "$LEAK" true)"  scan   'warn:sigue conteniendo'
 run_case "sub-locked-failopen"         lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" locked 'warn:scan omitido: vault bloqueado'
-run_case "sub-nobinary-failopen"       lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" absent 'warn:scan omitido'
+run_case "sub-nobinary-quiet"          lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" absent quiet
+run_case "sub-loopguard-nobinary-quiet" lvr-scan-subagent.sh "$(sub_msg "$LEAK" true)" absent quiet
+run_case "sub-transcript-nobinary-quiet" lvr-scan-subagent.sh "$(sub_tr "$FIX/agent-transcript.jsonl")" absent quiet
+run_case "sub-novars-quiet"            lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" novars quiet
 run_case "sub-no-report-nocall"        lvr-scan-subagent.sh '{"hook_event_name":"SubagentStop","stop_hook_active":false,"transcript_path":"/nonexistent/parent.jsonl"}' scan nocall
 
 echo "== deny-vault-paths.sh (PreToolUse file tools) =="
@@ -189,6 +197,7 @@ run_case "read-tilde-deny"        deny-vault-paths.sh "$(file_tool Read '{"file_
 jq -r '.hookSpecificOutput.permissionDecisionReason' "$WORK/out" | grep -qF 'kvendra secret show-allowlist <profile_id>' \
   && { echo "PASS  read-deny-points-to-show-allowlist"; PASS=$((PASS+1)); } \
   || { echo "FAIL  read-deny-points-to-show-allowlist"; FAIL=$((FAIL+1)); FAILED+=("read-deny-points-to-show-allowlist"); }
+run_case "read-nocli-still-deny"  deny-vault-paths.sh "$(file_tool Read '{"file_path":"~/.kvendra/vars.blob"}')" absent deny
 run_case "read-dollar-home-deny"  deny-vault-paths.sh "$(file_tool Read '{"file_path":"$HOME/.kvendra/sessions/x.token"}')" scan deny
 run_case "read-abs-deny"          deny-vault-paths.sh "$(file_tool Read "{\"file_path\":\"$H/.kvendra/allowlists/a.yaml\"}")" scan deny
 run_case "read-dotdot-deny"       deny-vault-paths.sh "$(file_tool Read '{"file_path":"../.kvendra/vars.blob"}')" scan deny

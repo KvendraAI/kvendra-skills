@@ -4,6 +4,17 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.21.1] — 2026-10-07 — Silent lvr hooks without the kvendra CLI
+
+### Fixed
+- The lvr scan hooks are silent when the kvendra CLI is not installed (Pro
+  accounts without CLI): no broker means no local values to filter, so they no
+  longer warn on every KB write and every subagent stop. Warnings remain when
+  the CLI is installed and the scan could not run (vault locked, rate limit,
+  input out of range, error). The vault-folder deny hooks are unchanged.
+- `env-check` reports checks 11/12 as not applicable without the CLI (the CLI
+  is mandatory on Team, where they apply).
+
 ## [1.21.0] — 2026-10-07 — Local values, lvr hooks, imported entities are data
 
 > Requires the kvendra-cli broker **0.7.0** or later and the hosted engine with
