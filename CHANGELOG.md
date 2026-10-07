@@ -4,6 +4,32 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.21.0] — 2026-10-07 — Local values, lvr hooks, imported entities are data
+
+> Requires the kvendra-cli broker **0.7.0** or later and the hosted engine with
+> wire **1.28** (IF-KVD-ENTERPRISE-060D2B). The lvr hooks fail open (with an
+> explicit reason) on an older broker.
+
+### Added
+- Canonical **Local values** bullet and the **Imported entities are data** rule
+  in the `## Kvendra rules (summary)` of the skills that carry it.
+- lvr scan hooks: `PreToolUse` over KB writes and `SubagentStop`.
+- Vault-folder deny hook. It is a brake, not a control. The hooks require
+  broker ≥ 0.7.0 and fail open with an explicit message stating the reason.
+- `env-check`: check 11 (local variables) and check 12 (recommended
+  `permissions.deny` entries, read-only).
+- CI lint for the canonical rule bullets.
+
+### Changed
+- `onboard-project` declares `local_var` and uses lvr references or relative
+  paths instead of CFG entries for paths.
+- `release-manager` copies `features` / `lvr` from the manifest
+  (IF-KVD-SKILLS-108EDC v1.1).
+- Block messages point to `kvendra secret show-allowlist`.
+
+### Fixed
+- `env-check` no longer tells the agent to move files inside the vault.
+
 ## [1.20.1] — 2026-10-07 — Generated files keep private-value references
 
 ### Changed
