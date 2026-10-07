@@ -4,6 +4,25 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.20.1] — 2026-10-07 — Generated files keep private-value references
+
+### Changed
+- `sync-claudemd`: `CLAUDE.md` and `.kvendra-protected` keep every
+  `{{cfg:<key>}}` reference exactly as the KB returns it; the skill never
+  resolves one. A file that keeps a reference carries a one-line
+  `kvendra:private-refs` note (HTML comment on line 2 of `CLAUDE.md`, header
+  line of `.kvendra-protected` outside the checksum) telling the user to
+  resolve it with `private_value_resolve` or the dashboard, according to
+  their role. The report lists the keys, never values (ISSUE-KVD-SKILLS-BCC361,
+  owner decision 2026-10-07).
+- `onboard-project`: the `CLAUDE.md` and `.kvendra-protected` it writes follow
+  the same rule and note.
+- `lint-claudemd`: new Step 8 reports references as INFO and warns when the
+  `kvendra:private-refs` note is missing; never resolves.
+- `manual-writer` (docs mode) and `doc-indexer` (`docs/README.md`): references
+  are copied verbatim (no longer "rephrased away"), never resolved, and the
+  file ends with a **Private values** note while it keeps one.
+
 ## [1.20.0] — 2026-10-07 — Private values: references, never values
 
 > Requires the hosted engine with wire 1.26 (IF-KVD-ENTERPRISE-060D2B):

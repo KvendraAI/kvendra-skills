@@ -42,6 +42,26 @@ If the MCP for the project's tier (read from current CLAUDE.md `tier:` line) doe
 
 Standard rules apply (see `help({topic:"bootstrap"})` + `help({topic:"naming"})` + `help({topic:"txn"})`). This skill writes one file on disk — no KB entities created. NO TXN required.
 
+## Private values in generated files — kept, never resolved
+
+KB entities return private-value references raw (`{{cfg:<key>}}`), and this
+skill writes them to `CLAUDE.md` and `.kvendra-protected` **exactly as they
+are**. It never resolves a reference, never calls `private_value_resolve`, and
+never replaces a reference with a value, a guess or a placeholder. Escaped
+mentions (leading backslash) are copied verbatim too. Resolving is the
+user's job, according to their role: with `private_value_resolve` or in the
+Kvendra dashboard. This keeps values out of files that are versioned or
+shared (owner decision 2026-10-07, ISSUE-KVD-SKILLS-BCC361).
+
+An *unescaped reference* is `{{cfg:` + a concrete key (grammar
+`[a-z0-9][a-z0-9._-]{0,127}`) + `}}` with no leading backslash; the generic
+`{{cfg:<key>}}` of the note itself does not count. When a generated file
+contains at least one unescaped reference, it carries
+a one-line note saying so (the exact text is in Step 4 for `CLAUDE.md` and in
+Step 6.6 for `.kvendra-protected`). When no reference remains, the note is
+removed, so the output stays idempotent. List the keys found in the report;
+never their values.
+
 ## Step 1 — Load canonical template
 
 The canonical template ships **bundled with the plugin** at `<plugin-root>/CLAUDE.md.template`. The KB STD entity is an optional discoverable mirror used for cross-session/cross-project audit and version comparison.
@@ -111,7 +131,15 @@ The user has the final say. The skill does NOT silently change `tier:`.
 Render the canonical template with substitutions:
 - `{{PROJECT_ID}}` → project_id (verified from the existing CLAUDE.md or PRJ.entity_id).
 - `{{TIER}}` → tier resolved in Step 3 (with user's confirmation if drift detected).
-- `{{PARTICULARITIES}}` → existing Particularidades section verbatim (or empty placeholder if `--force` is passed).
+- `{{PARTICULARITIES}}` → existing Particularidades section verbatim (or empty placeholder if `--force` is passed). Private-value references in it stay as they are.
+
+If the rendered file contains an unescaped `{{cfg:<key>}}` reference, insert this
+HTML comment as line 2, right after the `manual_version` comment (it counts
+toward the 40-line target):
+
+```
+<!-- kvendra:private-refs — this file contains private-value references ({{cfg:<key>}}) kept unresolved on purpose. Resolve them with private_value_resolve or the Kvendra dashboard, according to your role. -->
+```
 
 ### `--dry-run` mode
 Print a unified diff between the existing CLAUDE.md and the would-be regenerated version. Exit without writing. No KB writes either.
@@ -157,6 +185,7 @@ STD-KVD-CLAUDEMD-TEMPLATE  manual_version: <canonical>
 - manual_version: <X.Y>
 - tier: <free|pro|team|enterprise>
 - Particularidades: preserved
+- Private-value references: none | <N> kept unresolved (keys: <list>), note present
 
 ### Next steps
 - Commit the regenerated CLAUDE.md if it's the intended result.
@@ -229,6 +258,7 @@ Extract from the STD `content` the canonical YAML block under `## Steps` step 3 
 - `synced_at` ← current ISO8601 UTC timestamp.
 - `synced_by` ← `"skill:sync-claudemd"`.
 - `cmp_overrides_applied` ← list of CMP STD ids merged in Step 6.2.
+- Private-value references in the STD payload are copied verbatim (see "Private values in generated files"); never resolve them to render the file.
 - `checksum` ← `sha256` hex of the **STD-derived policy body**: everything from `mode:` down to the last key rendered from the STD, `break_glass:` included (Step 6.3b). Additive blocks of local origin that no STD produces — `broker_capabilities_seen:` (Step 6.6b) — sit below that body and are EXCLUDED from the hash, so a refreshed snapshot never reads as policy drift in Step 6.4.
 
 ### Step 6.3b — Pin the break-glass pubkey (IF-840EE9 1.0 → 1.1)
@@ -315,6 +345,10 @@ then **NO write** is performed (no-op). Report `policy: no-op (up to date)`.
 - `require_broker[].primitive` must be one of `kvendra.git|kvendra.github|kvendra.aws|kvendra.npm|kvendra.pypi|kvendra.http|kvendra.shell`.
 - If a `break_glass:` block is present (IF-840EE9 1.1): `enabled` must be a bool; when `enabled: true`, `pubkey_ed25519` must be a non-empty base64 string (44 chars for ed25519) OR explicitly empty only in the deferred-key case of Step 6.3b (hook fail-closes on empty). `grant_path` is an optional string.
 
+Validation runs on the text as written, references included. If a pattern
+fails only because of a reference, STOP and report the key: do not resolve it
+to make the check pass.
+
 If any validation fails, STOP — do NOT write a broken policy file.
 
 ### Step 6.6 — Write `.kvendra-protected`
@@ -323,6 +357,13 @@ Write the YAML payload to the **workspace root** (resolved from `PRJ.metadata.wo
 
 ```
 # synced from <std_id> (do not edit by hand — run /sync-claudemd --policy-only)
+```
+
+If the payload contains an unescaped `{{cfg:<key>}}` reference, add this second
+header line. It sits above `mode:`, so it stays outside the `checksum`:
+
+```
+# kvendra:private-refs — contains private-value references ({{cfg:<key>}}) kept unresolved on purpose. Resolve them with private_value_resolve or the Kvendra dashboard, according to your role.
 ```
 
 The file is rewritten atomically: write to `.kvendra-protected.new`, then `mv` over the existing one.
@@ -347,6 +388,7 @@ If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonica
 ## Operational rules
 
 - The skill is **idempotent**: running it twice in a row without intervening changes produces no diff (CLAUDE.md unchanged AND `.kvendra-protected` no-op per Step 6.4).
+- The skill **never resolves private-value references**: `{{cfg:<key>}}` reaches the files as-is, with the `kvendra:private-refs` note. The user resolves them with `private_value_resolve` or the dashboard.
 - The skill is **read-write-local-only**: it does NOT touch the KB. NO TXN required, NO entity_create/update.
 - The skill is **dual-mode**: works identically against `kvendra-platform` local (tier:free) and `kvendra-cloud` Enterprise (tier:pro+).
 - The skill respects **AC-CLAUDEMD-8 (Manual immutable from project content)**: it never injects project-specific IDs into the Manual section. Only generic placeholders.

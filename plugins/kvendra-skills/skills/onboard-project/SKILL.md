@@ -418,6 +418,14 @@ people's names, support case numbers. Before writing any entity:
    appear. A CFG created in this same TXN is still a draft, so the engine may
    warn `private_ref_undefined` for it until `txn_activate`; that warning is
    expected here — report it, do not "fix" it by writing the value.
+4. The files this skill writes on disk (`CLAUDE.md` in Step 6,
+   `.kvendra-protected` in Step 6.5) keep every reference exactly as the
+   entity text has it. Never resolve a reference to write a file and never
+   call `private_value_resolve` for it: the user resolves references
+   according to their role, with `private_value_resolve` or the Kvendra
+   dashboard. A file that contains a reference carries the
+   `kvendra:private-refs` note, with the same text and position that
+   `sync-claudemd` uses (Steps 4 and 6.6 there).
 
 ### For a new project
 
@@ -494,8 +502,9 @@ people's names, support case numbers. Before writing any entity:
    - `{{PROJECT_ID}}` → uppercase project_id.
    - `{{TIER}}` → tier from Step 1 (free|pro|team|enterprise).
    - `{{PARTICULARITIES}}` → answer from Step 3 (or an empty placeholder comment if no particularities).
-3. Write the resulting file to `<cwd>/CLAUDE.md` (only in new-project mode — in add-component mode the existing CLAUDE.md is preserved).
-4. **Do NOT overwrite** an existing CLAUDE.md without `--force`. If one exists, show the diff and ask the user.
+3. Keep private-value references (`{{cfg:<key>}}`) unresolved. If the rendered file contains one, add the `<!-- kvendra:private-refs … -->` comment as line 2 (see "Private values" in Step 5).
+4. Write the resulting file to `<cwd>/CLAUDE.md` (only in new-project mode — in add-component mode the existing CLAUDE.md is preserved).
+5. **Do NOT overwrite** an existing CLAUDE.md without `--force`. If one exists, show the diff and ask the user.
 
 ## Step 6.5 — Materialise `.kvendra-protected` (broker policy)
 
@@ -509,6 +518,7 @@ Only in **new project mode**, and only when the project materialises a policy. S
    ```
    # synced from <std_id> (do not edit by hand — run /sync-claudemd --policy-only)
    ```
+   Private-value references in the STD payload are written verbatim, never resolved. If there is at least one, add the `# kvendra:private-refs …` line right below the header (outside the `checksum`, same text as in `sync-claudemd` Step 6.6).
 6. If `.kvendra-protected` already exists at workspace root, prompt the user before overwriting. The default is **DO NOT overwrite** an existing file (protects manual edits / prior project tenants).
 7. Best-effort cleanup of legacy `.kvendra-workspace` if it exists in the same directory: leave it in place (do NOT delete), but log an INFO line recommending the user remove it after one release.
 

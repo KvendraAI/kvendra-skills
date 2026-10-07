@@ -260,10 +260,20 @@ index at `docs/README.md` so the project's books are easy to navigate.
 | [<title>](./<book>/README.md) | <genre> | <audience> | <depth> | <1-line summary> |
 ```
 
-3. **Additive and idempotent**: the index is rebuilt from the set of
+3. **Private values**: front-matter fields (`title`, summary…) are copied as
+   they are. A private-value reference (`{{cfg:<key>}}`) stays unresolved; never
+   call `private_value_resolve` to write the index. If the generated index
+   keeps at least one unescaped reference, end it with this note (and drop
+   the note when none remains):
+
+   ```markdown
+   > **Private values.** This document contains private-value references (`{{cfg:<key>}}`) kept unresolved on purpose. Resolve them with `private_value_resolve` or in the Kvendra dashboard, according to your role.
+   ```
+
+4. **Additive and idempotent**: the index is rebuilt from the set of
    discovered books on every run — adding a book appends a row, removing a
    book drops it. Do not hand-edit it.
-4. **Register the catalog**: create/update `docs/README.md` as a DOC entry
+5. **Register the catalog**: create/update `docs/README.md` as a DOC entry
    tagged `doc:catalog` (one per project), so the KB knows which DOC is the
    library index. Use the **Guarded update (CAS)** flow if it already exists.
 

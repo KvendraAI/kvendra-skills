@@ -118,6 +118,23 @@ The Particularidades section is free-form by design. Validate only:
 - Section exists with the correct heading.
 - Content is NOT empty (if empty, INFO — "no particularidades; consider documenting any cross-cutting facts").
 
+## Step 8 — Private-value references
+
+A `CLAUDE.md` may contain private-value references (`{{cfg:<key>}}`): the
+generating skills keep them unresolved on purpose, and the user resolves them
+according to their role with `private_value_resolve` or the Kvendra dashboard.
+A reference is never a defect, and this skill never resolves one.
+
+- Scan for unescaped references: `{{cfg:` + a concrete key (grammar
+  `[a-z0-9][a-z0-9._-]{0,127}`) + `}}`, not preceded by a backslash. The
+  generic `{{cfg:<key>}}` inside the note itself does not count.
+- None → OK.
+- Found, and the `<!-- kvendra:private-refs … -->` note is present → INFO,
+  listing the keys (never their values).
+- Found, but the note is missing → WARNING ("file contains private-value
+  references without the private-refs note — run `/sync-claudemd`").
+- Note present but no reference left → INFO ("stale private-refs note").
+
 ## Output
 
 ```
@@ -145,6 +162,9 @@ The Particularidades section is free-form by design. Validate only:
 ### Particularidades
 - Section present:               ✅
 - Has content:                   ✅ | ℹ️ empty
+
+### Private values
+- References:                    ✅ none | ℹ️ <N> kept (keys: <list>) | ⚠️ note missing
 
 ### Findings detail
 <one bullet per finding with line number if applicable>

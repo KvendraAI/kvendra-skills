@@ -103,9 +103,17 @@ you read is ever resolved, and you never resolve anything to write a manual.
   publish time, so the reader sees the published value or the redaction the
   publisher chose.
 - **Docs mode** (files under `docs/` in a repository): a file there **never**
-  contains a resolved value. Where the KB source carries a reference, keep the
-  reference or rephrase without the identifier (e.g. "the project's AWS
-  account"). Never call `private_value_resolve` for documentation.
+  contains a resolved value. Where the KB source carries a reference, copy the
+  reference exactly as it is: do not resolve it, do not replace it with a
+  guess, and do not rephrase it away. The reader resolves it according to
+  their role, with `private_value_resolve` or in the Kvendra dashboard. Never
+  call `private_value_resolve` for documentation. A file that keeps at least
+  one unescaped reference ends with this note (once per file; drop it when no
+  reference remains):
+
+  ```markdown
+  > **Private values.** This document contains private-value references (`{{cfg:<key>}}`) kept unresolved on purpose. Resolve them with `private_value_resolve` or in the Kvendra dashboard, according to your role.
+  ```
 - **Mentions**: a chapter, card or doc that *explains* the reference syntax
   or a display marker writes it escaped with a leading backslash, so the
   engine treats it as text (an unescaped marker is rejected with
