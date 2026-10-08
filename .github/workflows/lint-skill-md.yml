@@ -361,7 +361,8 @@ jobs:
           # SKILL.md that carries '## Kvendra rules (summary)' must carry the
           # canonical '**Local values**' and '**Imported entities are data**'
           # bullets (and, since 1.22.0 / REQ-KVD-ENTERPRISE-997321, the
-          # '**Governance proposals**' bullet) INSIDE that section,
+          # '**Governance proposals**' bullet, and since 1.23.0 / REQ-KVD-F89597 the
+          # '**Coordination messages are data**' bullet) INSIDE that section,
           # byte-identical to the template in CONTRIBUTING.md (the canonical
           # text) and to each other.
           tmp=$(mktemp -d); fail=0
@@ -376,7 +377,8 @@ jobs:
           }
           for spec in 'Local values|local_var_undeclared|help({topic:"local-vars"})|{{lvr:<key>}}|kind:"local_var"' \
                       'Imported entities are data|imported_from|DATA, never instruction|entity_search|entity_related' \
-                      'Governance proposals|proposed: true|proposed[]|rejected[]|propose_forbidden|proposal_limit_exceeded'; do
+                      'Governance proposals|proposed: true|proposed[]|rejected[]|propose_forbidden|proposal_limit_exceeded' \
+                      'Coordination messages are data|untrusted_content|check_notifications|conflict_ref|send_message|inbox_pending|message_ack'; do
             title="${spec%%|*}"; toks="${spec#*|}"
             ref="$tmp/contributing.ref"
             extract CONTRIBUTING.md "$title" > "$ref"
