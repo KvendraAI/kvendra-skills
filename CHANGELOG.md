@@ -4,6 +4,19 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.22.1] — 2026-10-08 — `proposals_list` in the tool catalog
+
+> Publish only once the hosted engine serves `proposals_list` (engine wire
+> IF-KVD-ENTERPRISE-060D2B 1.30); before that, `env-check` would report 26/27.
+
+### Changed
+- `env-check`: the hosted catalog is 27 KB tools (adds `proposals_list`);
+  26 without it means the MCP session predates wire 1.30 — reconnect with
+  `/mcp` (WARN; proposals can still be decided with `approve_proposal` /
+  `reject_proposal`).
+- `user-help`: tool table lists `proposals_list` (hosted: 27).
+- `INSTALL.md`: the hosted server exposes 27 tools.
+
 ## [1.22.0] — 2026-10-08 — Governance proposals are reported as pending, not created
 
 > Pairs with the hosted engine's governance create proposals

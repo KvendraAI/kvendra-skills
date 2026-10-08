@@ -293,7 +293,7 @@ ENTITY TYPES (20)
   PRJ, CMP, IF, REQ, TEST, REG, ISSUE, REL, SLA, ROAD, GLO, STD, PAT, ADR,
   RUN, UX, DOC, TXN, ENV, COST
 
-KVENDRA TOOLS (hosted: 26 — self-hosted Platform: the first 14)
+KVENDRA TOOLS (hosted: 27 — self-hosted Platform: the first 14)
   entity_create        Create entity (auto-id)
   entity_update        Atomic update (change_summary required)
   entity_archive       Soft archive (reversible)
@@ -312,6 +312,7 @@ KVENDRA TOOLS (hosted: 26 — self-hosted Platform: the first 14)
   check_notifications  Changes on reserved entities + dispute inbox (hosted)
   raise_dispute / resolve_dispute      Disagreements over an entity (hosted)
   approve_proposal / reject_proposal   Governance proposals (hosted)
+  proposals_list       Open proposals you made or may decide (hosted)
   file_upload_init / file_complete     Upload to Workspace Files (hosted Pro+)
   file_get_url / file_list / file_delete  Download URL, registry, delete
   private_value_resolve  Resolve private-value keys (batch <= 50, hosted)

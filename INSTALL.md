@@ -64,7 +64,7 @@ Run any of the heavy-help skills to sanity-check the wiring:
   is connected and a real KB read works.
 - `/kvendra-skills:to-do` — fetches your open issues from the KB.
 
-The hosted server exposes 26 tools. If a call is refused because of your
+The hosted server exposes 27 tools. If a call is refused because of your
 plan, jump back to step 1 (see
 <https://app.kvendra.cloud/docs/troubleshooting/#forbidden-tier>).
 

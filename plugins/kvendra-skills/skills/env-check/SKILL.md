@@ -29,31 +29,34 @@ Expected states:
   not signed in yet (see check 10) — it is not necessarily a defect.
 - `✗ Failed to connect` → verify https://api.kvendra.cloud is reachable + check token TTL.
 
-### 2. The 26 KB tools from `kvendra-cloud` available
+### 2. The 27 KB tools from `kvendra-cloud` available
 
 Look in the registered tool list for the prefix
-`mcp__plugin_kvendra-skills_kvendra-cloud__*`. Expected tools (26):
+`mcp__plugin_kvendra-skills_kvendra-cloud__*`. Expected tools (27):
 
 `entity_create, entity_update, entity_get, entity_query, entity_search,
 entity_archive, entity_related, txn_create, txn_activate, txn_cancel,
 txn_check_interrupted, whoami, config_get, help, export,
 check_notifications, raise_dispute, resolve_dispute, approve_proposal,
-reject_proposal, file_upload_init, file_complete, file_get_url, file_list,
-file_delete, private_value_resolve`
+reject_proposal, proposals_list, file_upload_init, file_complete,
+file_get_url, file_list, file_delete, private_value_resolve`
 
 A self-hosted Kvendra Platform server exposes only the first 14. Seeing 20
 (no `file_*`) on hosted means the MCP session predates the server update:
 reconnect with `/mcp`. Seeing 25 without `private_value_resolve` on hosted
 means the same (the session predates wire 1.26): reconnect with `/mcp`.
+Seeing 26 without `proposals_list` on hosted means the session predates wire
+1.30 (governance create proposals): reconnect with `/mcp`; report it as a WARN
+(proposals can still be decided with `approve_proposal` / `reject_proposal`).
 Without that tool, skills that need a private value to operate (deploy,
 implementer) cannot resolve it — report it as a WARN.
 
 Also confirm the private-values help topic is served:
 `mcp__plugin_kvendra-skills_kvendra-cloud__help({ topic:"private-values" })`
 must return the topic (syntax, escaping, markers, `private_value_resolve`),
-not an unknown-topic error. Report it on row 2 (`26/26 + help OK`).
+not an unknown-topic error. Report it on row 2 (`27/27 + help OK`).
 
-If you see `authenticate` / `complete_authentication` instead of the 26: the
+If you see `authenticate` / `complete_authentication` instead of the 27: the
 MCP is not authenticated. Resolve with `/mcp` from Claude Code.
 
 ### 3. Real KB read test
@@ -343,7 +346,7 @@ EOF
 | # | Component | Status | Detail |
 |---|-----------|--------|--------|
 | 1 | MCP kvendra-cloud (KB) | OK / NEEDS_AUTH / FAIL | <state> |
-| 2 | 26 KB tools + private-values help | OK / N/26 / WARN (no private-values topic) / N/A | <missing list> |
+| 2 | 27 KB tools + private-values help | OK / N/27 / WARN (no private-values topic) / N/A | <missing list> |
 | 3 | KB read test | OK / FAIL | <N projects / error> |
 | 4 | MCP kvendra (broker) | OK / FAIL | <cause> |
 | 5 | 7 broker primitives | OK / N/7 / N/A | <missing list> |
