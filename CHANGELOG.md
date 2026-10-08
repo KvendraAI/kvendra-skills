@@ -4,6 +4,39 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.22.0] — 2026-10-08 — Governance proposals are reported as pending, not created
+
+> Pairs with the hosted engine's governance create proposals
+> (REQ-KVD-ENTERPRISE-997321, Team/Enterprise only; engine wire
+> IF-KVD-ENTERPRISE-060D2B 1.30 or later). Against an engine
+> without them the new fields never appear and the skills behave as before;
+> Pro is unaffected.
+
+### Added
+- Canonical **Governance proposals** bullet in the `## Kvendra rules
+  (summary)` of every skill that carries it: an `IF` / `GLO` / `ADR` / `REQ`
+  written by a caller without authority over its CMP/PRJ is a proposal, not a
+  live entity. The skills read `proposed: true` + `proposal` from
+  `entity_create` and `proposed[]` (`kind` `create` or `update`), `rejected[]`
+  (with its `hint`) and `applied_pending_updates[]` from `txn_activate`,
+  report proposals as "pending approval (proposal_id …), not active", do not
+  chain steps that assume the entity is live, and stop on `403
+  propose_forbidden` / `429 proposal_limit_exceeded` without retrying.
+- CI lint: the bullet must be byte-identical to the CONTRIBUTING.md template
+  in every carrier.
+
+### Changed
+- `new-feature`, `bug`, `incident-manager`, `onboard-project`: the TXN
+  activation step reads the `txn_activate` response before reporting, and the
+  output gains `Proposals:` / `Rejected:` lines (only when non-empty). A
+  proposed entity is no longer reported as created or activated.
+- `requirements-analyst` reports the REQ state (draft in TXN, active or
+  pending approval) and does not hand a proposed REQ on as implementable.
+- `updater` defers relations, `fulfills` and REL changelog lines that depend
+  on a pending proposal and lists them under `### Pending proposals`.
+- `release-manager` treats a proposed IF-MANIFEST as pending and skips its
+  REL changelog line.
+
 ## [1.21.1] — 2026-10-07 — Silent lvr hooks without the kvendra CLI
 
 ### Fixed
