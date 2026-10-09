@@ -240,8 +240,9 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   component_id: <bare component code if this roadmap item belongs to one component; OMIT if cross-component>,
   title: "ROAD-<PROJ>-<auto>: <title>",
   content: <markdown>,
-  metadata: { status: "proposed" },
-  tags: ["status:proposed"],
+  status: "proposed",               // top-level = source of truth (without it a ROAD lands `active`)
+  metadata: { status: "proposed" }, // secondary mirror only; never read it as the status
+  tags: ["status:proposed"],        // same value as `status`
   updated_by: "skill:kvendra"
 })
 ```
@@ -278,7 +279,7 @@ or 1 (ISSUE).
    without at least ONE of these three actions, in this preference order:
 
    a. **Changelog in the active REL** (if one exists):
-      Find REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_any:["status:planning","status:in-progress"] })`.
+      Find REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })` (legacy RELs without a canonical top-level status: `tags_any:["status:planning","status:in-progress"]`).
       `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", updated_by:"skill:kvendra" })`.
       The server populates `entity_changelog` automatically.
 

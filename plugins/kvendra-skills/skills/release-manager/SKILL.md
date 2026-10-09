@@ -28,6 +28,11 @@ Identify `project_id` from the `CLAUDE.md`.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
+  REL lifecycle: `planning`, `in-progress`, `released`, `closed` (no `status` →
+  `planning`); ROAD: `proposed`, `active`, `done`, `superseded`. The top-level
+  `status` is the source of truth; a `status:*` tag, if present, carries
+  exactly the same value.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
@@ -162,6 +167,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   title: "REL-<PROJ>-<VER>: <description>",
   content: <markdown with description, scope, target_date, regression_gate:pending>,
   version: "<VER>",
+  status: "planning",
   tags: ["status:planning", "type:<minor|major|patch|hotfix>"],
   updated_by: "skill:release-manager"
 })
@@ -212,12 +218,12 @@ Prerequisites:
    `--force-ci-red` was explicitly requested and audited.
 
 Process:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"closed", change_summary:"Release closed", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"closed", tags_add:["status:closed"], tags_remove:["status:<previous>"], change_summary:"Release closed", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
 2. **Freeze the changelog**: `entity_update` with `metadata.frozen: true`
    (the server honors `frozen` on `entity_changelog` to block later edits).
 3. For each included ISSUE with status `done`/`closed`: verify it has a
    regression-case TEST.
-4. Update ROAD if any item was completed: `entity_update` on the ROAD with `status:done`.
+4. Update ROAD if any item was completed: `entity_update` on the ROAD with top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one).
 5. Set `metadata.deployed_date` on the REL.
 
 **Private values in REL text.** The changelog and description copy titles

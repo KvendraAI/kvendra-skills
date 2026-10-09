@@ -105,7 +105,7 @@ pointing to the required broker primitive.
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<feature>, entity_type:"REQ", project_id:<PROJ> })`
 
 2. **ROAD (CRITICAL — check for conflicts):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROJ>, tags_any:["status:planned","status:in-progress"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROJ>, status:["proposed","active"] })`
    → If any ROAD affects this feature's components, REPORT the conflict.
 
 3. **Active ADRs:**

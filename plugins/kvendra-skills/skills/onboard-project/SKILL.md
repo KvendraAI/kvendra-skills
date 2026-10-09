@@ -550,7 +550,7 @@ each one before writing any entity:
 4. **`ENV-<PROJECT_ID>-<auto>`** for each environment (dev/test/prod).
 
 5. **`REL-<PROJECT_ID>-0.1.0`** (`force_id`):
-   Baseline release entity, status `planning`.
+   Baseline release entity, top-level `status: "planning"` (kept at `txn_activate`, engine H3).
 
 6. For each component declared: run the "new component" subroutine below.
 

@@ -26,6 +26,10 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
+  ISSUE lifecycle: `open`, `in-progress`, `blocked`, `done`, `closed`, `wontfix`
+  (no `status` → `open`). The top-level `status` is the source of truth; a
+  `status:*` tag, if present, carries exactly the same value.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
@@ -117,6 +121,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   component_id: "<COMP>",   // optional
   title: "<title>",
   content: <markdown>,
+  status: "<status>",       // optional; default `open`. Pass the `--status` value (e.g. `done` for a retrospective task)
   metadata: { severity, priority },
   tags: ["type:<type>", "priority:<prio>"],
   relations: [
@@ -133,8 +138,9 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",
   content: <optional>,
-  tags_add: ["status:in-progress"],     // if changing state
-  tags_remove: ["status:new"],
+  status: "in-progress",                // if changing state (top-level = source of truth)
+  tags_add: ["status:in-progress"],     // same value as `status`
+  tags_remove: ["status:open"],         // the previous `status:*` tag, if any
   change_summary: "Assigned to @user, status in-progress",
   updated_by: "skill:to-do"
 })
@@ -155,10 +161,11 @@ never retry the same payload.
 2. Change status per type:
    - bug: `closed`
    - task: `done`
-   - incident: `postmortem-done`
+   - incident: `done` (postmortem completed)
 3. If bug: verify there is a regression-case TEST that covers it
    (`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", tags_all:["type:regression-case", "ISSUE-..."] })`).
-4. `entity_update` with updated tags and `change_summary`.
+4. `entity_update` with the top-level `status`, the `status:*` tag (if any)
+   aligned to the same value, and `change_summary`.
 
 ### LIST — List ISSUEs
 
@@ -188,6 +195,6 @@ ISSUE created: ISSUE-<PROJ>-<COMP>-<NNN> (auto-generated)
 ```
 | ID | Type | Priority | Status | Component | Title |
 |----|------|----------|--------|-----------|-------|
-| ISSUE-<PROJ>-<COMP>-001 | bug | high | new | <COMP> | Timeout in callback |
+| ISSUE-<PROJ>-<COMP>-001 | bug | high | open | <COMP> | Timeout in callback |
 | ISSUE-<PROJ>-042 | task | medium | in-progress | (cross) | Update docs |
 ```

@@ -30,6 +30,10 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
+  The top-level `status` is the source of truth (REL: `planning`,
+  `in-progress`, `released`, `closed`); a `status:*` tag, if present, carries
+  exactly the same value.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
@@ -167,8 +171,8 @@ already exists, it is not duplicated.
 ### 3b — Active-REL changelog
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_all:["status:planning"] })
-# or status:in-progress
+mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })
+# legacy RELs without a canonical top-level status: tags_any:["status:planning","status:in-progress"]
 ```
 
 For each relevant change, read the REL, append an entry to its changelog

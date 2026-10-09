@@ -348,9 +348,9 @@ Still 0 results, or query error → skip silently.
 ## PHASE 7 — Create pending tasks (conditional)
 
 If there are blocked bugs (3 failed iterations) or pending work:
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ... })` with `status:open` or `status:blocked`. NOTE: these ISSUEs are
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ... })` with top-level `status:"open"` or `status:"blocked"` (a `status:*` tag, if added, carries the same value). NOTE: these ISSUEs are
 created outside the TXN because the pipeline TXN was already activated.
-Creating them NOW means they are born `active`.
+Creating them NOW means they are born live (not drafts) with that status.
 
 ---
 

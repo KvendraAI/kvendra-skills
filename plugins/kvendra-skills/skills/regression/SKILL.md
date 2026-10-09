@@ -116,7 +116,8 @@ pointing to the required broker primitive.
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<COMP>" })`
 
 5. **Active REL (to associate results):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, tags_all:["status:planning"] })`
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, status:"planning" })`
+   (legacy RELs without a canonical top-level status: `tags_all:["status:planning"]`)
 
 6. **Relation targets (ids, not guesses):**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ> })`

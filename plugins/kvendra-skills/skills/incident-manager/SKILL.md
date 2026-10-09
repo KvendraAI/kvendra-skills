@@ -31,6 +31,10 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+- **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
+  ISSUE lifecycle: `open`, `in-progress`, `blocked`, `done`, `closed`,
+  `wontfix`. The incident phases (`detected` … `postmortem-done`) are NOT
+  ISSUE statuses: never write them as `status` or as a `status:*` tag.
 - Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
@@ -159,6 +163,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   component_id: "<COMP>",
   title: "<short description>",
   content: <markdown — see format below>,
+  status: "open",
   metadata: {
     type: "incident",
     severity: "critical|major|minor",
@@ -225,12 +230,15 @@ that contains a value, replace the value by its reference before writing.
 
 ## Step 4 — Manage the lifecycle
 
-As things progress, call `entity_update` with updated tags and `change_summary`:
-1. `detected` → first state.
-2. `investigating` → analyzing the cause.
-3. `mitigating` → temporary solution applied.
-4. `resolved` → service restored.
-5. `postmortem-done` → RCA completed, derived entities created.
+As things progress, call `entity_update` with the top-level `status`, updated
+tags (a `status:*` tag, if any, carries the same value as `status`) and
+`change_summary`. The phase is recorded in the content (`## Status:` line and
+Timeline); the top-level `status` follows it:
+1. `detected` → first state (`status: "open"`).
+2. `investigating` → analyzing the cause (`status: "in-progress"`).
+3. `mitigating` → temporary solution applied (`status: "in-progress"`).
+4. `resolved` → service restored (`status: "in-progress"` until the postmortem).
+5. `postmortem-done` → RCA completed, derived entities created (`status: "done"`).
 
 Each update that rewrites `content` is read-modify-write on the raw text
 `entity_get` returned: keep references and escaped mentions as they are. On
@@ -330,7 +338,10 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id, updated_by:"skill:incident-manager" })
 ```
 
-Entities move from `draft` to `active` / `postmortem-done` as appropriate.
+Drafts take the top-level `status` they carry (engine H3): the incident ISSUE
+its current lifecycle status (`done` once the postmortem is complete); derived
+entities without `status` go to their type's terminal (RUN → `recorded`,
+REQ/PAT → `active`).
 
 **Read the `txn_activate` response before reporting** (see **Governance
 proposals**): only the drafts it activated are live. Each `proposed[]` entry

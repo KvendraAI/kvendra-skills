@@ -106,7 +106,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
   entity_type: "ISSUE",
   project_id: <PROJ>,
   component_id: <optional>,
-  status: ["new", "in-progress", "analyzing"],   // or array per filter
+  status: ["open", "in-progress", "blocked"],   // or array per filter (ISSUE lifecycle: open, in-progress, blocked, done, closed, wontfix)
   tags_all: ["type:<type>", "priority:<level>"], // optional
   archived: false,
   drafts: false,
@@ -131,10 +131,8 @@ Date: <date>
 ### By status
 | Status | Count |
 |--------|-------|
-| new | N |
+| open | N |
 | in-progress | N |
-| analyzing | N |
-| fixing | N |
 | blocked | N |
 
 ### Detail

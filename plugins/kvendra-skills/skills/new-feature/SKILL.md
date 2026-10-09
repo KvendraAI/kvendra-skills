@@ -358,7 +358,8 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   component_id: "<COMP>",
   title: "<title derived from SPEC>",
   content: <markdown>,
-  metadata: { type:"task", status:"draft", attachments: <validator Evidence attachments array, if non-empty> },
+  status: "open",           // kept at txn_activate (engine H3); the draft stage comes from txn_id, not from a status value
+  metadata: { type:"task", attachments: <validator Evidence attachments array, if non-empty> },
   tags: ["type:task"],
   relations: [
     { type:"implements", target:"REQ-<PROJ>-<NN>" }
@@ -453,7 +454,7 @@ pipeline when the scope outlives the session.
 ## PHASE 7 — Pending tasks (conditional)
 
 For unvalidated criteria, pending frontend deploys, or additional tests:
-create ISSUE type:task outside the TXN (born `active`).
+create ISSUE type:task outside the TXN with top-level `status:"open"` (born live, not a draft).
 
 ---
 
