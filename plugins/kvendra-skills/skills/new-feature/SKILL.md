@@ -358,7 +358,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   component_id: "<COMP>",
   title: "<title derived from SPEC>",
   content: <markdown>,
-  status: "open",           // kept at txn_activate (engine H3); the draft stage comes from txn_id, not from a status value
+  status: "done",           // the work is implemented and validated; kept at txn_activate (engine H3)
   metadata: { type:"task", attachments: <validator Evidence attachments array, if non-empty> },
   tags: ["type:task"],
   relations: [

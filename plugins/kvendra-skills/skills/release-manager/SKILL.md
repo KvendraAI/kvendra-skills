@@ -2,7 +2,7 @@
 name: release-manager
 description: Release manager — creates, manages and closes REL entities with automatic changelog, regression gates and Kvendra KB traceability
 user_invocable: true
-args: "[action: create|status|add|gate-check|close] [arguments]"
+args: "[action: create|status|add|gate-check|close|retire] [arguments]"
 writes_entity_types: [REL, IF, ISSUE]
 ---
 
@@ -209,22 +209,32 @@ For each included component:
 3. Per-component result: PASS / BLOCKED (list bugs) / PENDING.
 4. Global result: READY only if all gates are OK.
 
-### CLOSE — Close the release
+### CLOSE — Ship the release (status `released`)
+
+CLOSE runs when the release is deployed/published: the REL goes
+`planning`/`in-progress` → `released`. `closed` is reserved for RETIRE (the
+release line is over), never set at ship time.
 
 Prerequisites:
 1. All regression gates PASS.
-2. All included ISSUEs closed.
+2. All included ISSUEs `done` (or `closed`/`wontfix`).
 3. Pre-release CI gate green (see "Pre-release CI gate" above), unless
    `--force-ci-red` was explicitly requested and audited.
 
 Process:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"closed", tags_add:["status:closed"], tags_remove:["status:<previous>"], change_summary:"Release closed", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"released", tags_add:["status:released"], tags_remove:["status:<previous>"], change_summary:"Release shipped", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
 2. **Freeze the changelog**: `entity_update` with `metadata.frozen: true`
    (the server honors `frozen` on `entity_changelog` to block later edits).
 3. For each included ISSUE with status `done`/`closed`: verify it has a
    regression-case TEST.
 4. Update ROAD if any item was completed: `entity_update` on the ROAD with top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one).
 5. Set `metadata.deployed_date` on the REL.
+
+### RETIRE — Close the release line (status `closed`)
+
+When a released line is over (superseded by a later version, end of support):
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, status:"closed", tags_add:["status:closed"], tags_remove:["status:released"], change_summary:"Release line closed: <reason>", updated_by })`.
+Only a `released` REL is retired; nothing else changes (changelog already frozen).
 
 **Private values in REL text.** The changelog and description copy titles
 and summaries from other entities: copy them as `entity_get` returned them, so
@@ -277,9 +287,9 @@ Never resolve a reference to write a release note. On
 
 ### CLOSE:
 ```
-## Release closed
+## Release shipped (released)
 - ID: REL-<PROJ>-<VER>
-- Close date: <date>
+- Ship date: <date>
 - ISSUEs closed: N
 - Regression TESTs verified: N
 - ROADs updated: [list]

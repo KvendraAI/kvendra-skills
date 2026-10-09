@@ -288,7 +288,10 @@ THIS orchestrator.)
 ### 5b — Create one ISSUE per confirmed bug (drafts in the TXN)
 
 For each confirmed bug:
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ..., txn_id })`. The server assigns the auto id.
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ..., status, txn_id })`. The server assigns the auto id.
+Top-level `status` (kept at `txn_activate`, engine H3): `"done"` for a bug in
+VALIDATED_BUGS (fixed and validated — the ISSUE records work already done);
+`"blocked"` for a bug in BLOCKED_BUGS. `closed` is for administrative closes only.
 
 ## PHASE 6 — KB update + TXN activation
 
