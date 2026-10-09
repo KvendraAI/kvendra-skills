@@ -205,6 +205,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
 - planner              → `planner/SKILL.md`
 - implementer          → `implementer/SKILL.md`
 - deploy               → `deploy/SKILL.md` (STD-driven; reads STD-<PROJECT>-<COMP>-DEPLOY-PROCESS via tag discovery)
+- release-manager      → invoked with `Skill` in PHASE 8 (release tracking, `--auto`)
 - tester               → `tester/SKILL.md`
 - validator            → `validator/SKILL.md`
 - updater              → `updater/SKILL.md`
@@ -309,7 +310,9 @@ Only if PHASE 2 executed.
 
 Launch `deploy` (STD-driven; reads the canonical
 `STD-<PROJECT>-<COMP>-DEPLOY-PROCESS` playbook via tag discovery and executes
-its steps via broker primitives).
+its steps via broker primitives) with `--release-by new-feature`: the pipeline
+owns release tracking (PHASE 8). Capture its release handoff (SHA,
+environment, result) as **DEPLOY_RESULT**.
 
 On failure: `txn_cancel`, stop pipeline.
 
@@ -425,7 +428,8 @@ Still 0 results, or query error → skip silently.
 
 ### Backlog chaining (zero-gate + backlog_chaining: true only)
 
-After `txn_activate` (and the optional SLA line), when the resolved
+After `txn_activate` (the optional SLA line, PHASE 7 and PHASE 8 Release
+tracking), when the resolved
 policy has `gates.new-feature: none` AND `backlog_chaining: true` AND
 the invocation declared a backlog scope (e.g. "work through milestone
 M2.5", a ROAD id, or an explicit ISSUE/REQ list in $ARGUMENTS): query
@@ -458,6 +462,54 @@ create ISSUE type:task outside the TXN with top-level `status:"open"` (born live
 
 ---
 
+## PHASE 8 — Release tracking (last step, never blocking)
+
+Runs after the TXN activation and the deploy, as the last step of every
+pipeline that reached `txn_activate`. If the TXN was cancelled after PHASE 3
+deployed production successfully, still run steps 1, 2 and the Deploy-without-REL
+warning and ISSUE of step 4 (there is no work to attach). Any failure here is a warning in the
+final summary (`Release:` line), never a pipeline failure. Work only with
+live entities: skip anything listed in `proposed[]`.
+
+1. **Find the open REL** of the component:
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+     entity_type: "REL",
+     project_id: <PROJ>,
+     component_id: "<COMP>",
+     status: ["planning", "in-progress"],
+     order_by: "updated_at_desc",
+     limit: 1
+   })
+   ```
+2. **None → create it** in `planning`, linked to the pipeline's ROAD when
+   known (a ROAD id in $ARGUMENTS / the backlog scope, or the `part_of` ROAD
+   of the REQ or the SPEC):
+   `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --type minor --road <ROAD-id> --auto")`
+   (omit `--road` when no ROAD is known).
+3. **Attach the work** — the PHASE 5b ISSUE and the PHASE 0 REQ (if any) get
+   `part_of` → REL through the release manager's ADD (guarded update with
+   `expected_version`; it also moves a `planning` REL to `in-progress`):
+   `Skill(skill="kvendra-skills:release-manager", args="add <ISSUE-id>,<REQ-id> --rel <REL-id> --auto")`.
+4. **Ship when production was deployed** — if PHASE 3 ran and DEPLOY_RESULT is
+   a success with `environment: production` or `unknown` (a deploy playbook
+   that does not declare `metadata.environment` is the project's canonical,
+   production deploy; a non-production target must declare itself):
+   `Skill(skill="kvendra-skills:release-manager", args="close <REL-id> --sha <SHA> --auto")`.
+   - `released` → report it (tag `shipped:<date>`, `metadata.deployed_date`).
+   - `gate_missing: <gate>` → the REL stays `in-progress`; report the gate.
+     Then, because production runs without a released REL, add
+     `WARNING: Deploy without REL — <gate>` to the summary and create the
+     `release:missing` ISSUE with the same shape as the deploy skill's
+     Step 8 (outside the TXN, top-level `status:"open"`, component, SHA,
+     date).
+   - Deploy to a declared non-production environment, or no deploy → the REL stays
+     `in-progress`; report "ships on the next production deploy".
+5. **Never blocks**: a tool error, `403`, a pending proposal or a missing
+   gate is reported in the `Release:` line; the pipeline result is unchanged.
+
+---
+
 ## Progress format
 
 ```
@@ -480,6 +532,8 @@ Proposals: <ENTITY-ID> — pending approval (<kind>, proposal_id <id>), not acti
 Rejected: <source> -<type>-> <target> — <hint>
 REL-<PROJ>-0.1.0 changelog: +N entries (via entity_changelog)
 SLA: <duration> vs target <N> min — OK (optional, sla_report: true only)
+PHASE 8 — Release: REL-<PROJ>-<COMP>-<VER> released (shipped:<date>) | in-progress (missing gate: <gate>) | WARNING: <reason>
+WARNING: Deploy without REL — <reason> (ISSUE <id>, release:missing)   (only when production was deployed without a released REL)
 ```
 
 The two PAUSE lines appear only in dual mode. In single mode a single

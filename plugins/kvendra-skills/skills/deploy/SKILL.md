@@ -18,6 +18,12 @@ The same skill orchestrates a `CMP-KVD-WEB` deploy or a `CMP-KVD-ENTERPRISE` sta
 - A short component code (e.g. `WEB`, `ENTERPRISE`) — the skill resolves it against the current project's `PRJ.metadata` or asks for clarification.
 - Empty → interactive mode (list deployable components from the project + let the user pick).
 
+Optional flag: `--release-by <skill>` (e.g. `--release-by new-feature`). The
+calling pipeline owns release tracking: this skill skips Steps 1.5 and 8 and
+returns the release handoff block of the Output instead. The caller MUST then
+run its own Release tracking step. Without the flag, Steps 1.5 and 8 always
+run.
+
 ## Step 0 — Initialization + fail-safe
 
 1. Resolve `project_id` + current `tier` from `<cwd>/CLAUDE.md` (per the canonical bootstrap protocol).
@@ -102,6 +108,35 @@ Parse `$ARGUMENTS`:
 - If it's a short code: combine with the resolved `project_id` from Step 0 → construct `CMP-<PROJECT>-<CODE>` and verify.
 - If empty: list deployable components (those with a `STD-*-DEPLOY-PROCESS` entity in the KB — see Step 2 discovery) and let the user pick.
 
+## Step 1.5 — Release precondition (REL of the component)
+
+Every deploy ships under a REL. This step never blocks the deploy: any failure
+is recorded as `release_note` for the Output and the deploy continues.
+
+1. Find the open REL of the component:
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+     entity_type: "REL",
+     project_id: "<PROJECT>",
+     component_id: "<COMP>",
+     status: ["planning", "in-progress"],
+     order_by: "updated_at_desc",
+     limit: 1
+   })
+   ```
+2. **1 result** → that is the deploy's REL. **0 results** → create it in
+   `planning` through the release manager (it computes the next version):
+   `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --type patch --auto")`.
+3. If the REL cannot be found or created (tool error, `403`, a pending
+   proposal, an invalid id): note the reason, continue with the deploy with no
+   REL, and let Step 8 report it.
+
+## Step 1.6 — Record the deployed commit
+
+Read the commit SHA of the component workspace (`CMP.metadata.workspace_subdir`)
+with a local, read-only revision lookup (no credentials, no network). If the
+workspace is not a version-controlled checkout, record `unknown`.
+
 ## Step 2 — Discover the canonical deploy playbook
 
 Use **tag-based discovery** (NOT literal id lookup) per `PAT-KVD-577667`:
@@ -137,6 +172,7 @@ Extract from the STD entity:
   - `requires_confirmation` (array of step ids that need explicit user confirmation, if any).
   - `vault_profile_required` (the broker profile needed for `kvendra.*` calls).
   - `estimated_duration_minutes` (informational).
+  - `environment` (e.g. `production`, `staging`; reported in the Release block and used by the calling pipelines; absent → `unknown`).
 
 Verify pre-conditions:
 - Vault profile referenced by `metadata.vault_profile_required` exists (best-effort check — the broker enforces strictly at call time).
@@ -188,6 +224,47 @@ After all steps complete:
 
 The `## Validation` section in the playbook lists smoke tests. Run them if `autonomous: true`, or ask the user.
 
+## Step 8 — Release postcondition
+
+Runs after every deploy outcome (skipped only with `--release-by`). It never
+changes the deploy result.
+
+1. **Deploy OK to production and a REL exists** → ship it through the release
+   manager. "Production" = the playbook's `metadata.environment` is `production`
+   or absent (an undeclared playbook is the canonical production deploy). A
+   deploy to a declared non-production environment (e.g. `staging`) leaves the
+   REL `in-progress` and skips steps 2–3:
+   `Skill(skill="kvendra-skills:release-manager", args="close <REL-id> --sha <SHA> --auto")`.
+   CLOSE sets `status:"released"`, the tag `shipped:<YYYY-MM-DD>` and
+   `metadata.deployed_date`. If it returns `gate_missing: <gate>`, the REL stays
+   `in-progress`: record the missing gate.
+2. **Git tag** — only when the playbook (or the project's release STD, tag
+   discovery `scope:release`) declares a tag step with a broker primitive
+   (`kvendra.git` tag or `kvendra.github` release): create the tag
+   `v<REL version>` on the deployed SHA with that primitive, after a successful
+   CLOSE. If no tag primitive is declared, do not tag: list
+   "tag `v<version>` not created (no tag primitive declared)" in Next steps.
+3. **Deploy without REL** — when a production deploy (as defined in step 1) succeeded but the REL did not end
+   `released` (no REL, CLOSE failed or a gate is missing): the Output MUST carry
+   the warning line `WARNING: Deploy without REL — <reason>`, and the skill
+   records it as a live ISSUE (outside any TXN):
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+     entity_type: "ISSUE",
+     project_id: "<PROJECT>",
+     component_id: "<COMP>",
+     title: "Deploy without REL: CMP-<PROJECT>-<COMP> @ <SHA short> (<YYYY-MM-DD>)",
+     content: <markdown: component, SHA, date, playbook STD id, REL id or none, reason / missing gate>,
+     status: "open",
+     metadata: { type:"task", deployed_sha:"<SHA>", deployed_date:"<YYYY-MM-DD>" },
+     tags: ["type:task", "release:missing"],
+     relations: [{ type:"part_of", target:"PRJ-<PROJECT>" }],
+     updated_by: "skill:deploy"
+   })
+   ```
+   If this create also fails, the warning line still appears, with the error.
+4. **Deploy FAILED** → leave the REL as it is (no CLOSE, no ISSUE).
+
 ## Output
 
 ```
@@ -219,8 +296,16 @@ N. <step name>: ✅ <durationMs>ms
 ### Total duration
 <N> minutes
 
+### Release
+- REL: <REL-id> — released (shipped:<date>) | in-progress (missing gate: <gate>) | none
+- Commit: <SHA> | unknown
+- Environment: <playbook metadata.environment | unknown>
+- Tag: v<version> created | not created (<reason>)
+- WARNING: Deploy without REL — <reason>  (ISSUE <id> tagged release:missing)   ← only when the deploy succeeded without a released REL
+- (with --release-by, replaces the lines above) Release handoff: component, SHA, environment, result — Steps 1.5 and 8 skipped; the caller tracks the REL
+
 ### Next steps
-- <if SUCCESS>: deploy complete. Consider tagging the release if it's a stable version.
+- <if SUCCESS>: deploy complete.
 - <if FAILED>: see Failure mode of step <N> in <STD-id>. Manual recovery may be needed.
 - <if rollback>: instructions from playbook's `## Rollback` section.
 ```

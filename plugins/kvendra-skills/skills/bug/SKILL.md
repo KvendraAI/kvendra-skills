@@ -209,6 +209,7 @@ Directory: `~/.claude/plugins/marketplaces/kvendra-marketplace/plugins/kvendra-s
 - implementer       → `implementer/SKILL.md`
 - validator         → `validator/SKILL.md`
 - updater           → `updater/SKILL.md`
+- release-manager   → invoked with `Skill` in PHASE 8 (release tracking, `--auto`)
 
 ## External-execution policy
 
@@ -357,6 +358,48 @@ Creating them NOW means they are born live (not drafts) with that status.
 
 ---
 
+## PHASE 8 — Release tracking (last step, never blocking)
+
+Runs as the last step of every pipeline that reached `txn_activate` with at
+least one ISSUE created. Any failure here is a warning in the final summary
+(`Release:` line), never a pipeline failure. Work only with live entities:
+skip anything listed in `proposed[]`.
+
+1. **Find the open REL** of the component:
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+     entity_type: "REL",
+     project_id: <PROJ>,
+     component_id: "<COMP>",
+     status: ["planning", "in-progress"],
+     order_by: "updated_at_desc",
+     limit: 1
+   })
+   ```
+2. **None → create it** in `planning`, linked to the pipeline's ROAD when
+   known (a ROAD id in $ARGUMENTS, or the `part_of` ROAD of the REQ the bugs
+   belong to):
+   `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --type patch --road <ROAD-id> --auto")`
+   (omit `--road` when no ROAD is known).
+3. **Attach the work** — the PHASE 5b ISSUEs of VALIDATED_BUGS (and the REQ
+   they implement, if any) get `part_of` → REL through the release manager's
+   ADD (guarded update with `expected_version`; it also moves a `planning` REL
+   to `in-progress`):
+   `Skill(skill="kvendra-skills:release-manager", args="add <ISSUE-id>,<ISSUE-id>,... --rel <REL-id> --auto")`.
+   BLOCKED_BUGS ISSUEs and PHASE 7 tasks are not attached (they would block
+   CLOSE).
+4. **No CLOSE here** — this pipeline does not deploy, so the REL stays
+   `in-progress` and ships with the next deploy of the component (the
+   `deploy` skill closes the open REL after a successful deploy). Report
+   "REL in-progress — ships on the next deploy". If a future variant of the
+   pipeline deploys to production, close it with
+   `Skill(skill="kvendra-skills:release-manager", args="close <REL-id> --sha <SHA> --auto")`
+   and, on `gate_missing`, leave it `in-progress` and report the gate.
+5. **Never blocks**: a tool error, `403`, a pending proposal or a missing
+   gate is reported in the `Release:` line; the pipeline result is unchanged.
+
+---
+
 ## Progress format
 
 ```
@@ -376,6 +419,7 @@ TXN-<PROJ>-<YYYYMMDD>-<NNN>: COMPLETED
 Proposals: <ENTITY-ID> — pending approval (<kind>, proposal_id <id>), not active
 Rejected: <source> -<type>-> <target> — <hint>
 SLA: <duration> vs target <N> min — OK (optional, sla_report: true only)
+PHASE 8 — Release: REL-<PROJ>-<COMP>-<VER> in-progress (+N ISSUEs, ships on the next deploy) | WARNING: <reason>
 ```
 
 The `Proposals:` / `Rejected:` lines appear only when `txn_activate`

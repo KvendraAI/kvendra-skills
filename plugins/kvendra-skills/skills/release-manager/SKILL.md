@@ -2,8 +2,8 @@
 name: release-manager
 description: Release manager — creates, manages and closes REL entities with automatic changelog, regression gates and Kvendra KB traceability
 user_invocable: true
-args: "[action: create|status|add|gate-check|close|retire] [arguments]"
-writes_entity_types: [REL, IF, ISSUE]
+args: "[action: create|status|add|gate-check|close|retire] [arguments] [--component CODE] [--road ROAD-id] [--auto]"
+writes_entity_types: [REL, IF, ISSUE, REQ, ROAD]
 ---
 
 # Release Manager — Kvendra release lifecycle
@@ -122,6 +122,16 @@ server will reject with `INTEGRITY` + constraint `entities_entity_id_format`.
 
 ## Available actions
 
+### Invocation by another skill (`--auto`)
+
+The pipelines (`new-feature`, `bug`) and `deploy` call this skill for their
+release-tracking step with `--auto`, e.g.
+`Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --road <ROAD-id> --type minor --auto")`.
+In `--auto` mode the skill never prompts: any confirmation it would ask the
+user for counts as a failed prerequisite. The action then does not proceed and
+returns `gate_missing: <gate>` plus the REL id and its status, so the caller
+reports it. The caller's own flow is never blocked by this skill.
+
 ### Pre-release CI gate (required before CREATE and CLOSE)
 
 A release must never be cut or closed off a red default branch. Before running
@@ -149,29 +159,51 @@ This gate complements the repository branch-protection required status check
 (configured by the repository owner): branch protection blocks the merge, this
 gate blocks the release action.
 
+In `--auto` mode, CREATE of a `planning` REL skips this gate (a planning REL
+cuts nothing; it only tracks work). CLOSE always runs it: red or inconclusive
+→ `gate_missing: ci`.
+
 ### CREATE — Create a new release
 
-1. Determine the version (SemVer): read latest RELs to compute next:
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, order_by:"updated_at_desc", limit:5 })`
+Arguments: `create [<VER>] [--type major|minor|patch|hotfix] [--component <COMP>] [--road <ROAD-id>] [--auto]`.
+
+0. With `--component`, reuse before creating: if an open REL already exists for
+   the component
+   (`entity_query({ entity_type:"REL", project_id:<PROJ>, component_id:"<COMP>", status:["planning","in-progress"], order_by:"updated_at_desc", limit:1 })`),
+   return it instead of creating a second one.
+1. Determine the version (SemVer): read latest RELs (of the component, when
+   `--component` is given) to compute next:
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, component_id?:"<COMP>", order_by:"updated_at_desc", limit:5 })`.
+   When `<VER>` is omitted, bump the highest version found by `--type`
+   (default `patch`); with no previous REL, start at `0.1.0`.
 2. Type: major | minor | patch | hotfix.
-3. Component hotfix: `REL-<PROJ>-<COMP>-<VER>`.
+3. Component release (`--component` given, or component hotfix): `REL-<PROJ>-<COMP>-<VER>`.
 4. Project release: `REL-<PROJ>-<VER>`.
-5. Validate the id against the regex. If OK, create:
+5. Parent ROAD: with `--road`, verify it exists (`entity_get`); if it does
+   not, drop the relation and report it (do not fail the CREATE).
+6. Validate the id against the regex. If OK, create:
 
 ```
 mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   entity_type: "REL",
   project_id: "<PROJ>",
-  component_id: "<if component hotfix>",
+  component_id: "<COMP, when --component or component hotfix>",
   force_id: "REL-<PROJ>-<VER>",            // or REL-<PROJ>-<COMP>-<VER>
   title: "REL-<PROJ>-<VER>: <description>",
   content: <markdown with description, scope, target_date, regression_gate:pending>,
   version: "<VER>",
   status: "planning",
   tags: ["status:planning", "type:<minor|major|patch|hotfix>"],
+  relations: [
+    { type:"part_of", target:"PRJ-<PROJ>" },
+    { type:"part_of", target:"<ROAD-id>" }  // only with --road
+  ],
   updated_by: "skill:release-manager"
 })
 ```
+
+A REL that already exists without its ROAD link gets it with
+`entity_update({ entity_id, expected_version, relations_add:[{ type:"part_of", target:"<ROAD-id>" }], change_summary:"Linked to <ROAD-id>", updated_by })`.
 
 ### STATUS — View the state of a release
 
@@ -183,21 +215,32 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
    populates `entity_changelog` whenever there is an active REL).
 5. Show blockers: ISSUEs with `relations_outbound: blocks → REL-<PROJ>-<VER>`.
 
-### ADD — Add ISSUE/component to a release
+### ADD — Add ISSUE/REQ/component to a release
 
-1. Read the REL.
-2. Verify the ISSUE exists and is in an appropriate status (`entity_get`).
-3. Add the `part_of` relation from ISSUE to REL:
+Arguments: `add <ISSUE-or-REQ-id>[,<id>...] --rel <REL-id> [--auto]`.
+
+1. Read the REL. Only a `planning` or `in-progress` REL accepts items; a
+   `released`/`closed` one is refused (report it; in `--auto` mode return
+   `gate_missing: rel-open`).
+2. Verify each ISSUE/REQ exists and is in an appropriate status (`entity_get`,
+   capture its `version`). Skip an item that already has `part_of` → this REL
+   (idempotent).
+3. Add the `part_of` relation from the item to the REL:
    ```
    mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
-     entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",
+     entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",   // or REQ-<PROJ>-<NN>
+     expected_version: <version from step 2>,
      relations_add: [{ type:"part_of", target:"REL-<PROJ>-<VER>" }],
      tags_add: ["REL-<PROJ>-<VER>"],
      change_summary: "Added to REL-<PROJ>-<VER>",
      updated_by: "skill:release-manager"
    })
    ```
-4. The server automatically records the entry in `entity_changelog`
+   On a REQ written without authority (Team/Enterprise) the update can come
+   back as a proposal: report it as pending approval, not linked.
+4. If the REL is still `planning`, move it to `in-progress` (work is now
+   attached): `entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, status:"in-progress", tags_add:["status:in-progress"], tags_remove:["status:planning"], change_summary:"Work attached", updated_by })`.
+5. The server automatically records the entry in `entity_changelog`
    associated to the REL.
 
 ### GATE-CHECK — Verify regression gates
@@ -206,7 +249,8 @@ For each included component:
 1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
 2. Verify the last run (in `metadata.execution_history` or read the latest
    associated RUN via `entity_related`).
-3. Per-component result: PASS / BLOCKED (list bugs) / PENDING.
+3. Per-component result: PASS / BLOCKED (list bugs) / PENDING / NONE (no REG
+   defined for the component: not blocking, but always reported).
 4. Global result: READY only if all gates are OK.
 
 ### CLOSE — Ship the release (status `released`)
@@ -221,14 +265,33 @@ Prerequisites:
 3. Pre-release CI gate green (see "Pre-release CI gate" above), unless
    `--force-ci-red` was explicitly requested and audited.
 
+Arguments: `close <REL-id> [--sha <commit>] [--force-ci-red] [--auto]`.
+
+Unmet prerequisite in `--auto` mode: do not ship. If the REL is `planning`,
+move it to `in-progress` (CAS, as in ADD step 4) and return
+`gate_missing: <regression|issues-open|ci>` with the details.
+
 Process:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", status:"released", tags_add:["status:released"], tags_remove:["status:<previous>"], change_summary:"Release shipped", updated_by })`. (REL allows direct status change via update because it is NOT inside a TXN.)
-2. **Freeze the changelog**: `entity_update` with `metadata.frozen: true`
-   (the server honors `frozen` on `entity_changelog` to block later edits).
-3. For each included ISSUE with status `done`/`closed`: verify it has a
+1. Ship, freeze and stamp the REL in ONE guarded write (read it first and pass
+   its `version`):
+   ```
+   mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+     entity_id: "REL-<PROJ>-<VER>",
+     expected_version: <version>,
+     status: "released",
+     tags_add: ["status:released", "shipped:<YYYY-MM-DD>"],
+     tags_remove: ["status:<previous>"],
+     metadata: { deployed_date: "<YYYY-MM-DD>", frozen: true, deployed_sha: "<commit, when --sha>" },
+     change_summary: "Release shipped",
+     updated_by: "skill:release-manager"
+   })
+   ```
+   REL allows a direct status change via update because it is NOT inside a
+   TXN. `frozen: true` freezes the changelog (the server honors `frozen` on
+   `entity_changelog` to block later edits). The date is today's date (UTC).
+2. For each included ISSUE with status `done`/`closed`: verify it has a
    regression-case TEST.
-4. Update ROAD if any item was completed: `entity_update` on the ROAD with top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one).
-5. Set `metadata.deployed_date` on the REL.
+3. Update ROAD if any item was completed: `entity_update` on the ROAD with `expected_version` and top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one). In `--auto` mode never change a ROAD status: report the candidate instead.
 
 ### RETIRE — Close the release line (status `closed`)
 
@@ -289,7 +352,7 @@ Never resolve a reference to write a release note. On
 ```
 ## Release shipped (released)
 - ID: REL-<PROJ>-<VER>
-- Ship date: <date>
+- Ship date: <date>  (tag shipped:<date>, metadata.deployed_date)
 - ISSUEs closed: N
 - Regression TESTs verified: N
 - ROADs updated: [list]
