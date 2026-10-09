@@ -185,6 +185,9 @@ CONFIGURATION
   /sync-claudemd          Regenerate CLAUDE.md from canonical template
   /lint-claudemd          Verify CLAUDE.md conforms to template
   /version                Show installed plugin version and capabilities
+  /k-notes [list]         Send feedback (suggestion, idea, question, bug,
+                          praise) to the Kvendra team after showing the
+                          exact note; list your notes and replies (Pro+)
   /user-help [topic]      This help
 ```
 
@@ -302,7 +305,7 @@ ENTITY TYPES (20)
   PRJ, CMP, IF, REQ, TEST, REG, ISSUE, REL, SLA, ROAD, GLO, STD, PAT, ADR,
   RUN, UX, DOC, TXN, ENV, COST
 
-KVENDRA TOOLS (hosted: 27 — self-hosted Platform: the first 14)
+KVENDRA TOOLS (hosted: 33 — self-hosted Platform: the first 14)
   entity_create        Create entity (auto-id)
   entity_update        Atomic update (change_summary required)
   entity_archive       Soft archive (reversible)
@@ -329,6 +332,8 @@ KVENDRA TOOLS (hosted: 27 — self-hosted Platform: the first 14)
   file_upload_init / file_complete     Upload to Workspace Files (hosted Pro+)
   file_get_url / file_list / file_delete  Download URL, registry, delete
   private_value_resolve  Resolve private-value keys (batch <= 50, hosted)
+  k_note_submit / k_note_list   Send a note to the Kvendra team / list your
+                       notes and replies (hosted Pro+, used by /k-notes)
 
 PRIVATE VALUES
   Private identifiers (account ids, local paths, profile ids, person

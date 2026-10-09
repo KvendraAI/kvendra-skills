@@ -8,7 +8,7 @@ installable through the native `/plugin` command.
 
 | Slot | Content |
 |---|---|
-| `plugins/kvendra-skills/skills/<name>/SKILL.md` | 27 skills: orchestrators (`new-feature`, `bug`, `incident-manager`, `release-manager`, `regression`), subagents (`planner`, `implementer`, `validator`, `tester`, `updater`, `analyzer`, …), doc + reporting (`manual-writer`, `doc-indexer`, `changelog`, `to-do`, `to-do-summary`, `user-help`), consultancy (`kvendra`, `requirements-analyst`, `interface-validator`), CLAUDE.md lifecycle (`onboard-project`, `sync-claudemd`, `lint-claudemd`) and environment (`env-check`, `version`, `deploy`). |
+| `plugins/kvendra-skills/skills/<name>/SKILL.md` | 28 skills: orchestrators (`new-feature`, `bug`, `incident-manager`, `release-manager`, `regression`), subagents (`planner`, `implementer`, `validator`, `tester`, `updater`, `analyzer`, …), doc + reporting (`manual-writer`, `doc-indexer`, `changelog`, `to-do`, `to-do-summary`, `user-help`), consultancy (`kvendra`, `requirements-analyst`, `interface-validator`), CLAUDE.md lifecycle (`onboard-project`, `sync-claudemd`, `lint-claudemd`), environment (`env-check`, `version`, `deploy`) and feedback to the Kvendra team (`k-notes`). |
 | `plugins/kvendra-skills/.claude-plugin/plugin.json` | Plugin manifest (`name`, `description`, `version`, author, repo). |
 | `.claude-plugin/marketplace.json` | Marketplace listing at the repo root — so a user can do `/plugin marketplace add KvendraAI/kvendra-skills` and pick up the plugin via its `./plugins/kvendra-skills` source path. |
 | `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra-cloud` HTTP MCP server (`https://api.kvendra.cloud/mcp`). `/plugin install` adds it to the user's `~/.claude.json` automatically. The server is named `kvendra-cloud` (not `kvendra`) so it does not collide with users who already have the local `kvendra` CLI MCP server registered — Claude Code resolves same-name servers by scope precedence and a Plugin server is eclipsed silently by any Local server with the same name. |
@@ -55,7 +55,7 @@ Claude Code (local)              api.kvendra.cloud/mcp (Lambda)
 The plugin does NOT bundle the Kvendra CLI Rust binary that handles
 local primitives (`kvendra.git`, `kvendra.github`, `kvendra.aws`, …) —
 those operate on your laptop's filesystem by construction and need to
-run locally. The KB tools that the 27 skills invoke are 100% cloud and
+run locally. The KB tools that the 28 skills invoke are 100% cloud and
 work with just this plugin + a Pro account.
 
 ## Tools exposed
@@ -82,6 +82,7 @@ All 26 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 | `file_upload_init` / `file_complete` | Upload a file to Workspace Files (short-lived presigned PUT, then size/sha256 verification). |
 | `file_get_url` | Mint a fresh 300 s download URL (never stored). |
 | `file_list` / `file_delete` | Page the file registry (no URLs) / delete a file. |
+| `k_note_submit` / `k_note_list` | Send a note (suggestion, question, bug, praise) to the Kvendra team / list your own notes and the replies (Pro+, used by `/k-notes`). |
 | `private_value_resolve` | Resolve up to 50 private-value keys (`cfg:resolve`). Entity reads never resolve: KB text keeps `{{cfg:<key>}}` references. |
 
 A self-hosted engine (Kvendra Platform) exposes the first 14 of these.

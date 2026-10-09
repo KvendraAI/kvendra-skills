@@ -26,7 +26,7 @@ In Claude Code:
 
 The `install` command:
 
-- Drops the 27 skills into `~/.claude/plugins/`.
+- Drops the 28 skills into `~/.claude/plugins/`.
 - Reads `.mcp.json` and adds the `kvendra-cloud` HTTP MCP server entry
   to `~/.claude.json`. The server is named `kvendra-cloud` (not
   `kvendra`) so it does not collide with users who already have a
@@ -64,7 +64,7 @@ Run any of the heavy-help skills to sanity-check the wiring:
   is connected and a real KB read works.
 - `/kvendra-skills:to-do` — fetches your open issues from the KB.
 
-The hosted server exposes 31 tools. If a call is refused because of your
+The hosted server exposes 33 tools. If a call is refused because of your
 plan, jump back to step 1 (see
 <https://app.kvendra.cloud/docs/troubleshooting/#forbidden-tier>).
 

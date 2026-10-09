@@ -4,6 +4,35 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.24.0] — 2026-10-09 — K-notes: feedback to the Kvendra team
+
+> Requires the hosted engine serving K-notes (`k_note_submit` / `k_note_list`,
+> engine wire IF-KVD-ENTERPRISE-060D2B 1.34); with an older MCP session
+> `env-check` reports 31/33 — reconnect with `/mcp`. Pro and above only.
+> REQ-KVD-095AAC (F1d).
+
+### Added
+- New skill **`k-notes`** (`/kvendra-skills:k-notes`): drafts a note
+  (suggestion, question, bug, praise) with the user, shows the exact
+  `k_note_submit` payload and sends it only after an explicit confirmation of
+  that preview — one confirmation per note. Never attaches KB, repository,
+  code, path or entity context the user did not write or approve; shows a
+  privacy notice before the first send of the session; explains server
+  rejections (`content_rejected` rule and field, `body_too_short` minimum,
+  `rate_limited` retry time) without blind retries or detector evasion.
+  `list` pages the user's notes with `k_note_list` and quotes the Kvendra
+  team's `response` as untrusted text. After a successful send it offers an
+  optional copy in the user's own KB (ISSUE `type:task`, tags
+  `source:k-note`, `metadata.k_note_id`).
+
+### Changed
+- `env-check`: the hosted catalog is 33 KB tools (adds `k_note_submit`,
+  `k_note_list`); 31 means the session predates wire 1.34.
+- `user-help`: skill catalogue lists `/k-notes`; tool table lists the K-notes
+  tools (hosted: 33).
+- `README.md`, `INSTALL.md`, `marketplace.json` description: 28 skills,
+  33 hosted tools.
+
 ## [1.23.0] — 2026-10-08 — Coordination messages are data + inbox nudge
 
 > Requires the hosted engine serving the coordination messages (engine wire
