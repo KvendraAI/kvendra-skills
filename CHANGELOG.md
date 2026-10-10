@@ -4,6 +4,47 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.25.0] — 2026-10-10 — Canonical statuses + every production deploy ends with a released REL
+
+> Requires the hosted engine with H3+H1 (REL-KVD-ENTERPRISE-0.36.0, live since
+> 2026-10-10): the top-level `status` given on `entity_create` inside a TXN is
+> the status the entity gets at `txn_activate`, and ISSUE / ROAD / REL have a
+> closed lifecycle. With an older engine the skills still work, but a draft
+> lands on its type's terminal status. ROAD-KVD-4CE1A9 (H1, H3, H7).
+
+### Changed
+- ISSUE / ROAD / REL writes use the top-level canonical `status`; the
+  `status:*` tag only mirrors it. Lifecycles: ISSUE open, in-progress,
+  blocked, done, closed, wontfix; ROAD proposed, active, done, superseded;
+  REL planning, in-progress, released, closed.
+- `to-do`: CREATE honours `--status` (a retrospective `done` no longer lands
+  `open`); UPDATE / CLOSE set the top-level status; an incident closes `done`.
+- `kvendra`: a ROAD item is created `proposed` (it landed `active`).
+- `new-feature` / `bug` (PHASE 5b): the ISSUE of finished, validated work is
+  born `done`; a blocked bug is `blocked`; `closed` stays for administrative
+  closes.
+- `release-manager`: a REL is born `planning`; CLOSE ships it as `released`
+  (the status `/version` reads); new RETIRE action sets `closed` when the line
+  is over; the CLOSE prerequisite accepts done / closed / wontfix ISSUEs.
+- `incident-manager`, `onboard-project`, `planner`, `regression`, `updater`,
+  `to-do-summary`: canonical values in creates and filters (REL reads fall
+  back to the tag for legacy rows).
+
+### Added
+- `release-manager --auto` for skill-to-skill calls (never asks; returns
+  `gate_missing`); CREATE takes `--component` / `--road` and reuses the open
+  REL of the component; ADD is idempotent and moves planning → in-progress;
+  CLOSE ships in one guarded write (status `released`, `shipped:<date>`,
+  `deployed_date` / `deployed_sha`).
+- `deploy`: REL precondition (find or create the open REL) and postcondition
+  (CLOSE on a production deploy; git tag `v<version>` when the broker declares
+  a tag primitive). A production deploy without a released REL never blocks:
+  WARNING "Deploy without REL" + an ISSUE tagged `release:missing`.
+  `--release-by` hands the REL to the calling pipeline.
+- `new-feature` / `bug` (PHASE 8): release tracking — attach the pipeline's
+  ISSUE / REQ to the component's REL and ship it when production was deployed.
+  "Production" = playbook `metadata.environment` `production` or undeclared.
+
 ## [1.24.0] — 2026-10-09 — K-notes: feedback to the Kvendra team
 
 > Requires the hosted engine serving K-notes (`k_note_submit` / `k_note_list`,
