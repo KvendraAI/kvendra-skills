@@ -500,3 +500,18 @@ export function skillsFromInstalled(json: string): { version: string | null; ins
 
 // Candidate names for the KB MCP server, as /mcp lists it; the first that answers is kept.
 export const KB_SERVER_CANDIDATES = ['plugin:kvendra-skills:kvendra-cloud', 'kvendra-cloud'] as const
+
+// Whether the slow figures (entities, ISSUEs, Files, releases) are due. A read that
+// failed is not "done": it is tried again on the next refresh, so a session that starts
+// before its MCP server is connected fills in as soon as the server answers.
+export function slowDue(a: {
+  now: number
+  lastOkAt: number | null
+  okFor: string | null | undefined
+  project: string | null
+  intervalMs: number
+}): boolean {
+  if (a.lastOkAt === null) return true
+  if (a.okFor !== a.project) return true
+  return a.now - a.lastOkAt >= a.intervalMs
+}

@@ -4,6 +4,16 @@ All notable changes to the `kvendra-companion` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-COMPANION-<VER>` entity in
 the Kvendra KB.
 
+## [0.1.1] — 2026-10-11 — The band fills in when the KB connects late
+
+### Fixed
+- When a session started before its Kvendra MCP server was connected, the
+  user name, entities, open ISSUEs and Files figures stayed empty for several
+  minutes (the first failed read was recorded as done). A failed read is now
+  tried again on the next refresh, and the band retries every 30 seconds, up
+  to 10 times, until every figure has been read once. Each slow figure is also
+  read on its own, so one failure no longer hides the others.
+
 ## [0.1.0] — 2026-10-11 — First release
 
 > Requires a Claude Code build with mods (enabled by default from 2.1.287).

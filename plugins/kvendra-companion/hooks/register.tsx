@@ -27,6 +27,7 @@ import {
   num,
   parsePluginVersion,
   skillsFromInstalled,
+  slowDue,
   KB_SERVER_CANDIDATES,
   payload,
   recordLine,
@@ -43,9 +44,11 @@ const usageAtom = atom({ plugin: 'kvendra-companion', key: 'usage' } as const, n
 const FAST_MS = 30_000
 const SLOW_MS = 5 * 60_000
 const MAX_FILE_PAGES = 10
+const MAX_RETRIES = 10
 
 let lastFast = 0
-let lastSlow = 0
+let isWhole = false
+let lastSlowOk: number | null = null
 let slowFor: string | null | undefined
 let userName: string | null = null
 let userNameFor: string | null = null
@@ -128,71 +131,95 @@ async function diskSkillsVersion($: EngineInterface): Promise<string | null> {
   }
 }
 
-// Workspace: read once per session. Name: read once per project, cached.
+// Workspace: read once per session. Name: read once per project, cached. A read that
+// fails is not cached, so it is tried again on the next refresh.
 async function readIdentity($: EngineInterface, project: string | null) {
   if (project !== null && userNameFor !== project) {
-    userNameFor = project
     try {
       const prj = await kb($, 'entity_get', { entity_id: `PRJ-${project}` })
       const actors = (prj.actors ?? {}) as Record<string, { display?: string; is_self?: boolean }>
       const me = Object.values(actors).find(a => a.is_self === true)
       userName = typeof me?.display === 'string' ? me.display : null
+      userNameFor = project
     } catch {
-      userName = null
+      // not cached: tried again on the next refresh
     }
   }
-  if (isWorkspaceRead) return
-  isWorkspaceRead = true
-  try {
-    const list = ((await kb($, 'workspace_list')).workspaces ?? []) as {
-      name?: string
-      role?: string
-      default?: boolean
-    }[]
-    const w = list.find(x => x.default === true) ?? (list.length === 1 ? list[0] : undefined)
-    workspace = w?.name !== undefined ? { name: w.name, role: w.role ?? '?' } : null
-  } catch {
-    workspace = null
+  if (!isWorkspaceRead) {
+    try {
+      const list = ((await kb($, 'workspace_list')).workspaces ?? []) as {
+        name?: string
+        role?: string
+        default?: boolean
+      }[]
+      const w = list.find(x => x.default === true) ?? (list.length === 1 ? list[0] : undefined)
+      workspace = w?.name !== undefined ? { name: w.name, role: w.role ?? '?' } : null
+      isWorkspaceRead = true
+    } catch {
+      // tried again on the next refresh
+    }
   }
 }
 
-async function refreshSlow($: EngineInterface, project: string | null) {
+// Each figure is read on its own, so one failure does not lose the others.
+// Resolves true only when every read worked; otherwise the whole group is due again.
+async function refreshSlow($: EngineInterface, project: string | null): Promise<boolean> {
   const next = { ...slow }
+  let ok = true
+
   if (project !== null) {
-    next.entities = num((await kb($, 'entity_query', { project_id: project, limit: 1 })).total)
-    next.openIssues = num(
-      (await kb($, 'entity_query', { project_id: project, entity_type: 'ISSUE', status: 'open', limit: 1 })).total,
-    )
+    try {
+      next.entities = num((await kb($, 'entity_query', { project_id: project, limit: 1 })).total)
+    } catch {
+      ok = false
+    }
+    try {
+      next.openIssues = num(
+        (await kb($, 'entity_query', { project_id: project, entity_type: 'ISSUE', status: 'open', limit: 1 })).total,
+      )
+    } catch {
+      ok = false
+    }
   }
 
-  let bytes = 0
-  let count = 0
-  let cursor: string | undefined
-  for (let i = 0; i < MAX_FILE_PAGES; i++) {
-    const page = await kb($, 'file_list', cursor ? { limit: 100, cursor } : { limit: 100 })
-    const files = (page.files ?? []) as { size_bytes?: number }[]
-    for (const f of files) bytes += f.size_bytes ?? 0
-    count += files.length
-    cursor = typeof page.next_cursor === 'string' ? page.next_cursor : undefined
-    if (cursor === undefined) break
+  try {
+    let bytes = 0
+    let count = 0
+    let cursor: string | undefined
+    for (let i = 0; i < MAX_FILE_PAGES; i++) {
+      const page = await kb($, 'file_list', cursor ? { limit: 100, cursor } : { limit: 100 })
+      const files = (page.files ?? []) as { size_bytes?: number }[]
+      for (const f of files) bytes += f.size_bytes ?? 0
+      count += files.length
+      cursor = typeof page.next_cursor === 'string' ? page.next_cursor : undefined
+      if (cursor === undefined) break
+    }
+    next.filesBytes = cursor === undefined ? bytes : null
+    next.filesCount = cursor === undefined ? count : null
+  } catch {
+    ok = false
   }
-  next.filesBytes = cursor === undefined ? bytes : null
-  next.filesCount = cursor === undefined ? count : null
 
   if (compareReleasesFor(project)) {
-    const rels = await kb($, 'entity_query', {
-      project_id: 'KVD',
-      component_id: 'SKILLS',
-      entity_type: 'REL',
-      status: 'released',
-      limit: 100,
-    })
-    const ids = ((rels.entities ?? []) as { entity_id?: string }[]).map(e => e.entity_id ?? '')
-    next.published = latestRelease(ids)
+    try {
+      const rels = await kb($, 'entity_query', {
+        project_id: 'KVD',
+        component_id: 'SKILLS',
+        entity_type: 'REL',
+        status: 'released',
+        limit: 100,
+      })
+      const ids = ((rels.entities ?? []) as { entity_id?: string }[]).map(e => e.entity_id ?? '')
+      next.published = latestRelease(ids)
+    } catch {
+      ok = false
+    }
   } else {
     next.published = null
   }
+
   slow = next
+  return ok
 }
 
 async function refresh($: EngineInterface) {
@@ -205,13 +232,10 @@ async function refresh($: EngineInterface) {
 
     await readIdentity($, project)
 
-    if (now - lastSlow >= SLOW_MS || lastSlow === 0 || slowFor !== project) {
-      lastSlow = now
-      slowFor = project
-      try {
-        await refreshSlow($, project)
-      } catch {
-        // keep the previous slow figures
+    if (slowDue({ now, lastOkAt: lastSlowOk, okFor: slowFor, project, intervalMs: SLOW_MS })) {
+      if (await refreshSlow($, project)) {
+        lastSlowOk = now
+        slowFor = project
       }
     }
 
@@ -248,8 +272,20 @@ async function refresh($: EngineInterface) {
     await update($, summary, () => next)
     await update($, failure, () => null)
     await refreshWindows($)
+    isWhole = lastSlowOk !== null && slowFor === project && isWorkspaceRead && (project === null || userNameFor === project)
   } catch (err) {
+    isWhole = false
     await update($, failure, () => (err instanceof Error ? err.message : 'unknown error'))
+  }
+}
+
+// A session can start before its MCP server is connected: try again every 30 s, a few
+// times, until every figure has been read once.
+async function retryUntilWhole($: EngineInterface, attempt: number) {
+  lastFast = 0
+  await refresh($)
+  if (!isWhole && attempt < MAX_RETRIES) {
+    $.clock.after(FAST_MS, () => void retryUntilWhole($, attempt + 1))
   }
 }
 
@@ -397,6 +433,7 @@ export const register: Register = on => {
     await seedCost($)
     await restoreUsage($)
     void refresh($)
+    $.clock.after(FAST_MS, () => void retryUntilWhole($, 1))
     return next(e)
   })
 

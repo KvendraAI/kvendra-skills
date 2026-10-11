@@ -4,6 +4,7 @@ import {
   READ_ONLY_TOOLS,
   assertReadOnly,
   MAX_LOG_BYTES,
+  slowDue,
   KB_SERVER_CANDIDATES,
   skillsFromInstalled,
   parsePluginVersion,
@@ -425,6 +426,25 @@ describe('kvendra-skills in installed_plugins.json', () => {
   })
   test('the KB server is tried by its plugin name first', async () => {
     expect(KB_SERVER_CANDIDATES[0]).toBe('plugin:kvendra-skills:kvendra-cloud')
+  })
+})
+
+describe('slow figures: a failed read is tried again', () => {
+  const base = { now: 1_000_000, intervalMs: 300_000, project: 'KVD' as string | null }
+  test('due at start, when nothing has worked yet', async () => {
+    expect(slowDue({ ...base, lastOkAt: null, okFor: undefined })).toBe(true)
+  })
+  test('a start with the MCP not ready: still due on the next refresh, not after 5 minutes', async () => {
+    // the first attempt failed, so nothing was recorded as done
+    expect(slowDue({ ...base, now: base.now + 31_000, lastOkAt: null, okFor: undefined })).toBe(true)
+  })
+  test('after a good read it waits for the interval', async () => {
+    expect(slowDue({ ...base, lastOkAt: base.now - 10_000, okFor: 'KVD' })).toBe(false)
+    expect(slowDue({ ...base, lastOkAt: base.now - 300_000, okFor: 'KVD' })).toBe(true)
+  })
+  test('a new project makes it due at once', async () => {
+    expect(slowDue({ ...base, project: 'OTHER', lastOkAt: base.now - 1000, okFor: 'KVD' })).toBe(true)
+    expect(slowDue({ ...base, project: 'KVD', lastOkAt: base.now - 1000, okFor: null })).toBe(true)
   })
 })
 
