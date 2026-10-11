@@ -4,6 +4,19 @@ All notable changes to the `kvendra-companion` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-COMPANION-<VER>` entity in
 the Kvendra KB.
 
+## [0.1.3] — 2026-10-11 — Team workspaces: steadier start, shorter line 1, fewer reads
+
+### Fixed
+- The band says "Kvendra: loading…" until its retries are used up (it showed
+  "unavailable" on the first failed read when the MCP server was not
+  connected yet).
+- Line 1 no longer repeats the role in a team workspace ("Acme · team/owner").
+- The user name is only read in your own KB, never in a team workspace.
+- Failed reads are retried individually and at most 10 times, then once every
+  5 minutes.
+- Failed reads are logged to the debug log (`claude --debug`): which figure and
+  the error text, never KB content.
+
 ## [0.1.2] — 2026-10-11 — The band draws itself after the first read
 
 ### Fixed

@@ -176,7 +176,10 @@ export function normalizeSummary(raw: unknown): Summary | null {
 export function bandLines(s: Summary): Line[] {
   const who: Line = []
   who.push({ text: s.project ?? 'no project' })
-  if (s.workspace != null) who.push({ text: `${s.workspace.name} (${s.workspace.role})` })
+  // The workspace role is shown only when it differs from the account role (shown below).
+  if (s.workspace != null) {
+    who.push({ text: s.workspace.role === s.role ? s.workspace.name : `${s.workspace.name} (${s.workspace.role})` })
+  }
   const tierRole = `${s.tier}/${s.role}`
   who.push({ text: s.userName === null ? tierRole : `${s.userName} (${tierRole})` })
 
@@ -501,19 +504,46 @@ export function skillsFromInstalled(json: string): { version: string | null; ins
 // Candidate names for the KB MCP server, as /mcp lists it; the first that answers is kept.
 export const KB_SERVER_CANDIDATES = ['plugin:kvendra-skills:kvendra-cloud', 'kvendra-cloud'] as const
 
-// Whether the slow figures (entities, ISSUEs, Files, releases) are due. A read that
-// failed is not "done": it is tried again on the next refresh, so a session that starts
-// before its MCP server is connected fills in as soon as the server answers.
-export function slowDue(a: {
+// The slow figures (entities, ISSUEs, Files, releases) are read in full at start, when the
+// project changes and every `intervalMs`. In between, only the ones that failed are read
+// again, a few times: a session that starts before its MCP server is connected fills in
+// as soon as the server answers, and a read that keeps failing is not repeated for ever
+// against a workspace.
+export type SlowField = 'entities' | 'openIssues' | 'files' | 'release'
+
+export function slowFieldsFor(project: string | null): SlowField[] {
+  const fields: SlowField[] = ['files']
+  if (project !== null) fields.push('entities', 'openIssues')
+  if (compareReleasesFor(project)) fields.push('release')
+  return fields
+}
+
+export function slowPlan(a: {
   now: number
-  lastOkAt: number | null
-  okFor: string | null | undefined
+  lastFullAt: number | null
+  slowFor: string | null | undefined
   project: string | null
+  pendingCount: number
+  failures: number
   intervalMs: number
-}): boolean {
-  if (a.lastOkAt === null) return true
-  if (a.okFor !== a.project) return true
-  return a.now - a.lastOkAt >= a.intervalMs
+  maxFailures: number
+}): 'full' | 'retry' | 'skip' {
+  if (a.lastFullAt === null || a.slowFor !== a.project) return 'full'
+  if (a.now - a.lastFullAt >= a.intervalMs) return 'full'
+  if (a.pendingCount > 0 && a.failures < a.maxFailures) return 'retry'
+  return 'skip'
+}
+
+// While the first reads can still be retried the band says "loading"; "unavailable" only
+// once the retries are used up.
+export function shouldShowFailure(failedRefreshes: number, maxRetries: number): boolean {
+  return failedRefreshes > maxRetries
+}
+
+// The user name comes from the project entity, a read of the KB's own content. It is only
+// made in the user's own KB (no workspace); in a team workspace it is left out.
+export function shouldReadUserName(a: { isWorkspaceRead: boolean; workspace: unknown; project: string | null }): boolean {
+  return a.isWorkspaceRead && a.workspace === null && a.project !== null
 }
 
 // What the band shows before it has data: a short "loading" line while the first read

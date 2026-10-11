@@ -5,7 +5,10 @@ import {
   assertReadOnly,
   MAX_LOG_BYTES,
   bandMode,
-  slowDue,
+  shouldReadUserName,
+  shouldShowFailure,
+  slowFieldsFor,
+  slowPlan,
   KB_SERVER_CANDIDATES,
   skillsFromInstalled,
   parsePluginVersion,
@@ -430,22 +433,67 @@ describe('kvendra-skills in installed_plugins.json', () => {
   })
 })
 
-describe('slow figures: a failed read is tried again', () => {
-  const base = { now: 1_000_000, intervalMs: 300_000, project: 'KVD' as string | null }
-  test('due at start, when nothing has worked yet', async () => {
-    expect(slowDue({ ...base, lastOkAt: null, okFor: undefined })).toBe(true)
+describe('slow figures: a failed read is tried again, a few times', () => {
+  const base = { now: 1_000_000, intervalMs: 300_000, maxFailures: 10, project: 'KVD' as string | null }
+  test('everything is read in full at start', async () => {
+    expect(slowPlan({ ...base, lastFullAt: null, slowFor: undefined, pendingCount: 4, failures: 0 })).toBe('full')
   })
-  test('a start with the MCP not ready: still due on the next refresh, not after 5 minutes', async () => {
-    // the first attempt failed, so nothing was recorded as done
-    expect(slowDue({ ...base, now: base.now + 31_000, lastOkAt: null, okFor: undefined })).toBe(true)
+  test('a start with the MCP not ready: only what failed is read again on the next refresh', async () => {
+    expect(slowPlan({ ...base, now: base.now + 31_000, lastFullAt: base.now, slowFor: 'KVD', pendingCount: 4, failures: 1 })).toBe('retry')
   })
-  test('after a good read it waits for the interval', async () => {
-    expect(slowDue({ ...base, lastOkAt: base.now - 10_000, okFor: 'KVD' })).toBe(false)
-    expect(slowDue({ ...base, lastOkAt: base.now - 300_000, okFor: 'KVD' })).toBe(true)
+  test('nothing pending: wait for the interval, then read in full', async () => {
+    expect(slowPlan({ ...base, lastFullAt: base.now - 10_000, slowFor: 'KVD', pendingCount: 0, failures: 0 })).toBe('skip')
+    expect(slowPlan({ ...base, lastFullAt: base.now - 300_000, slowFor: 'KVD', pendingCount: 0, failures: 0 })).toBe('full')
   })
-  test('a new project makes it due at once', async () => {
-    expect(slowDue({ ...base, project: 'OTHER', lastOkAt: base.now - 1000, okFor: 'KVD' })).toBe(true)
-    expect(slowDue({ ...base, project: 'KVD', lastOkAt: base.now - 1000, okFor: null })).toBe(true)
+  test('a read that keeps failing is not repeated every refresh: after the retries, only every interval', async () => {
+    expect(slowPlan({ ...base, lastFullAt: base.now - 10_000, slowFor: 'KVD', pendingCount: 1, failures: 10 })).toBe('skip')
+    expect(slowPlan({ ...base, lastFullAt: base.now - 300_000, slowFor: 'KVD', pendingCount: 1, failures: 10 })).toBe('full')
+  })
+  test('a new project is read in full at once', async () => {
+    expect(slowPlan({ ...base, project: 'OTHER', lastFullAt: base.now - 1000, slowFor: 'KVD', pendingCount: 0, failures: 0 })).toBe('full')
+    expect(slowPlan({ ...base, project: 'KVD', lastFullAt: base.now - 1000, slowFor: null, pendingCount: 0, failures: 0 })).toBe('full')
+  })
+  test('Files is a workspace figure: read with no project; entities and ISSUEs need one; releases only in KVD', async () => {
+    expect(slowFieldsFor(null)).toEqual(['files'])
+    expect(slowFieldsFor('ACME')).toEqual(['files', 'entities', 'openIssues'])
+    expect(slowFieldsFor('KVD')).toEqual(['files', 'entities', 'openIssues', 'release'])
+  })
+})
+
+describe('"loading" until the retries are used up', () => {
+  test('failures up to the retry limit still say loading; unavailable only after', async () => {
+    expect(shouldShowFailure(1, 10)).toBe(false)
+    expect(shouldShowFailure(10, 10)).toBe(false)
+    expect(shouldShowFailure(11, 10)).toBe(true)
+  })
+})
+
+describe('the user name is read only in the user own KB', () => {
+  test('no workspace (own KB) and a project: yes', async () => {
+    expect(shouldReadUserName({ isWorkspaceRead: true, workspace: null, project: 'KVD' })).toBe(true)
+  })
+  test('a team workspace: never (it would read the client KB content)', async () => {
+    expect(shouldReadUserName({ isWorkspaceRead: true, workspace: { name: 'Acme', role: 'owner' }, project: 'KVD' })).toBe(false)
+  })
+  test('workspace not read yet, or no project: no', async () => {
+    expect(shouldReadUserName({ isWorkspaceRead: false, workspace: null, project: 'KVD' })).toBe(false)
+    expect(shouldReadUserName({ isWorkspaceRead: true, workspace: null, project: null })).toBe(false)
+  })
+})
+
+describe('line 1 in a team workspace', () => {
+  const team = { project: null, userName: null, tier: 'team', role: 'owner', workspace: { name: 'Acme-Corp', role: 'owner' }, openTxns: 0, staleTxnHours: null, entities: null, openIssues: null, filesBytes: 2048, filesCount: 3, skills: null, at: 0 }
+  test('the role is not repeated when the workspace role equals the account role', async () => {
+    expect(text(bandLines(team))[0]).toBe('no project · Acme-Corp · team/owner')
+  })
+  test('with a project and no user name', async () => {
+    expect(text(bandLines({ ...team, project: 'KVD' }))[0]).toBe('KVD · Acme-Corp · team/owner')
+  })
+  test('a different workspace role is still shown', async () => {
+    expect(text(bandLines({ ...team, workspace: { name: 'Acme-Corp', role: 'admin' } }))[0]).toBe('no project · Acme-Corp (admin) · team/owner')
+  })
+  test('Files shows with no project', async () => {
+    expect(text(bandLines(team))[1]).toBe('TXN 0 · 3 files 2.0 KB')
   })
 })
 

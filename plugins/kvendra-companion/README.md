@@ -32,6 +32,7 @@ Or, with the marketplace already added: `/plugin install kvendra-companion@kvend
 ## What it reads and what it never does
 
 - It only calls read-only KB tools from a fixed list: `whoami`, `workspace_list`, `entity_query`, `entity_get`, `file_list`, `help`, `txn_check_interrupted`. It never writes to the KB, never calls the broker CLI and never resolves private values.
+- The user name comes from the project entity and is only read in your own KB, never in a team workspace.
 - Locally it reads: your `CLAUDE.md` files (walking up from the session folder, to find `project_id`), the plugin manifest of `kvendra-skills`, and the Claude Code usage figures the engine offers to mods.
 - Nothing is sent anywhere except those KB reads.
 - It refreshes TXNs and the skills version every 30 seconds and the rest every 5 minutes.

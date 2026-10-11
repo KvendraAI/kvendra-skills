@@ -28,7 +28,11 @@ import {
   num,
   parsePluginVersion,
   skillsFromInstalled,
-  slowDue,
+  shouldReadUserName,
+  shouldShowFailure,
+  slowFieldsFor,
+  slowPlan,
+  type SlowField,
   KB_SERVER_CANDIDATES,
   payload,
   recordLine,
@@ -49,8 +53,11 @@ const MAX_RETRIES = 10
 
 let lastFast = 0
 let isWhole = false
-let lastSlowOk: number | null = null
+let failedRefreshes = 0
+let lastFullAt: number | null = null
+let slowFailures = 0
 let slowFor: string | null | undefined
+let slowOk: Record<SlowField, boolean> = { entities: false, openIssues: false, files: false, release: false }
 let userName: string | null = null
 let userNameFor: string | null = null
 let workspace: Workspace | null = null
@@ -132,20 +139,9 @@ async function diskSkillsVersion($: EngineInterface): Promise<string | null> {
   }
 }
 
-// Workspace: read once per session. Name: read once per project, cached. A read that
-// fails is not cached, so it is tried again on the next refresh.
+// Workspace: read once per session. Name: read once per project, and only in the user's own
+// KB (see shouldReadUserName). A read that fails is not cached, so it is tried again.
 async function readIdentity($: EngineInterface, project: string | null) {
-  if (project !== null && userNameFor !== project) {
-    try {
-      const prj = await kb($, 'entity_get', { entity_id: `PRJ-${project}` })
-      const actors = (prj.actors ?? {}) as Record<string, { display?: string; is_self?: boolean }>
-      const me = Object.values(actors).find(a => a.is_self === true)
-      userName = typeof me?.display === 'string' ? me.display : null
-      userNameFor = project
-    } catch {
-      // not cached: tried again on the next refresh
-    }
-  }
   if (!isWorkspaceRead) {
     try {
       const list = ((await kb($, 'workspace_list')).workspaces ?? []) as {
@@ -160,48 +156,70 @@ async function readIdentity($: EngineInterface, project: string | null) {
       // tried again on the next refresh
     }
   }
+  if (shouldReadUserName({ isWorkspaceRead, workspace, project }) && userNameFor !== project) {
+    try {
+      const prj = await kb($, 'entity_get', { entity_id: `PRJ-${project}` })
+      const actors = (prj.actors ?? {}) as Record<string, { display?: string; is_self?: boolean }>
+      const me = Object.values(actors).find(a => a.is_self === true)
+      userName = typeof me?.display === 'string' ? me.display : null
+      userNameFor = project
+    } catch {
+      // not cached: tried again on the next refresh
+    }
+  }
 }
 
-// Each figure is read on its own, so one failure does not lose the others.
-// Resolves true only when every read worked; otherwise the whole group is due again.
-async function refreshSlow($: EngineInterface, project: string | null): Promise<boolean> {
+// Each figure is read on its own, so one failure does not lose the others. `force` reads
+// them all; otherwise only the ones not read yet. Resolves true when none is pending.
+async function refreshSlow($: EngineInterface, project: string | null, force: boolean): Promise<boolean> {
+  const fields = slowFieldsFor(project)
   const next = { ...slow }
-  let ok = true
+  const want = (f: SlowField) => fields.includes(f) && (force || !slowOk[f])
 
-  if (project !== null) {
+  if (want('entities')) {
     try {
       next.entities = num((await kb($, 'entity_query', { project_id: project, limit: 1 })).total)
-    } catch {
-      ok = false
+      slowOk.entities = true
+    } catch (err) {
+      slowOk.entities = false
+      debug($, 'entities', err)
     }
+  }
+  if (want('openIssues')) {
     try {
       next.openIssues = num(
         (await kb($, 'entity_query', { project_id: project, entity_type: 'ISSUE', status: 'open', limit: 1 })).total,
       )
-    } catch {
-      ok = false
+      slowOk.openIssues = true
+    } catch (err) {
+      slowOk.openIssues = false
+      debug($, 'openIssues', err)
     }
   }
-
-  try {
-    let bytes = 0
-    let count = 0
-    let cursor: string | undefined
-    for (let i = 0; i < MAX_FILE_PAGES; i++) {
-      const page = await kb($, 'file_list', cursor ? { limit: 100, cursor } : { limit: 100 })
-      const files = (page.files ?? []) as { size_bytes?: number }[]
-      for (const f of files) bytes += f.size_bytes ?? 0
-      count += files.length
-      cursor = typeof page.next_cursor === 'string' ? page.next_cursor : undefined
-      if (cursor === undefined) break
+  if (want('files')) {
+    try {
+      let bytes = 0
+      let count = 0
+      let cursor: string | undefined
+      for (let i = 0; i < MAX_FILE_PAGES; i++) {
+        const page = await kb($, 'file_list', cursor ? { limit: 100, cursor } : { limit: 100 })
+        const files = (page.files ?? []) as { size_bytes?: number }[]
+        for (const f of files) bytes += f.size_bytes ?? 0
+        count += files.length
+        cursor = typeof page.next_cursor === 'string' ? page.next_cursor : undefined
+        if (cursor === undefined) break
+      }
+      next.filesBytes = cursor === undefined ? bytes : null
+      next.filesCount = cursor === undefined ? count : null
+      slowOk.files = true
+    } catch (err) {
+      slowOk.files = false
+      debug($, 'files', err)
     }
-    next.filesBytes = cursor === undefined ? bytes : null
-    next.filesCount = cursor === undefined ? count : null
-  } catch {
-    ok = false
   }
-
-  if (compareReleasesFor(project)) {
+  if (!fields.includes('release')) {
+    next.published = null
+  } else if (want('release')) {
     try {
       const rels = await kb($, 'entity_query', {
         project_id: 'KVD',
@@ -212,15 +230,15 @@ async function refreshSlow($: EngineInterface, project: string | null): Promise<
       })
       const ids = ((rels.entities ?? []) as { entity_id?: string }[]).map(e => e.entity_id ?? '')
       next.published = latestRelease(ids)
-    } catch {
-      ok = false
+      slowOk.release = true
+    } catch (err) {
+      slowOk.release = false
+      debug($, 'release', err)
     }
-  } else {
-    next.published = null
   }
 
   slow = next
-  return ok
+  return fields.every(f => slowOk[f])
 }
 
 async function refresh($: EngineInterface) {
@@ -233,11 +251,18 @@ async function refresh($: EngineInterface) {
 
     await readIdentity($, project)
 
-    if (slowDue({ now, lastOkAt: lastSlowOk, okFor: slowFor, project, intervalMs: SLOW_MS })) {
-      if (await refreshSlow($, project)) {
-        lastSlowOk = now
-        slowFor = project
-      }
+    if (slowFor !== project) {
+      slowOk = { entities: false, openIssues: false, files: false, release: false }
+      slowFailures = 0
+    }
+    const pendingCount = slowFieldsFor(project).filter(f => !slowOk[f]).length
+    const plan = slowPlan({ now, lastFullAt, slowFor, project, pendingCount, failures: slowFailures, intervalMs: SLOW_MS, maxFailures: MAX_RETRIES })
+    if (plan !== 'skip') {
+      const wasNewProject = slowFor !== project
+      const ok = await refreshSlow($, project, plan === 'full')
+      if (plan === 'full' || wasNewProject) lastFullAt = now
+      slowFor = project
+      slowFailures = ok ? 0 : slowFailures + 1
     }
 
     const who = await kb($, 'whoami', { include_brief: true, max_events: 1 })
@@ -271,13 +296,22 @@ async function refresh($: EngineInterface) {
       at: now,
     }
     await update($, summary, () => next)
+    failedRefreshes = 0
     await update($, failure, () => null)
     await refreshWindows($)
     redraw($)
-    isWhole = lastSlowOk !== null && slowFor === project && isWorkspaceRead && (project === null || userNameFor === project)
+    isWhole =
+      slowFieldsFor(project).every(f => slowOk[f]) &&
+      isWorkspaceRead &&
+      (!shouldReadUserName({ isWorkspaceRead, workspace, project }) || userNameFor === project)
   } catch (err) {
     isWhole = false
-    await update($, failure, () => (err instanceof Error ? err.message : 'unknown error'))
+    failedRefreshes += 1
+    debug($, 'refresh', err)
+    // Until the retries are used up the band says "loading", not "unavailable".
+    if (shouldShowFailure(failedRefreshes, MAX_RETRIES)) {
+      await update($, failure, () => (err instanceof Error ? err.message : 'unknown error'))
+    }
     redraw($)
   }
 }
@@ -289,6 +323,16 @@ async function retryUntilWhole($: EngineInterface, attempt: number) {
   await refresh($)
   if (!isWhole && attempt < MAX_RETRIES) {
     $.clock.after(FAST_MS, () => void retryUntilWhole($, attempt + 1))
+  }
+}
+
+// A line in the debug log (claude --debug) naming the figure that failed and the error text:
+// never shown in the band and never any KB content.
+function debug($: EngineInterface, what: string, err: unknown) {
+  try {
+    $.ui.log(`kvendra-companion: ${what} read failed: ${err instanceof Error ? err.message.slice(0, 160) : 'unknown error'}`, { to: 'debug' })
+  } catch {
+    // only a diagnostic
   }
 }
 
