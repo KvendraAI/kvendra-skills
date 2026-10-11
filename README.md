@@ -13,6 +13,7 @@ installable through the native `/plugin` command.
 | `.claude-plugin/marketplace.json` | Marketplace listing at the repo root — so a user can do `/plugin marketplace add KvendraAI/kvendra-skills` and pick up the plugin via its `./plugins/kvendra-skills` source path. |
 | `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra-cloud` HTTP MCP server (`https://api.kvendra.cloud/mcp`). `/plugin install` adds it to the user's `~/.claude.json` automatically. The server is named `kvendra-cloud` (not `kvendra`) so it does not collide with users who already have the local `kvendra` CLI MCP server registered — Claude Code resolves same-name servers by scope precedence and a Plugin server is eclipsed silently by any Local server with the same name. |
 | `INSTALL.md` | Install guide: hosted (Kvendra Cloud) and a pointer to the self-hosted docs. |
+| `plugins/kvendra-companion/` | Optional second plugin: a read-only Claude Code mod that shows a band above the prompt (project, open TXNs, entities, open ISSUEs, Files usage, the `kvendra-skills` version, Claude Code consumption). See its [README](./plugins/kvendra-companion/README.md). |
 
 ## Install
 
@@ -20,6 +21,17 @@ installable through the native `/plugin` command.
 /plugin marketplace add KvendraAI/kvendra-skills
 /plugin install kvendra-skills@kvendra-marketplace
 ```
+
+Optional, the companion band (read-only; mods are an early-access Claude
+Code feature, 2.1.287 or later):
+
+```text
+/plugin install kvendra-companion@kvendra-marketplace
+```
+
+It only reads the KB, never writes, and shows no money. Its local per-turn
+usage log is off unless `~/.claude/kvendra-companion/ENABLED` exists. Details
+in [plugins/kvendra-companion/README.md](./plugins/kvendra-companion/README.md).
 
 See [INSTALL.md](./INSTALL.md) for the full flow, including how the
 OAuth/PKCE sign-in against `auth.kvendra.cloud` works.

@@ -19,6 +19,21 @@
       },
       "homepage": "https://github.com/KvendraAI/kvendra-skills",
       "repository": "https://github.com/KvendraAI/kvendra-skills"
+    },
+    {
+      "name": "kvendra-companion",
+      "source": "./plugins/kvendra-companion",
+      "description": "Read-only Claude Code mod for Kvendra users: a band above the prompt with the project, open TXNs, entities, open ISSUEs, Files usage, the kvendra-skills version and Claude Code consumption. Needs kvendra-skills and a Claude Code build with mods (early access, 2.1.287 or later).",
+      "version": "0.1.0",
+      "category": "knowledge-management",
+      "tags": ["kvendra", "claude-code-mod", "status-band"],
+      "license": "MIT",
+      "author": {
+        "name": "Kvendra",
+        "url": "https://kvendra.com"
+      },
+      "homepage": "https://github.com/KvendraAI/kvendra-skills/tree/main/plugins/kvendra-companion",
+      "repository": "https://github.com/KvendraAI/kvendra-skills"
     }
   ]
 }
