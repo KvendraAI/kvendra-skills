@@ -10,6 +10,7 @@ import {
   costStep,
   assertReadOnly,
   bandLines,
+  bandMode,
   classifyTool,
   emptyCounts,
   findProjectId,
@@ -272,10 +273,12 @@ async function refresh($: EngineInterface) {
     await update($, summary, () => next)
     await update($, failure, () => null)
     await refreshWindows($)
+    redraw($)
     isWhole = lastSlowOk !== null && slowFor === project && isWorkspaceRead && (project === null || userNameFor === project)
   } catch (err) {
     isWhole = false
     await update($, failure, () => (err instanceof Error ? err.message : 'unknown error'))
+    redraw($)
   }
 }
 
@@ -286,6 +289,16 @@ async function retryUntilWhole($: EngineInterface, attempt: number) {
   await refresh($)
   if (!isWhole && attempt < MAX_RETRIES) {
     $.clock.after(FAST_MS, () => void retryUntilWhole($, attempt + 1))
+  }
+}
+
+// Ask the engine to draw the band again after a write; the state subscription alone did
+// not repaint a band that had nothing to draw yet.
+function redraw($: EngineInterface) {
+  try {
+    $.ui.invalidate('ui.render')
+  } catch {
+    // a redraw is only a nicety
   }
 }
 
@@ -365,6 +378,8 @@ async function logTurn($: EngineInterface, e: TurnCompleteInput) {
         sevenDay: w.sevenDay,
       }),
     )
+
+    redraw($)
 
     // Line 3 above runs for everyone; only the file below needs the machine to opt in.
     if (!isEnabled) return
@@ -458,13 +473,14 @@ export const register: Register = on => {
     const s = normalizeSummary(await read($, summary))
     const f = await read($, failure)
     const u = normalizeUsage(await read($, usageAtom))
-    if (e.props.hasSurvey || (s === null && f === null)) return next(e)
+    if (e.props.hasSurvey) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
+    const mode = bandMode(s, f)
     if (s === null) {
       return (
         <Box>
-          <Text dimColor>Kvendra: unavailable</Text>
+          <Text dimColor>{mode === 'unavailable' ? 'Kvendra: unavailable' : 'Kvendra: loading…'}</Text>
         </Box>
       )
     }

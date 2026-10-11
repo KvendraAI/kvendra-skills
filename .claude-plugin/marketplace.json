@@ -24,7 +24,7 @@
       "name": "kvendra-companion",
       "source": "./plugins/kvendra-companion",
       "description": "Read-only Claude Code mod for Kvendra users: a band above the prompt with the project, open TXNs, entities, open ISSUEs, Files usage, the kvendra-skills version and Claude Code consumption. Needs kvendra-skills and a Claude Code build with mods (early access, 2.1.287 or later).",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "category": "knowledge-management",
       "tags": ["kvendra", "claude-code-mod", "status-band"],
       "license": "MIT",

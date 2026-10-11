@@ -4,6 +4,14 @@ All notable changes to the `kvendra-companion` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-COMPANION-<VER>` entity in
 the Kvendra KB.
 
+## [0.1.2] — 2026-10-11 — The band draws itself after the first read
+
+### Fixed
+- The band is now drawn as soon as the first read finishes, without the user
+  interacting with the prompt. While there is no data it shows a dim
+  "Kvendra: loading…" line (or "Kvendra: unavailable" if a read failed), and
+  it asks the engine to redraw after each state update.
+
 ## [0.1.1] — 2026-10-11 — The band fills in when the KB connects late
 
 ### Fixed

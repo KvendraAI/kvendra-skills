@@ -515,3 +515,11 @@ export function slowDue(a: {
   if (a.okFor !== a.project) return true
   return a.now - a.lastOkAt >= a.intervalMs
 }
+
+// What the band shows before it has data: a short "loading" line while the first read
+// is under way (it keeps the band in the tree, so the first write redraws it), the
+// "unavailable" line once a read failed, and the band itself once there is data.
+export function bandMode(summary: Summary | null, failure: string | null): 'loading' | 'unavailable' | 'band' {
+  if (summary !== null) return 'band'
+  return failure !== null ? 'unavailable' : 'loading'
+}

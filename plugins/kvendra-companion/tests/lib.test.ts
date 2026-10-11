@@ -4,6 +4,7 @@ import {
   READ_ONLY_TOOLS,
   assertReadOnly,
   MAX_LOG_BYTES,
+  bandMode,
   slowDue,
   KB_SERVER_CANDIDATES,
   skillsFromInstalled,
@@ -445,6 +446,20 @@ describe('slow figures: a failed read is tried again', () => {
   test('a new project makes it due at once', async () => {
     expect(slowDue({ ...base, project: 'OTHER', lastOkAt: base.now - 1000, okFor: 'KVD' })).toBe(true)
     expect(slowDue({ ...base, project: 'KVD', lastOkAt: base.now - 1000, okFor: null })).toBe(true)
+  })
+})
+
+describe('what the band shows before it has data', () => {
+  const sum = { project: 'KVD', userName: null, tier: 'pro', role: 'owner', workspace: null, openTxns: 0, staleTxnHours: null, entities: null, openIssues: null, filesBytes: null, filesCount: null, skills: null, at: 0 }
+  test('nothing read yet: a loading line, so the band is in the tree for the first write', async () => {
+    expect(bandMode(null, null)).toBe('loading')
+  })
+  test('a read failed and there is nothing to show: unavailable', async () => {
+    expect(bandMode(null, 'boom')).toBe('unavailable')
+  })
+  test('data wins, even if the last refresh failed (the band marks it outdated)', async () => {
+    expect(bandMode(sum, null)).toBe('band')
+    expect(bandMode(sum, 'boom')).toBe('band')
   })
 })
 
