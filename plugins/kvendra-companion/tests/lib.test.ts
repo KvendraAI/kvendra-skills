@@ -4,6 +4,8 @@ import {
   READ_ONLY_TOOLS,
   assertReadOnly,
   MAX_LOG_BYTES,
+  emptyFilesAcc,
+  foldFilesPage,
   bandMode,
   shouldReadUserName,
   shouldShowFailure,
@@ -492,6 +494,10 @@ describe('line 1 in a team workspace', () => {
   test('a different workspace role is still shown', async () => {
     expect(text(bandLines({ ...team, workspace: { name: 'Acme-Corp', role: 'admin' } }))[0]).toBe('no project · Acme-Corp (admin) · team/owner')
   })
+  test('an empty Files shows "0 files 0 B": empty is not hidden, only a failed read is', async () => {
+    expect(text(bandLines({ ...team, filesBytes: 0, filesCount: 0 }))[1]).toBe('TXN 0 · 0 files 0 B')
+    expect(text(bandLines({ ...team, filesBytes: null, filesCount: null }))[1]).toBe('TXN 0')
+  })
   test('Files shows with no project', async () => {
     expect(text(bandLines(team))[1]).toBe('TXN 0 · 3 files 2.0 KB')
   })
@@ -508,6 +514,53 @@ describe('what the band shows before it has data', () => {
   test('data wins, even if the last refresh failed (the band marks it outdated)', async () => {
     expect(bandMode(sum, null)).toBe('band')
     expect(bandMode(sum, 'boom')).toBe('band')
+  })
+})
+
+describe('Workspace Files, page by page', () => {
+  const walk = (pages: Record<string, unknown>[], max = 5) => {
+    let acc = emptyFilesAcc()
+    for (const p of pages) {
+      acc = foldFilesPage(acc, p, max)
+      if (acc.done) break
+    }
+    return acc
+  }
+  const file = (n: number) => ({ file_id: 'F', name: 'x', size_bytes: n, status: 'ready' })
+  test('a team-shaped answer: extra fields are ignored, a null cursor ends the walk', async () => {
+    const acc = walk([{ files: [file(100), file(200)], next_cursor: null, inbox_pending: 2, workspace_id: 'w', role: 'owner' }])
+    expect(acc).toMatchObject({ bytes: 300, count: 2, done: true, isPartial: false, error: null })
+  })
+  test('an empty list is a real 0, not a failure', async () => {
+    expect(walk([{ files: [], next_cursor: null }])).toMatchObject({ bytes: 0, count: 0, done: true, isPartial: false, error: null })
+  })
+  test('an empty-string cursor ends the walk too', async () => {
+    expect(walk([{ files: [file(1)], next_cursor: '' }])).toMatchObject({ count: 1, done: true, isPartial: false })
+  })
+  test('several pages are added up', async () => {
+    const acc = walk([{ files: [file(10)], next_cursor: 'a' }, { files: [file(20)], next_cursor: 'b' }, { files: [file(30)], next_cursor: null }])
+    expect(acc).toMatchObject({ bytes: 60, count: 3, pages: 3, done: true, isPartial: false })
+  })
+  test('more pages than the cap: a lower bound, not nothing', async () => {
+    const pages = [1, 2, 3, 4, 5, 6, 7].map(i => ({ files: [file(1), file(1)], next_cursor: `c${i}` }))
+    expect(walk(pages, 5)).toMatchObject({ count: 10, pages: 5, done: true, isPartial: true })
+  })
+  test('a cursor that never changes cannot loop for ever', async () => {
+    const pages = [1, 2, 3, 4, 5, 6].map(() => ({ files: [file(1)], next_cursor: 'same' }))
+    const acc = walk(pages, 50)
+    expect(acc.done).toBe(true)
+    expect(acc.pages).toBeLessThanOrEqual(2)
+    expect(acc.isPartial).toBe(true)
+  })
+  test('a page with no list is an explicit error', async () => {
+    expect(walk([{ items: [file(1)], next_cursor: null }]).error).toBe('file_list answered with no "files" list')
+  })
+  test('a file with no size still counts', async () => {
+    expect(walk([{ files: [{ file_id: 'F' }, file(5)], next_cursor: null }])).toMatchObject({ count: 2, bytes: 5 })
+  })
+  test('the band shows "500+ files" for a partial total and keeps the size out', async () => {
+    const sum = { project: null, userName: null, tier: 'team', role: 'owner', workspace: null, openTxns: 0, staleTxnHours: null, entities: null, openIssues: null, filesBytes: 9_000_000, filesCount: 500, filesPartial: true, skills: null, at: 0 }
+    expect(bandLines(sum)[1]?.map(s => s.text).join(' · ')).toBe('TXN 0 · 500+ files')
   })
 })
 

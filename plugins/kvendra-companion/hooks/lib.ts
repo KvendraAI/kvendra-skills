@@ -139,7 +139,10 @@ function dataLine(s: Summary, isShort: boolean): Line {
   if (s.entities !== null) data.push({ text: isShort ? `${s.entities} ent` : `${s.entities} entities` })
   if (s.openIssues !== null) data.push({ text: isShort ? `${s.openIssues} ISS` : `${s.openIssues} open ISSUEs` })
   if (s.filesBytes !== null) {
-    data.push({ text: isShort ? `${s.filesCount ?? 0} f ${formatBytes(s.filesBytes)}` : `${s.filesCount ?? 0} files ${formatBytes(s.filesBytes)}` })
+    // A workspace with more files than the pages read shows "500+ files" (a lower bound), not nothing.
+    const n = s.filesCount ?? 0
+    const text = s.filesPartial === true ? (isShort ? `${n}+ f` : `${n}+ files`) : isShort ? `${n} f ${formatBytes(s.filesBytes)}` : `${n} files ${formatBytes(s.filesBytes)}`
+    data.push({ text })
   }
   const sk = skillsSegment(s.skills)
   if (sk !== null) data.push(sk)
@@ -168,6 +171,7 @@ export function normalizeSummary(raw: unknown): Summary | null {
     openIssues: r.openIssues ?? null,
     filesBytes: r.filesBytes ?? null,
     filesCount: r.filesCount ?? null,
+    filesPartial: r.filesPartial === true,
     skills: r.skills ?? null,
     at: r.at ?? 0,
   }
@@ -552,4 +556,42 @@ export function shouldReadUserName(a: { isWorkspaceRead: boolean; workspace: unk
 export function bandMode(summary: Summary | null, failure: string | null): 'loading' | 'unavailable' | 'band' {
   if (summary !== null) return 'band'
   return failure !== null ? 'unavailable' : 'loading'
+}
+
+// ---- reading Workspace Files page by page ----------------------------------
+
+export type FilesAcc = {
+  bytes: number
+  count: number
+  pages: number
+  lastCursor: string | null
+  done: boolean
+  isPartial: boolean
+  error: string | null
+}
+
+export function emptyFilesAcc(): FilesAcc {
+  return { bytes: 0, count: 0, pages: 0, lastCursor: null, done: false, isPartial: false, error: null }
+}
+
+// Folds one answer of file_list into the running total. Extra fields in the answer are
+// ignored; a missing list is an explicit error; an empty-string or null cursor ends the
+// walk; a cursor that repeats, an empty page, or `maxPages` pages end it as a lower bound.
+export function foldFilesPage(acc: FilesAcc, page: Record<string, unknown>, maxPages: number): FilesAcc {
+  const list = page.files
+  if (!Array.isArray(list)) return { ...acc, done: true, error: 'file_list answered with no "files" list' }
+  let bytes = acc.bytes
+  let count = acc.count
+  for (const f of list) {
+    count += 1
+    const n = (f as { size_bytes?: unknown } | null)?.size_bytes
+    if (typeof n === 'number') bytes += n
+  }
+  const pages = acc.pages + 1
+  const cursor = typeof page.next_cursor === 'string' && page.next_cursor !== '' ? page.next_cursor : null
+  if (cursor === null) return { ...acc, bytes, count, pages, done: true }
+  if (cursor === acc.lastCursor || list.length === 0 || pages >= maxPages) {
+    return { ...acc, bytes, count, pages, lastCursor: cursor, done: true, isPartial: true }
+  }
+  return { ...acc, bytes, count, pages, lastCursor: cursor }
 }

@@ -17,7 +17,9 @@ import {
   latestRelease,
   newTokens,
   compareReleasesFor,
+  emptyFilesAcc,
   emptyUsage,
+  foldFilesPage,
   enabledFlagPath,
   normalizeUsage,
   rebuildUsage,
@@ -48,7 +50,7 @@ const usageAtom = atom({ plugin: 'kvendra-companion', key: 'usage' } as const, n
 
 const FAST_MS = 30_000
 const SLOW_MS = 5 * 60_000
-const MAX_FILE_PAGES = 10
+const MAX_FILE_PAGES = 5
 const MAX_RETRIES = 10
 
 let lastFast = 0
@@ -67,11 +69,12 @@ const counts: Record<string, Counts> = {}
 let writeQueue: Promise<void> = Promise.resolve()
 let isWorkspaceRead = false
 // Slow figures kept between slow refreshes.
-let slow: Pick<Summary, 'entities' | 'openIssues' | 'filesBytes' | 'filesCount'> & { published: string | null } = {
+let slow: Pick<Summary, 'entities' | 'openIssues' | 'filesBytes' | 'filesCount' | 'filesPartial'> & { published: string | null } = {
   entities: null,
   openIssues: null,
   filesBytes: null,
   filesCount: null,
+  filesPartial: false,
   published: null,
 }
 
@@ -198,19 +201,15 @@ async function refreshSlow($: EngineInterface, project: string | null, force: bo
   }
   if (want('files')) {
     try {
-      let bytes = 0
-      let count = 0
-      let cursor: string | undefined
-      for (let i = 0; i < MAX_FILE_PAGES; i++) {
-        const page = await kb($, 'file_list', cursor ? { limit: 100, cursor } : { limit: 100 })
-        const files = (page.files ?? []) as { size_bytes?: number }[]
-        for (const f of files) bytes += f.size_bytes ?? 0
-        count += files.length
-        cursor = typeof page.next_cursor === 'string' ? page.next_cursor : undefined
-        if (cursor === undefined) break
+      let acc = emptyFilesAcc()
+      while (!acc.done) {
+        const page = await kb($, 'file_list', acc.lastCursor ? { limit: 100, cursor: acc.lastCursor } : { limit: 100 })
+        acc = foldFilesPage(acc, page, MAX_FILE_PAGES)
       }
-      next.filesBytes = cursor === undefined ? bytes : null
-      next.filesCount = cursor === undefined ? count : null
+      if (acc.error !== null) throw new Error(acc.error)
+      next.filesBytes = acc.bytes
+      next.filesCount = acc.count
+      next.filesPartial = acc.isPartial
       slowOk.files = true
     } catch (err) {
       slowOk.files = false
@@ -292,6 +291,7 @@ async function refresh($: EngineInterface) {
       openIssues: slow.openIssues,
       filesBytes: slow.filesBytes,
       filesCount: slow.filesCount,
+      filesPartial: slow.filesPartial,
       skills,
       at: now,
     }

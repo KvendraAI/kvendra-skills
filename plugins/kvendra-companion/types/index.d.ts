@@ -26,6 +26,7 @@ export type Summary = {
   openIssues: number | null
   filesBytes: number | null
   filesCount: number | null
+  filesPartial?: boolean
   skills: Skills | null
   at: number
 }

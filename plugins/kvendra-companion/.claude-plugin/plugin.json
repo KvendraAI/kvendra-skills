@@ -1,6 +1,6 @@
 {
   "name": "kvendra-companion",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Read-only band above the prompt for Kvendra users: project, user, open TXNs, entities, open ISSUEs, Files usage, kvendra-skills version, and Claude Code consumption (context, 5h and 7d windows, last and average tokens per turn).",
   "types": "./types/index.d.ts",
   "author": {

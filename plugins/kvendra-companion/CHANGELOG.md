@@ -4,6 +4,15 @@ All notable changes to the `kvendra-companion` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-COMPANION-<VER>` entity in
 the Kvendra KB.
 
+## [0.1.4] — 2026-10-11 — Files shows in large workspaces
+
+### Fixed
+- Workspace Files no longer disappears from the band in a workspace with more
+  files than the pages read; it shows a lower bound such as "500+ files".
+- The file list is read in at most 5 pages (was 10) every 5 minutes, a
+  repeating cursor or an empty page ends the walk, and an answer without a
+  "files" list is logged to the debug log (`claude --debug`).
+
 ## [0.1.3] — 2026-10-11 — Team workspaces: steadier start, shorter line 1, fewer reads
 
 ### Fixed
