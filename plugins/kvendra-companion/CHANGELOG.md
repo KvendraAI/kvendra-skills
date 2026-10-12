@@ -4,6 +4,25 @@ All notable changes to the `kvendra-companion` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-COMPANION-<VER>` entity in
 the Kvendra KB.
 
+## [0.2.0] — 2026-10-12 — Files in one read, a legend command and a skill
+
+> Needs the hosted engine with `file_list({summary: true})`
+> (REL-KVD-ENTERPRISE-0.41.0, live). With an older server the Files figure is
+> left out of the band.
+
+### Changed
+- Workspace Files is one read, `file_list({summary: true})`, that returns the
+  count and total size. No paging and no "N+ files": a large Team workspace
+  shows the real figure, for example "78 files 533.8 MB".
+- The loading line reads `Kvendra: loading… · legend: /kvendra-legend`.
+
+### Added
+- `/kvendra-legend` command: prints what each element of the band means.
+- `kvendra-band` skill: Claude explains the band when you ask, from the same
+  legend as the command.
+- Line 3 ends with `/kvendra-legend` only when it fits in 80 columns; it never
+  replaces a figure.
+
 ## [0.1.4] — 2026-10-11 — Files shows in large workspaces
 
 ### Fixed

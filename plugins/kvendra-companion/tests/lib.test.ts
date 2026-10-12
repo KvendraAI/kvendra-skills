@@ -4,8 +4,13 @@ import {
   READ_ONLY_TOOLS,
   assertReadOnly,
   MAX_LOG_BYTES,
-  emptyFilesAcc,
-  foldFilesPage,
+  parseFilesSummary,
+  legendText,
+  skillMarkdown,
+  SKILL_DESCRIPTION,
+  LOADING_TEXT,
+  LABELS,
+  HINT,
   bandMode,
   shouldReadUserName,
   shouldShowFailure,
@@ -239,7 +244,7 @@ describe('line 3: consumption', () => {
   }
   const t3 = (l: ReturnType<typeof usageLine>) => (l ?? []).map(s => s.text).join(' · ')
   test('the owner-approved shape', async () => {
-    expect(t3(usageLine(u, now))).toBe('ctx 37% · 5h 23% ↻3h · 7d 41% · last 18.2k new · avg 21.0k new')
+    expect(t3(usageLine(u, now))).toBe('ctx 37% · 5h 23% ↻3h · 7d 41% · last 18.2k new · avg 21.0k new · /kvendra-legend')
   })
   test('no yellow while everything is below its limit', async () => {
     expect((usageLine(u, now) ?? []).some(s => s.warn === true)).toBe(false)
@@ -249,10 +254,10 @@ describe('line 3: consumption', () => {
     expect(l.filter(s => s.warn === true).map(s => s.text.split(' ')[0])).toEqual(['ctx', '5h'])
   })
   test('no subscription windows (API key): they are left out', async () => {
-    expect(t3(usageLine({ ...u, fiveHour: null, sevenDay: null }, now))).toBe('ctx 37% · last 18.2k new · avg 21.0k new')
+    expect(t3(usageLine({ ...u, fiveHour: null, sevenDay: null }, now))).toBe('ctx 37% · last 18.2k new · avg 21.0k new · /kvendra-legend')
   })
   test('before the first turn: only what is known; nothing known: no line', async () => {
-    expect(t3(usageLine({ ...u, lastTokens: null, turns: 0, totalTokens: 0 }, now))).toBe('ctx 37% · 5h 23% ↻3h · 7d 41%')
+    expect(t3(usageLine({ ...u, lastTokens: null, turns: 0, totalTokens: 0 }, now))).toBe('ctx 37% · 5h 23% ↻3h · 7d 41% · /kvendra-legend')
     expect(usageLine({ v: 2, ctxPercent: null, fiveHour: null, sevenDay: null, lastTokens: null, turns: 0, totalTokens: 0 }, now)).toBe(null)
     expect(usageLine(null, now)).toBe(null)
   })
@@ -517,50 +522,85 @@ describe('what the band shows before it has data', () => {
   })
 })
 
-describe('Workspace Files, page by page', () => {
-  const walk = (pages: Record<string, unknown>[], max = 5) => {
-    let acc = emptyFilesAcc()
-    for (const p of pages) {
-      acc = foldFilesPage(acc, p, max)
-      if (acc.done) break
-    }
-    return acc
-  }
-  const file = (n: number) => ({ file_id: 'F', name: 'x', size_bytes: n, status: 'ready' })
-  test('a team-shaped answer: extra fields are ignored, a null cursor ends the walk', async () => {
-    const acc = walk([{ files: [file(100), file(200)], next_cursor: null, inbox_pending: 2, workspace_id: 'w', role: 'owner' }])
-    expect(acc).toMatchObject({ bytes: 300, count: 2, done: true, isPartial: false, error: null })
+describe('Workspace Files, one call', () => {
+  test('the summary answer: extra fields are ignored', async () => {
+    expect(parseFilesSummary({ count: 12, bytes: 3400, quota_used_bytes: 9000, quota_bytes: null, inbox_pending: 1 })).toEqual({ count: 12, bytes: 3400 })
   })
-  test('an empty list is a real 0, not a failure', async () => {
-    expect(walk([{ files: [], next_cursor: null }])).toMatchObject({ bytes: 0, count: 0, done: true, isPartial: false, error: null })
+  test('a real 0 is not a failure', async () => {
+    expect(parseFilesSummary({ count: 0, bytes: 0 })).toEqual({ count: 0, bytes: 0 })
   })
-  test('an empty-string cursor ends the walk too', async () => {
-    expect(walk([{ files: [file(1)], next_cursor: '' }])).toMatchObject({ count: 1, done: true, isPartial: false })
+  test('an old server that ignores summary (a list, no totals) is not a number', async () => {
+    expect(parseFilesSummary({ files: [], next_cursor: null })).toBeNull()
   })
-  test('several pages are added up', async () => {
-    const acc = walk([{ files: [file(10)], next_cursor: 'a' }, { files: [file(20)], next_cursor: 'b' }, { files: [file(30)], next_cursor: null }])
-    expect(acc).toMatchObject({ bytes: 60, count: 3, pages: 3, done: true, isPartial: false })
+  test('null, negative or text totals are refused', async () => {
+    expect(parseFilesSummary({ count: null, bytes: 5 })).toBeNull()
+    expect(parseFilesSummary({ count: 1, bytes: -1 })).toBeNull()
+    expect(parseFilesSummary({ count: '1', bytes: 5 })).toBeNull()
   })
-  test('more pages than the cap: a lower bound, not nothing', async () => {
-    const pages = [1, 2, 3, 4, 5, 6, 7].map(i => ({ files: [file(1), file(1)], next_cursor: `c${i}` }))
-    expect(walk(pages, 5)).toMatchObject({ count: 10, pages: 5, done: true, isPartial: true })
-  })
-  test('a cursor that never changes cannot loop for ever', async () => {
-    const pages = [1, 2, 3, 4, 5, 6].map(() => ({ files: [file(1)], next_cursor: 'same' }))
-    const acc = walk(pages, 50)
-    expect(acc.done).toBe(true)
-    expect(acc.pages).toBeLessThanOrEqual(2)
-    expect(acc.isPartial).toBe(true)
-  })
-  test('a page with no list is an explicit error', async () => {
-    expect(walk([{ items: [file(1)], next_cursor: null }]).error).toBe('file_list answered with no "files" list')
-  })
-  test('a file with no size still counts', async () => {
-    expect(walk([{ files: [{ file_id: 'F' }, file(5)], next_cursor: null }])).toMatchObject({ count: 2, bytes: 5 })
-  })
-  test('the band shows "500+ files" for a partial total and keeps the size out', async () => {
-    const sum = { project: null, userName: null, tier: 'team', role: 'owner', workspace: null, openTxns: 0, staleTxnHours: null, entities: null, openIssues: null, filesBytes: 9_000_000, filesCount: 500, filesPartial: true, skills: null, at: 0 }
-    expect(bandLines(sum)[1]?.map(s => s.text).join(' · ')).toBe('TXN 0 · 500+ files')
+  test('the band shows the count and the size', async () => {
+    const sum = { project: null, userName: null, tier: 'team', role: 'owner', workspace: null, openTxns: 0, staleTxnHours: null, entities: null, openIssues: null, filesBytes: 9_000_000, filesCount: 500, skills: null, at: 0 }
+    expect(bandLines(sum)[1]?.map(s => s.text).join(' · ')).toBe('TXN 0 · 500 files 8.6 MB')
   })
 })
 
+describe('the legend', () => {
+  const usage = { ...emptyUsage(), ctxPercent: 12, fiveHour: { pct: 30, resetsAt: null }, sevenDay: { pct: 40, resetsAt: null }, lastTokens: 1500, turns: 2, totalTokens: 4000 }
+  test('every label the band draws is explained', async () => {
+    const sum = { project: 'KVD', userName: null, tier: 'pro', role: 'owner', workspace: null, openTxns: 1, staleTxnHours: null, entities: 5, openIssues: 2, filesBytes: 10, filesCount: 1, skills: { loaded: '1.0.0', disk: '1.0.0', published: null }, at: 0 }
+    const drawn = [...(bandLines(sum)[1] ?? []), ...(usageLine(usage, 0) ?? [])].map(s => s.text).join(' | ')
+    const text = legendText()
+    for (const l of Object.values(LABELS)) {
+      expect(drawn).toContain(l.long)
+      expect(text).toContain(l.means)
+    }
+  })
+  test('it names its own command', async () => {
+    expect(legendText()).toContain('/kvendra-legend')
+  })
+})
+
+describe('the /kvendra-legend hint on line 3', () => {
+  const usage = { ...emptyUsage(), ctxPercent: 12, fiveHour: { pct: 30, resetsAt: null }, sevenDay: { pct: 40, resetsAt: null }, lastTokens: 1500, turns: 2, totalTokens: 4000 }
+  test('it is written out (not a bare "?") when there is room', async () => {
+    const line = usageLine(usage, 0)
+    expect(line?.[line.length - 1]?.text).toBe('/kvendra-legend')
+    expect(HINT).toBe('/kvendra-legend')
+  })
+  test('with no room, nothing is shown: every figure stays and no "?" appears', async () => {
+    const full = { ...usage, fiveHour: { pct: 16, resetsAt: new Date(4 * 3_600_000).toISOString() }, sevenDay: { pct: 20, resetsAt: new Date(44 * 3_600_000).toISOString() }, lastTokens: 12_700, turns: 3, totalTokens: 33_000 }
+    const texts = (usageLine(full, 0) ?? []).map(s => s.text)
+    expect(texts.some(s => s.includes('legend') || s === '?')).toBe(false)
+    expect(texts.length).toBe(5)
+  })
+  test('it never pushes the line past the width, nor replaces a figure', async () => {
+    for (const w of [0, 5, 50, 100]) {
+      const u = { ...usage, fiveHour: { pct: 99, resetsAt: new Date(Date.now() + 3 * 3_600_000 + w * 60_000).toISOString() }, sevenDay: { pct: 88, resetsAt: new Date(Date.now() + 90 * 3_600_000).toISOString() }, lastTokens: 123_456_789, totalTokens: 987_654_321 * 2 }
+      const line = usageLine(u, Date.now())
+      expect(line !== null && lineWidth(line) <= 80).toBe(true)
+      expect((line ?? []).filter(s => s.text !== HINT).length).toBeGreaterThanOrEqual(3)
+    }
+  })
+  test('no usage, no hint', async () => {
+    expect(usageLine(null, 0)).toBeNull()
+  })
+})
+
+describe('the loading line', () => {
+  test('it names the legend command', async () => {
+    expect(LOADING_TEXT).toBe('Kvendra: loading… · legend: /kvendra-legend')
+  })
+})
+
+describe('the kvendra-band skill', () => {
+  test('its body is the legend: every label the band draws is explained in it', async () => {
+    const md = skillMarkdown()
+    for (const l of Object.values(LABELS)) expect(md).toContain(l.means)
+    expect(md).toContain(legendText())
+  })
+  test('front matter: the name, and a short description (it costs context in every session)', async () => {
+    const md = skillMarkdown()
+    expect(md.startsWith('---\nname: kvendra-band\ndescription: ')).toBe(true)
+    expect(md).toContain(SKILL_DESCRIPTION)
+    expect(SKILL_DESCRIPTION.length).toBeLessThanOrEqual(160)
+  })
+})

@@ -17,9 +17,11 @@ import {
   latestRelease,
   newTokens,
   compareReleasesFor,
-  emptyFilesAcc,
   emptyUsage,
-  foldFilesPage,
+  parseFilesSummary,
+  legendText,
+  LEGEND_COMMAND,
+  LOADING_TEXT,
   enabledFlagPath,
   normalizeUsage,
   rebuildUsage,
@@ -50,7 +52,6 @@ const usageAtom = atom({ plugin: 'kvendra-companion', key: 'usage' } as const, n
 
 const FAST_MS = 30_000
 const SLOW_MS = 5 * 60_000
-const MAX_FILE_PAGES = 5
 const MAX_RETRIES = 10
 
 let lastFast = 0
@@ -69,12 +70,11 @@ const counts: Record<string, Counts> = {}
 let writeQueue: Promise<void> = Promise.resolve()
 let isWorkspaceRead = false
 // Slow figures kept between slow refreshes.
-let slow: Pick<Summary, 'entities' | 'openIssues' | 'filesBytes' | 'filesCount' | 'filesPartial'> & { published: string | null } = {
+let slow: Pick<Summary, 'entities' | 'openIssues' | 'filesBytes' | 'filesCount'> & { published: string | null } = {
   entities: null,
   openIssues: null,
   filesBytes: null,
   filesCount: null,
-  filesPartial: false,
   published: null,
 }
 
@@ -201,15 +201,11 @@ async function refreshSlow($: EngineInterface, project: string | null, force: bo
   }
   if (want('files')) {
     try {
-      let acc = emptyFilesAcc()
-      while (!acc.done) {
-        const page = await kb($, 'file_list', acc.lastCursor ? { limit: 100, cursor: acc.lastCursor } : { limit: 100 })
-        acc = foldFilesPage(acc, page, MAX_FILE_PAGES)
-      }
-      if (acc.error !== null) throw new Error(acc.error)
-      next.filesBytes = acc.bytes
-      next.filesCount = acc.count
-      next.filesPartial = acc.isPartial
+      // One call, no paging: the server adds up the files (limit and cursor are refused with summary).
+      const sum = parseFilesSummary(await kb($, 'file_list', { summary: true }))
+      if (sum === null) throw new Error('file_list({summary:true}) answered with no count and bytes')
+      next.filesBytes = sum.bytes
+      next.filesCount = sum.count
       slowOk.files = true
     } catch (err) {
       slowOk.files = false
@@ -291,7 +287,6 @@ async function refresh($: EngineInterface) {
       openIssues: slow.openIssues,
       filesBytes: slow.filesBytes,
       filesCount: slow.filesCount,
-      filesPartial: slow.filesPartial,
       skills,
       at: now,
     }
@@ -485,7 +480,10 @@ async function captureLoaded($: EngineInterface) {
 }
 
 export const register: Register = on => {
+  on('command.run', { command: 'kvendra-legend' }, async () => ({ text: legendText() }))
+
   on('session.start', async ($, e, next) => {
+    await $.command.register({ name: LEGEND_COMMAND, description: 'What each element of the Kvendra band means' })
     // An earlier version pinned a status line; the host keeps it across reloads until cleared.
     $.ui.status(undefined)
     await captureLoaded($)
@@ -524,7 +522,7 @@ export const register: Register = on => {
     if (s === null) {
       return (
         <Box>
-          <Text dimColor>{mode === 'unavailable' ? 'Kvendra: unavailable' : 'Kvendra: loading…'}</Text>
+          <Text dimColor>{mode === 'unavailable' ? 'Kvendra: unavailable' : LOADING_TEXT}</Text>
         </Box>
       )
     }

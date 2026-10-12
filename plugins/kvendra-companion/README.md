@@ -14,6 +14,8 @@ ctx 34% · 5h 18% ↻4h · 7d 21% ↻44h · last 1.8k new · avg 10.3k new
 
 No money is ever shown.
 
+Run `/kvendra-legend` to print what each element of the band means. Line 3 ends with `/kvendra-legend` when it fits in 80 columns. You can also ask Claude what an element means: the `kvendra-band` skill answers from the same legend.
+
 ## Requirements
 
 - A Claude Code build with mods, enabled by default in the terminal from 2.1.287. Mods are an **early-access** Claude Code feature: their API can change between releases, and a future build may need a new version of this plugin.
@@ -35,6 +37,7 @@ Or, with the marketplace already added: `/plugin install kvendra-companion@kvend
 - The user name comes from the project entity and is only read in your own KB, never in a team workspace.
 - Locally it reads: your `CLAUDE.md` files (walking up from the session folder, to find `project_id`), the plugin manifest of `kvendra-skills`, and the Claude Code usage figures the engine offers to mods.
 - Nothing is sent anywhere except those KB reads.
+- Workspace Files is one read that returns only the file count and total size (`file_list` with `summary: true`). On a Kvendra server without that option the Files figure is left out.
 - It refreshes TXNs and the skills version every 30 seconds and the rest every 5 minutes.
 - The comparison with published `kvendra-skills` releases is only made in the Kvendra project itself.
 

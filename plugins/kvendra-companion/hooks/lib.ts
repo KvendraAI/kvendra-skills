@@ -107,12 +107,12 @@ export type Line = Seg[]
 export function skillsSegment(s: Skills | null): Seg | null {
   if (s === null || s.disk === null) return null
   if (s.loaded !== null && s.loaded !== s.disk) {
-    return { text: `skills ${s.loaded} → ${s.disk} · restart`, warn: true }
+    return { text: `${LABELS.skills.long} ${s.loaded} → ${s.disk} · restart`, warn: true }
   }
   if (s.published !== null && cmpSemver(s.published, s.disk) > 0) {
-    return { text: `skills ${s.disk} (${s.published} published)` }
+    return { text: `${LABELS.skills.long} ${s.disk} (${s.published} published)` }
   }
-  return { text: `skills ${s.disk} ✓` }
+  return { text: `${LABELS.skills.long} ${s.disk} ✓` }
 }
 
 // An in-progress TXN older than two hours is read as orphaned.
@@ -129,20 +129,39 @@ export function staleHours(startedAt: readonly (string | number | undefined)[], 
 
 export const BAND_WIDTH = 80
 
+// One table feeds the band and the legend, so the two cannot drift apart.
+export const LABELS = {
+  txn: { long: 'TXN', short: 'TXN', means: 'open transactions in this project; "orphan Nh" = one open for 2 h or more' },
+  entities: { long: 'entities', short: 'ent', means: 'entities in the knowledge base' },
+  issues: { long: 'open ISSUEs', short: 'ISS', means: 'ISSUEs not closed in this project' },
+  files: { long: 'files', short: 'f', means: 'files in Workspace Files and their total size' },
+  skills: { long: 'skills', short: 'skills', means: 'kvendra-skills version; "✓" up to date, "→ … · restart" = restart the session' },
+  ctx: { long: 'ctx', short: 'ctx', means: 'context window used' },
+  five: { long: '5h', short: '5h', means: 'account usage in the 5-hour window; ↻ = time until it resets' },
+  seven: { long: '7d', short: '7d', means: 'account usage in the 7-day window; ↻ = time until it resets' },
+  last: { long: 'last', short: 'last', means: 'tokens the last turn added ("new": input + output + cache written; cache only read is left out)' },
+  avg: { long: 'avg', short: 'avg', means: 'average of "new" tokens per turn in this session' },
+} as const
+
+export const LEGEND_COMMAND = 'kvendra-legend'
+
+// Written out at the end of line 3, only when it fits: it never costs another figure.
+export const HINT = `/${LEGEND_COMMAND}`
+
+export const LOADING_TEXT = `Kvendra: loading… · legend: ${HINT}`
+
 function dataLine(s: Summary, isShort: boolean): Line {
   const data: Line = []
   data.push(
     s.staleTxnHours === null
-      ? { text: `TXN ${s.openTxns}` }
-      : { text: `TXN ${s.openTxns} · orphan ${s.staleTxnHours}h`, warn: true },
+      ? { text: `${LABELS.txn.long} ${s.openTxns}` }
+      : { text: `${LABELS.txn.long} ${s.openTxns} · orphan ${s.staleTxnHours}h`, warn: true },
   )
-  if (s.entities !== null) data.push({ text: isShort ? `${s.entities} ent` : `${s.entities} entities` })
-  if (s.openIssues !== null) data.push({ text: isShort ? `${s.openIssues} ISS` : `${s.openIssues} open ISSUEs` })
+  if (s.entities !== null) data.push({ text: `${s.entities} ${isShort ? LABELS.entities.short : LABELS.entities.long}` })
+  if (s.openIssues !== null) data.push({ text: `${s.openIssues} ${isShort ? LABELS.issues.short : LABELS.issues.long}` })
   if (s.filesBytes !== null) {
-    // A workspace with more files than the pages read shows "500+ files" (a lower bound), not nothing.
     const n = s.filesCount ?? 0
-    const text = s.filesPartial === true ? (isShort ? `${n}+ f` : `${n}+ files`) : isShort ? `${n} f ${formatBytes(s.filesBytes)}` : `${n} files ${formatBytes(s.filesBytes)}`
-    data.push({ text })
+    data.push({ text: `${n} ${isShort ? LABELS.files.short : LABELS.files.long} ${formatBytes(s.filesBytes)}` })
   }
   const sk = skillsSegment(s.skills)
   if (sk !== null) data.push(sk)
@@ -171,7 +190,6 @@ export function normalizeSummary(raw: unknown): Summary | null {
     openIssues: r.openIssues ?? null,
     filesBytes: r.filesBytes ?? null,
     filesCount: r.filesCount ?? null,
-    filesPartial: r.filesPartial === true,
     skills: r.skills ?? null,
     at: r.at ?? 0,
   }
@@ -352,24 +370,29 @@ export function usageLine(u: Usage | null, now: number): Line | null {
   const build = (withReset: boolean, withAvg: boolean): Line => {
     const line: Line = []
     if (u.ctxPercent !== null) {
-      const text = `ctx ${Math.round(u.ctxPercent)}%`
+      const text = `${LABELS.ctx.long} ${Math.round(u.ctxPercent)}%`
       line.push(u.ctxPercent >= CTX_WARN ? { text, warn: true } : { text })
     }
-    const five = windowSeg('5h', u.fiveHour, now, withReset)
+    const five = windowSeg(LABELS.five.long, u.fiveHour, now, withReset)
     if (five !== null) line.push(five)
-    const seven = windowSeg('7d', u.sevenDay, now, withReset)
+    const seven = windowSeg(LABELS.seven.long, u.sevenDay, now, withReset)
     if (seven !== null) line.push(seven)
     if (u.lastTokens !== null) {
-      line.push({ text: `last ${formatTokens(u.lastTokens)} new` })
+      line.push({ text: `${LABELS.last.long} ${formatTokens(u.lastTokens)} new` })
     }
-    if (withAvg && u.turns > 0) line.push({ text: `avg ${formatTokens(u.totalTokens / u.turns)} new` })
+    if (withAvg && u.turns > 0) line.push({ text: `${LABELS.avg.long} ${formatTokens(u.totalTokens / u.turns)} new` })
     return line
   }
   for (const [r, a] of [[true, true], [false, true], [false, false]] as const) {
     const line = build(r, a)
-    if (lineWidth(line) <= BAND_WIDTH) return line.length === 0 ? null : line
+    if (lineWidth(line) <= BAND_WIDTH) return withHint(line)
   }
-  return build(false, false)
+  return withHint(build(false, false))
+}
+
+function withHint(line: Line): Line | null {
+  if (line.length === 0) return null
+  return lineWidth(line) + 3 + HINT.length <= BAND_WIDTH ? [...line, { text: HINT }] : line
 }
 
 // Bump when the meaning of a stored figure changes: a state of another version is
@@ -558,40 +581,54 @@ export function bandMode(summary: Summary | null, failure: string | null): 'load
   return failure !== null ? 'unavailable' : 'loading'
 }
 
-// ---- reading Workspace Files page by page ----------------------------------
+// ---- Workspace Files: one call --------------------------------------------
 
-export type FilesAcc = {
-  bytes: number
-  count: number
-  pages: number
-  lastCursor: string | null
-  done: boolean
-  isPartial: boolean
-  error: string | null
+export type FilesSummary = { count: number; bytes: number }
+
+// The answer of file_list({summary:true}): { count, bytes, quota_used_bytes, quota_bytes }.
+// Extra or null fields are ignored; count and bytes must be non-negative numbers, else
+// null (an old server that ignores `summary` answers with a "files" list instead).
+export function parseFilesSummary(page: Record<string, unknown>): FilesSummary | null {
+  const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
+  return ok(page.count) && ok(page.bytes) ? { count: page.count, bytes: page.bytes } : null
 }
 
-export function emptyFilesAcc(): FilesAcc {
-  return { bytes: 0, count: 0, pages: 0, lastCursor: null, done: false, isPartial: false, error: null }
+// ---- /kvendra-legend ----------------------------------------------------------
+
+// What each element of the band means, built from the same labels the band draws.
+export function legendText(): string {
+  const row = (k: keyof typeof LABELS) => `  ${LABELS[k].long}${LABELS[k].short !== LABELS[k].long ? ` (${LABELS[k].short})` : ''} - ${LABELS[k].means}`
+  return [
+    'Kvendra band',
+    '',
+    'Line 1: project · workspace (role, if it differs from yours) · user (tier/role)',
+    'Line 2: what is in your Kvendra knowledge base',
+    row('txn'),
+    row('entities'),
+    row('issues'),
+    row('files'),
+    row('skills'),
+    '',
+    'Line 3: your consumption',
+    row('ctx'),
+    row('five'),
+    row('seven'),
+    row('last'),
+    row('avg'),
+    `  ${HINT} - prints this legend; it is written at the end of line 3 when there is room`,
+    '',
+    'Yellow = needs attention (orphan TXN, restart, context or window near its limit).',
+    '"outdated" = the last refresh failed; the figures shown are the last good ones.',
+    'Short labels replace long ones when the line would not fit in 80 columns.',
+  ].join('\n')
 }
 
-// Folds one answer of file_list into the running total. Extra fields in the answer are
-// ignored; a missing list is an explicit error; an empty-string or null cursor ends the
-// walk; a cursor that repeats, an empty page, or `maxPages` pages end it as a lower bound.
-export function foldFilesPage(acc: FilesAcc, page: Record<string, unknown>, maxPages: number): FilesAcc {
-  const list = page.files
-  if (!Array.isArray(list)) return { ...acc, done: true, error: 'file_list answered with no "files" list' }
-  let bytes = acc.bytes
-  let count = acc.count
-  for (const f of list) {
-    count += 1
-    const n = (f as { size_bytes?: unknown } | null)?.size_bytes
-    if (typeof n === 'number') bytes += n
-  }
-  const pages = acc.pages + 1
-  const cursor = typeof page.next_cursor === 'string' && page.next_cursor !== '' ? page.next_cursor : null
-  if (cursor === null) return { ...acc, bytes, count, pages, done: true }
-  if (cursor === acc.lastCursor || list.length === 0 || pages >= maxPages) {
-    return { ...acc, bytes, count, pages, lastCursor: cursor, done: true, isPartial: true }
-  }
-  return { ...acc, bytes, count, pages, lastCursor: cursor }
+// ---- the kvendra-band skill -----------------------------------------------------
+
+// Short on purpose: the description is what the skill costs in every session's context.
+export const SKILL_DESCRIPTION = 'Explains the Kvendra band above the prompt (TXN, ctx, 5h, 7d, new tokens, files, skills) when the user asks what it means.'
+
+// skills/kvendra-band/SKILL.md: the legend, from the same table as /kvendra-legend.
+export function skillMarkdown(): string {
+  return `---\nname: kvendra-band\ndescription: ${SKILL_DESCRIPTION}\n---\n\nThe user asks what an element of the Kvendra band means. Answer from this legend, briefly:\n\n${legendText()}\n`
 }
