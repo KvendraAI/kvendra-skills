@@ -24,5 +24,5 @@ Project entity: `PRJ-KVD`. Load via bootstrap protocol.
 <!-- /KVENDRA:PROJECT -->
 
 ## Particularidades
-- Repo del componente **`CMP-KVD-SKILLS`** (plugin Claude Code, Apache-2.0): las skills y los STD de orquestación (pipeline-autonomy, broker-policy, CLAUDE.md template) que consume este mismo entorno. Conocimiento canónico en el KB. No duplicar aquí (anti-bitácora).
+- Repo del componente **`CMP-KVD-SKILLS`** (plugin Claude Code, MIT): las skills y los STD de orquestación (pipeline-autonomy, broker-policy, CLAUDE.md template) que consume este mismo entorno. Conocimiento canónico en el KB. No duplicar aquí (anti-bitácora).
 - El template canónico de esta CLAUDE.md es `STD-KVD-27B6A0`; se regenera con `sync-claudemd` y se valida con `lint-claudemd`.
