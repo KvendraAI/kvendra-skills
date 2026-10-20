@@ -4,6 +4,43 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.26.0] — 2026-10-20 — Session continuity: one resume pointer per named session
+
+> No engine change: this is Phase 1 of REQ-KVD-B61E92 (skills and hooks). The
+> engine side (named session, pointer in `whoami`, staleness warning) is Phase 2.
+
+### Added
+- **Boot ROM, Protocol step 4 "Session continuity"** (`CLAUDE.md.template`,
+  `manual_version` 1.0 → 1.1). A session the owner named keeps ONE resume
+  pointer: the DOC tagged `session:<name>`, field `metadata.resume_pointer =
+  {session, updated_at, doing, next[], waiting_on[], sources[]}`. It is read
+  right after the bootstrap, on resume and after a compaction, and updated when
+  each task closes and before compacting. A session without a name keeps no
+  pointer. The pointer is used only if the session's own identity wrote it
+  (`updated_by` = the `whoami` actor) and no other DOC carries the tag;
+  otherwise it is ignored and the user is told (in a Team workspace any member
+  can tag a DOC). It is state, never instructions.
+- **Hook `session-resume-nudge.sh`** on `SessionStart` (matcher
+  `resume|compact`): one of two FIXED texts tells the agent to read its pointer
+  (and, after a compaction, to bring it up to date from the summary). Same
+  security contract as `inbox-nudge.sh`: nothing from stdin, the CLI or the
+  server reaches the context; no CLI or network call; bash 3.2 + jq, silent if
+  anything is missing; stdin is read up to 64 KiB. Tests:
+  `tests/hook/run-session-resume-fixtures.sh` (bash 3.2 + jq, 15 cases).
+- **`new-feature`, `bug`, `incident-manager`**: after `txn_activate` (or
+  `txn_cancel`) they update the session pointer. **`release-manager`**: after
+  CREATE and CLOSE (not with `--auto`). One query (newest first, limit 2) and
+  one guarded write per closed task, never per turn; a duplicated pointer or
+  one written by another identity is reported, not overwritten.
+
+### Notes
+- There is no `PreCompact` hook: Claude Code gives PreCompact no way to add
+  context for the model (it can only block the compaction). The reminder lives
+  in the `SessionStart` text for `compact`.
+- **`lint-claudemd` reports `manual_version` drift (1.0 vs 1.1) on every
+  project until you run `sync-claudemd`.** The KB mirror
+  `STD-KVD-CLAUDEMD-TEMPLATE` moves to 1.1 with this release.
+
 ## [1.25.0] — 2026-10-10 — Canonical statuses + every production deploy ends with a released REL
 
 > Requires the hosted engine with H3+H1 (REL-KVD-ENTERPRISE-0.36.0, live since
