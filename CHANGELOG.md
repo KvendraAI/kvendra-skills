@@ -4,6 +4,52 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.27.0] — 2026-10-28 — The pipeline contract: ISSUEs the roadmap engine can drive
+
+> No engine change. This release writes down what an ISSUE must carry for the
+> roadmap pipeline engine to offer it to a runtime, checks it in CI, and makes
+> the skills that create pipeline work emit it.
+
+### Added
+- **`PIPELINE-CONTRACT.md`**: the contract an ISSUE must satisfy for the
+  pipeline engine to drive it. Required: relation `part_of` → its ROAD (the
+  engine lists a ROAD's tasks by filtering `relations_inbound` on `part_of`, so
+  `derives_from` leaves the task invisible), tag `pipeline:ready`, exactly one
+  `priority:` tag (`critical|high|medium|low`), and status `open` or
+  `in-progress`. Optional: `metadata.pipeline.depends_on` (ISSUE ids),
+  `metadata.pipeline.scope` (drives the lease key) and `metadata.pipeline.repo`.
+  It also records which skills emit the contract: `planner` always, `to-do`
+  conditionally, `new-feature` not yet (it emits `part_of` but not
+  `pipeline:ready`).
+- **`tests/pipeline-contract/`**: a bash checker (`run.sh`) with fixtures that
+  validates example ISSUEs against the contract (valid cases, missing
+  `part_of`, `derives_from` instead of `part_of`, missing `pipeline:ready`, a
+  `depends_on` that is not an ISSUE id, and the `planner` / `to-do` examples,
+  including a standalone `to-do` task that must not carry the contract). It runs
+  in CI as a step of the `hook-tests` workflow.
+- **`hook-tests` workflow**: runs the suites under `tests/hook/` (hook,
+  inbox, local-variable and session-resume fixtures, plus the differential
+  run) that existed but no CI executed, on every pull request and on pushes to
+  `main`, with no `paths:` filter so it can be a required check. It fails if
+  `jq` is missing instead of letting suites skip themselves green.
+
+### Changed
+- **`planner`**: emits **one ISSUE per implementation-plan step** instead of a
+  single one, each carrying the contract (`part_of` the ROAD,
+  `pipeline:ready`, `type:task`, a `priority:`, `metadata.pipeline.scope`, and
+  `metadata.pipeline.depends_on` with the previous phase's ids). Phases are
+  created in order so each one's server-issued ids fill the next one's
+  `depends_on`. `frontend_deploy_independent` is now an explicit
+  `depends_on`: `no` puts the backend ISSUE's id in the frontend ISSUE's
+  `depends_on`; `yes` leaves it empty and both run in parallel.
+- **`to-do`**: emits the contract (`part_of` the ROAD, `pipeline:ready`,
+  `metadata.pipeline.scope` / `depends_on`) **only** when the request names a
+  ROAD or explicitly asks for the pipeline. A standalone task still carries no
+  `pipeline:ready`: it is work for a person, which is the right default.
+- **`CONTRIBUTING.md`**: a skill that creates ISSUEs meant for the pipeline
+  must comply with `PIPELINE-CONTRACT.md` and add its fixture to
+  `tests/pipeline-contract/fixtures/`.
+
 ## [1.26.0] — 2026-10-20 — Session continuity: one resume pointer per named session
 
 > No engine change: this is Phase 1 of REQ-KVD-B61E92 (skills and hooks). The
