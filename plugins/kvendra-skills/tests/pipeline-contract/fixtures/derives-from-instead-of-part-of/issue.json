@@ -1,0 +1,8 @@
+{
+  "entity_id": "ISSUE-KVD-SKILLS-000004",
+  "entity_type": "ISSUE",
+  "status": "open",
+  "tags": ["type:task", "pipeline:ready", "priority:high"],
+  "metadata": {},
+  "relations": [{ "type": "derives_from", "target": "ROAD-KVD-SKILLS-000001" }]
+}
