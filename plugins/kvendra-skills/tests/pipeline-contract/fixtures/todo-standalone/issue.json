@@ -1,0 +1,7 @@
+{
+  "entity_type": "ISSUE",
+  "status": "open",
+  "tags": ["type:task", "priority:medium"],
+  "metadata": {},
+  "relations": []
+}
