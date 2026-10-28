@@ -32,7 +32,11 @@ run.
 
 ## Kvendra rules (summary)
 
-- Identify in every write: `updated_by: "skill:deploy"`. The MCP client adds `X-Kvendra-Skill` automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - This skill does NOT open a TXN by default — a deploy is a runtime operation, not a structural change. Optional: open a TXN if the playbook itself creates KB entities (rare; only some `STD-*-DEPLOY-PROCESS` variants do this).
 - On any error with `error.help.topic`: call `help({topic})`.
 - **Private values** — never write private identifiers (account ids, local
@@ -256,10 +260,9 @@ changes the deploy result.
      title: "Deploy without REL: CMP-<PROJECT>-<COMP> @ <SHA short> (<YYYY-MM-DD>)",
      content: <markdown: component, SHA, date, playbook STD id, REL id or none, reason / missing gate>,
      status: "open",
-     metadata: { type:"task", deployed_sha:"<SHA>", deployed_date:"<YYYY-MM-DD>" },
+     metadata: { type:"task", deployed_sha:"<SHA>", deployed_date:"<YYYY-MM-DD>", updated_by:"skill:deploy" },
      tags: ["type:task", "release:missing"],
      relations: [{ type:"part_of", target:"PRJ-<PROJECT>" }],
-     updated_by: "skill:deploy"
    })
    ```
    If this create also fails, the warning line still appears, with the error.

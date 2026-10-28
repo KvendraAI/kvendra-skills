@@ -23,8 +23,11 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
-  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Decision key for gated classes (ADR / IF)** — when you create OR update an `ADR` (lands `accepted`) or an `IF` (lands `active`), set `metadata.decision = {key, value}`: a stable dotted `key` naming the decision (ADR: `<domain>.<topic>`, e.g. `licensing.web`; IF: `interface.<wire-name>`, e.g. `interface.kb-engine-wire`) and the committed `value` (ADR: the position taken; IF: the wire version). Under `KB_DECISION_GATE_REQUIRED` the engine rejects a gated create/activate that lacks it (`decision_required`), and a same-`key`/different-`value` clash with an active peer is a `decision_conflict` (reconcile or pick a distinct key). `GLO`/`REQ` are NOT gated — never force a decision on them.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
@@ -161,7 +164,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   entity_id: "<source>",
   relations_add: [{ type: "implements", target: "<target>" }],
   change_summary: "Added implements → <target> (TXN-...)",
-  updated_by: "skill:updater"
+  metadata: { updated_by: "skill:updater" }
 })
 ```
 
@@ -199,7 +202,7 @@ If regression-case TESTs were created:
 ### 3e — PAT (lessons learned)
 
 If a bug yields a generalisable lesson:
-- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, component_id:<COMP from the originating ISSUE, or omit if the lesson generalises>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], updated_by })`.
+- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, component_id:<COMP from the originating ISSUE, or omit if the lesson generalises>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], metadata:{ updated_by:"skill:updater" } })`.
 
 ### 3f — Evidence attachments
 

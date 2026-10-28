@@ -26,7 +26,11 @@ Read `help({topic:"workspace-layout"})` to refresh the canonical metadata conven
 
 ## Kvendra rules (summary)
 
-- Identify in every write: `updated_by: "skill:onboard-project"`. The MCP client adds `X-Kvendra-Skill` automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Decision key for gated classes (ADR / IF)** — when you create OR update an `ADR` (lands `accepted`) or an `IF` (lands `active`), set `metadata.decision = {key, value}`: a stable dotted `key` naming the decision (ADR: `<domain>.<topic>`; IF: `interface.<wire-name>`, e.g. `interface.kb-engine-wire`) and the committed `value` (ADR: the position taken; IF: the wire version). Under `KB_DECISION_GATE_REQUIRED` the engine rejects a gated create/activate that lacks it (`decision_required`), and a same-`key`/different-`value` clash with an active peer is a `decision_conflict`. `GLO`/`REQ` are NOT gated — never force a decision on them.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with `txn_activate` (success) or `txn_cancel(reason)` (failure).
@@ -378,7 +382,8 @@ This is the deterministic transform applied at Step 5 once the answers are known
        playbook_type: "deploy" | "test" | "publish",
        autonomous: <from template, owner may override>,
        vault_profile_required: <from rendered VAR>,
-       discovery_tags: ["scope:deploy","scope:process","cmp:<COMP>"]  // or test/publish
+       discovery_tags: ["scope:deploy","scope:process","cmp:<COMP>"],  // or test/publish
+       updated_by: "skill:onboard-project"
      },
      tags: [...template tags excluding "scope:template", "scope:std-tpl", "template:v*"]
             + ["scope:deploy","scope:process","cmp:<COMP>","cloned-from:STD-TPL-<NAME>"],
@@ -387,7 +392,7 @@ This is the deterministic transform applied at Step 5 once the answers are known
        { type: "affects",      target: "CMP-<PROJ>-<COMP>" },
        { type: "part_of",      target: "PRJ-<PROJ>" }
      ],
-     txn_id, updated_by: "skill:onboard-project"
+     txn_id
    })
    ```
 6. **Stub case** (no TPL exists): the cloned entity is created with a minimal content placeholder:
@@ -526,9 +531,10 @@ each one before writing any entity:
          "<STD-BROKER-POLICY entity_id from step 2b>"
        ],
        owner_handle: <whoami or asked>,
-       workspace_layout: <answered>
+       workspace_layout: <answered>,
+       updated_by: "skill:onboard-project"
      },
-     txn_id, updated_by
+     txn_id
    })
    ```
    Conventions per `help({topic:"workspace-layout"})`. The PRJ create happens AFTER steps 2 and 2b so the resolved entity_ids can be embedded in `bootstrap_extras`. Alternatively, create PRJ first with an empty `bootstrap_extras` then `entity_update` after steps 2 + 2b — pipeline-friendly inside the same TXN.
@@ -567,10 +573,11 @@ each one before writing any entity:
      metadata: {
        component_type, tech_stack, license,
        workspace_subdir: "<answered>",
-       repo_url: "<answered>"
+       repo_url: "<answered>",
+       updated_by: "skill:onboard-project"
      },
      relations: [{type:"part_of", target:"PRJ-<PROJECT_ID>"}],
-     txn_id, updated_by
+     txn_id
    })
    ```
 
@@ -625,7 +632,7 @@ Run a smoke verification of the rendered CLAUDE.md:
 
 If all checks pass:
 ```
-txn_activate({ txn_id, updated_by:"skill:onboard-project" })
+txn_activate({ txn_id })
 ```
 
 **Read the `txn_activate` response before reporting** (see **Governance
@@ -640,7 +647,7 @@ as pending instead.
 
 If anything failed or the user cancels:
 ```
-txn_cancel({ txn_id, reason:"<motive>", updated_by:"skill:onboard-project" })
+txn_cancel({ txn_id, reason:"<motive>" })
 ```
 
 ## Output

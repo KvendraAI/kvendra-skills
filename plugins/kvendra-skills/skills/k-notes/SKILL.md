@@ -261,8 +261,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   content: <markdown: kind, title, body, component_hint and plugin_version as sent,
             note_id, created_at>,
   tags: ["type:task", "source:k-note", "k-note-kind:<kind>"],
-  metadata: { k_note_id: "<note_id>", k_note_kind: "<kind>" },
-  updated_by: "skill:k-notes"
+  metadata: { k_note_id: "<note_id>", k_note_kind: "<kind>", updated_by: "skill:k-notes" },
 })
 ```
 
