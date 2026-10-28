@@ -1,0 +1,63 @@
+# The hook test suite, on every pull request.
+#
+# These tests were written long before this workflow. `plugins/kvendra-skills/tests/hook/`
+# holds the fixture runner, an inbox suite, a local-variable suite, a session-resume suite and
+# a differential run — 118 assertions between them — and until now nothing executed any of
+# them. Tests that are written and never run cost what tests cost and protect nothing.
+#
+# There is deliberately NO `paths:` filter. A check that runs for some pull requests and not
+# others cannot be a required check, because the ones it skips merge with nothing having looked
+# at them. The two lint workflows beside this one ARE path-filtered, and rightly so: they lint
+# particular files. This one is the gate.
+#
+# `e2e-real-binary.sh` is not here. It is opt-in and needs a real `kvendra` binary built from
+# another repository (KVENDRA_BIN), so running it would make this check depend on a build that
+# is not ours to keep green.
+#
+# The job name is short and stable because it goes into the branch ruleset as a required
+# context. Renaming it does not fail anything — it silently stops protecting the branch, which
+# is worse.
+
+name: hook-tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hook-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hook-tests:
+    name: hook-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The suite's two assumptions about the runner
+        run: |
+          set -euo pipefail
+          # Several suites skip themselves when `jq` is absent, which on a required check would
+          # read as green while testing nothing. Fail loudly instead.
+          command -v jq >/dev/null || { echo "::error::jq is missing from this runner"; exit 1; }
+          bash --version | head -1
+
+      - name: Hook fixtures
+        run: bash plugins/kvendra-skills/tests/hook/run-fixtures.sh
+
+      - name: Inbox fixtures
+        run: bash plugins/kvendra-skills/tests/hook/run-inbox-fixtures.sh
+
+      - name: Local-variable fixtures
+        run: bash plugins/kvendra-skills/tests/hook/run-lvr-fixtures.sh
+
+      - name: Session-resume fixtures
+        run: bash plugins/kvendra-skills/tests/hook/run-session-resume-fixtures.sh
+
+      - name: Differential — unknown nested keys
+        run: bash plugins/kvendra-skills/tests/hook/differential-unknown-nested.sh
