@@ -83,3 +83,27 @@ jobs:
             exit 0
           fi
           bash "$runner"
+
+      # The attribution checker — ROAD-KVD-SKILLS-4CB98B.
+      #
+      # Wired by hand on 2026-10-28, between F1 (which built the checker) and F2 (which makes
+      # the tree pass it). `.github/**` is a sensitive path the engine refuses, so this step is
+      # a person's job, as the step above was.
+      #
+      # Two modes, both gating:
+      #   --fixtures  the checker's own suite. Green from the moment F1 merged.
+      #   (no args)   the real skills/ tree. RED until F2 lands, deliberately.
+      #
+      # So `main` runs red on this step until F2 merges. That is the gate working, not a
+      # breakage: the tree genuinely still promises a header no component implements, 23 times
+      # over. A green step here before F2 would mean the checker checks nothing.
+      - name: Attribution contract
+        run: |
+          set -euo pipefail
+          runner=plugins/kvendra-skills/tests/attribution/run.sh
+          if [[ ! -f "$runner" ]]; then
+            echo "::error::attribution checker missing — it merged in ROAD-KVD-SKILLS-4CB98B F1 and must not disappear"
+            exit 1
+          fi
+          bash "$runner" --fixtures
+          bash "$runner"
