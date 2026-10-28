@@ -30,7 +30,7 @@ check() {
     | ($i.metadata.pipeline // {}) as $p
     | if ([$rels[]? | select(.type == "part_of" and ((.target // "") | tostring | startswith("ROAD-")))] | length) == 0 then "no_part_of_road"
       elif ($tags | index("pipeline:ready")) == null then "not_pipeline_ready"
-      elif ($prio | length) != 1 or ([$prio[0] | ltrimstr("priority:")] | inside(["critical","high","medium","low"]) | not) then "bad_priority"
+      elif ($prio | length) != 1 or ((["critical","high","medium","low"] | index($prio[0] | ltrimstr("priority:"))) == null) then "bad_priority"
       elif ($i.status != "open" and $i.status != "in-progress") then "bad_status"
       elif ($p | has("depends_on")) and (($p.depends_on | type) != "array" or ([$p.depends_on[] | select((type != "string") or (test("^ISSUE-[A-Z0-9-]+$") | not))] | length) > 0) then "bad_depends_on"
       elif ($p | has("scope")) and (($p.scope | type) != "string" or $p.scope == "") then "bad_scope"
