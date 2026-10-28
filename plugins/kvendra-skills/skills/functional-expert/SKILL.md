@@ -21,8 +21,11 @@ Identify `project_id` from the `CLAUDE.md` and `component_id` if applicable.
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
-  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.

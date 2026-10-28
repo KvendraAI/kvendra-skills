@@ -20,8 +20,11 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
-  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
@@ -157,13 +160,12 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   title: "<title>",
   content: <markdown>,
   status: "<status>",       // optional; default `open`. Pass the `--status` value (e.g. `done` for a retrospective task)
-  metadata: { severity, priority },
+  metadata: { severity, priority, updated_by:"skill:to-do" },
   tags: ["type:<type>", "priority:<prio>"],
   relations: [
     { type:"implements", target:"REQ-<PROJ>-<NN>" },
     { type:"blocks",     target:"REL-<PROJ>-<VER>" }
   ],
-  updated_by: "skill:to-do"
 })
 ```
 
@@ -177,7 +179,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
   tags_add: ["status:in-progress"],     // same value as `status`
   tags_remove: ["status:open"],         // the previous `status:*` tag, if any
   change_summary: "Assigned to @user, status in-progress",
-  updated_by: "skill:to-do"
+  metadata: { updated_by: "skill:to-do" }
 })
 ```
 

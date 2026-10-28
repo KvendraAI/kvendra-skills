@@ -22,8 +22,11 @@ Identify `project_id` and `component_id` from the `CLAUDE.md` or args.
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
-  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
@@ -234,7 +237,8 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
       { test_id, result, duration_ms, validations: [...] }
     ],
     rel_id: "REL-<PROJ>-<VER>",          // mirror of the part_of edge; if active
-    attachments: [ ... ]                 // Evidence attachments entries, if any
+    attachments: [ ... ],                 // Evidence attachments entries, if any
+    updated_by: "skill:regression"
   },
   tags: ["result:<result>"],
   relations: [
@@ -243,7 +247,6 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
     { type: "part_of",  target: "<REL id from Step 1.5>" }    // only when a REL is active
   ],
   txn_id: "<txn_id>",   // only when an orchestrator passed one; omit for a standalone run
-  updated_by: "skill:regression"
 })
 ```
 
@@ -286,14 +289,14 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
     severity: "major",
     priority: "high",
     found_in: "REG-<PROJ>-<COMP>-<SEQ>",
-    test_id: "TEST-<PROJ>-<COMP>-<SEQ>"
+    test_id: "TEST-<PROJ>-<COMP>-<SEQ>",
+    updated_by: "skill:regression"
   },
   tags: ["type:bug", "priority:high", "found-in:regression"],
   relations: [
     { type:"blocks", target:"REL-<PROJ>-<VER>" },     // if REL is active
     { type:"affects", target:"CMP-<PROJ>-<COMP>" }
   ],
-  updated_by: "skill:regression"
 })
 ```
 

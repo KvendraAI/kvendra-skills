@@ -22,8 +22,11 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write: `updated_by: "skill:<this-skill>"`. The
-  `X-Kvendra-Skill` header is added by the MCP client automatically.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
+  convention between skills, not an engine contract: the engine derives the actor from your
+  credential and **silently ignores a top-level `updated_by`**
+  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
+  for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
@@ -216,13 +219,12 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
   content: <full markdown: preconditions / process / postconditions /
             validations / result / evidence summary + excerpts>,
   tags: ["type:<type>", "comp:<COMP>"],
-  metadata: { attachments: [ /* only when uploads happened — see Evidence attachments */ ] },
+  metadata: { attachments: [ /* only when uploads happened — see Evidence attachments */ ], updated_by: "skill:tester" },
   relations: [
     { type: "fulfills", target: "REQ-<PROJ>-<NN>" },
     { type: "fixes",    target: "ISSUE-<PROJ>-<COMP>-<NN>" }
   ],
   txn_id: "<txn_id received from orchestrator>",
-  updated_by: "skill:tester"
 })
 ```
 
