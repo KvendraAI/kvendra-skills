@@ -61,3 +61,25 @@ jobs:
 
       - name: Differential — unknown nested keys
         run: bash plugins/kvendra-skills/tests/hook/differential-unknown-nested.sh
+
+      # The pipeline contract, once it exists.
+      #
+      # ROAD-KVD-SKILLS-3584CD builds a checker that validates what a skill emits against
+      # PIPELINE-CONTRACT.md. The checker is ordinary repository content, but WIRING it here is
+      # not: `.github/**` is a sensitive path and the engine refuses any change that touches it,
+      # so this step has to be added by a person, by hand, and it is added BEFORE the roadmap
+      # starts rather than after.
+      #
+      # Until the checker lands this step annotates every run with a warning naming the ROAD,
+      # and checks nothing. That is deliberate: a step that passed quietly would be green by
+      # absence, which is the same disease as a path-filtered required check. The moment F1
+      # merges the file, this becomes a real gate with no further edit to this workflow.
+      - name: Pipeline contract
+        run: |
+          set -euo pipefail
+          runner=plugins/kvendra-skills/tests/pipeline-contract/run.sh
+          if [[ ! -f "$runner" ]]; then
+            echo "::warning::pipeline-contract checker not present yet — ROAD-KVD-SKILLS-3584CD, phase F1. This step checks nothing until it lands."
+            exit 0
+          fi
+          bash "$runner"
