@@ -20,6 +20,14 @@ document is that contract. `tests/pipeline-contract/run.sh` applies it to exampl
 | `metadata.pipeline.scope` | Non-empty string naming the component scope (for example `SKILLS`); drives the lease key. |
 | `metadata.pipeline.repo` | Repository the work is done in, when it is not the component's default one. |
 
+## Who emits the contract
+
+| skill | ¿emite el contrato? | cuándo |
+|---|---|---|
+| `planner` | sí | siempre, una ISSUE por paso del plan |
+| `to-do` | condicional | sólo si la petición nombra un ROAD o se pide el pipeline |
+| `new-feature` | **no todavía** | emite `part_of` pero no `pipeline:ready` |
+
 ## Why `part_of` and not `derives_from`
 
 The engine lists the tasks of a ROAD by filtering the ROAD's `relations_inbound` on

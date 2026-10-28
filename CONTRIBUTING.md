@@ -18,6 +18,7 @@ HTML comment `<!-- lint-allow-es -->` to whitelist it from the CI lint.
 ## Skill structure
 
 Every skill lives in `plugins/kvendra-skills/skills/<slug>/SKILL.md`.
+A skill that creates ISSUEs meant for the pipeline must comply with `plugins/kvendra-skills/PIPELINE-CONTRACT.md` and add its fixture to `plugins/kvendra-skills/tests/pipeline-contract/fixtures/`.
 
 ### Minimal `SKILL.md` template
 
