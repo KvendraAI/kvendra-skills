@@ -112,6 +112,41 @@ pointing to the required broker primitive.
 4. Build `content` with fields per type (reference: schema in the
    project's docs).
 5. Determine relations: `implements → REQ`, `fixes → ISSUE`, `blocks → REL`.
+
+   If the request names a ROAD, or the user explicitly asks for the task to
+   enter the pipeline, add `part_of → <ROAD>` and the tag `pipeline:ready`.
+
+   **Otherwise, add neither.** An ISSUE without `pipeline:ready` is work for a
+   person, and that is the right default.
+
+   When the condition holds, the ISSUE also carries:
+
+   - `metadata.pipeline.scope`: the component.
+   - `metadata.pipeline.depends_on`: the ids the user named, or empty.
+
+   The `priority:` tag is emitted as today; do not change it.
+
+   Why `part_of` and not another relation: the engine lists a ROAD's tasks by
+   filtering `relations_inbound` on `type === 'part_of'`. An ISSUE linked with
+   `derives_from` is invisible to it, however well it is described.
+
+   Example of a drivable ISSUE (the request named a ROAD):
+
+   ```json
+   {
+     "entity_type": "ISSUE",
+     "status": "open",
+     "tags": ["type:task", "priority:high", "pipeline:ready"],
+     "metadata": {
+       "pipeline": {
+         "scope": "SKILLS",
+         "depends_on": ["ISSUE-KVD-SKILLS-000001"]
+       }
+     },
+     "relations": [{ "type": "part_of", "target": "ROAD-KVD-SKILLS-000001" }]
+   }
+   ```
+
 6. Call:
 
 ```
