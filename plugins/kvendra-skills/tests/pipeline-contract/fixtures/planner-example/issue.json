@@ -1,0 +1,15 @@
+{
+  "entity_type": "ISSUE",
+  "status": "open",
+  "tags": ["type:task", "pipeline:ready", "priority:high"],
+  "metadata": {
+    "pipeline": {
+      "scope": "SKILLS",
+      "depends_on": ["ISSUE-KVD-SKILLS-000001"]
+    }
+  },
+  "relations": [
+    { "type": "part_of", "target": "ROAD-KVD-SKILLS-000001" },
+    { "type": "implements", "target": "REQ-KVD-SKILLS-000001" }
+  ]
+}

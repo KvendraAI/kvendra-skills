@@ -187,6 +187,9 @@ complete format.
   (endpoints, env values, generated clients) nor needs the deployed
   backend while being implemented. Default and safe answer: no
   (serial).
+  - `no` → the frontend ISSUE carries the backend ISSUE's id in
+    `metadata.pipeline.depends_on`.
+  - `yes` → `depends_on` is empty, and both run at the same time.
 
 ### API contract (if applicable)
 
@@ -213,9 +216,39 @@ complete format.
 - [ ] [naming verified against GLO]
 - [ ] [IF updated and documented]
 
-### ISSUE to create
-- ISSUE-<PROJ>-<COMP>-<auto> (type: task)
-  - title: ...
-  - relations: implements → REQ-<PROJ>-<NN>
-  - acceptance_criteria: [from spec]
+### ISSUEs to create — one per implementation-plan step
+One ISSUE per step of the implementation plan, not a single one. Each carries:
+- relations: [{ type: "part_of", target: "<the ROAD>" }], plus
+  implements → REQ-<PROJ>-<NN> if applicable. `part_of` is NOT optional:
+  the engine lists a ROAD's tasks by filtering on that relation type, so
+  `derives_from` leaves the task invisible.
+- tags: `pipeline:ready`, `type:task` and one `priority:` of
+  `critical|high|medium|low`.
+- metadata.pipeline.depends_on: the ids of the previous phase's ISSUEs.
+  Empty in the first phase.
+- metadata.pipeline.scope: the component, unless the step must run in a
+  different scope.
+- acceptance_criteria: [from spec]
+
+ISSUE ids are emitted by the server, so the planner cannot know a phase's id
+before creating it: create the phases in order and use the returned ids to
+fill the next phase's `depends_on`.
+
+Example (second phase, depending on the first):
+
+{
+  "entity_type": "ISSUE",
+  "status": "open",
+  "tags": ["type:task", "pipeline:ready", "priority:high"],
+  "metadata": {
+    "pipeline": {
+      "scope": "SKILLS",
+      "depends_on": ["ISSUE-KVD-SKILLS-000001"]
+    }
+  },
+  "relations": [
+    { "type": "part_of", "target": "ROAD-KVD-SKILLS-000001" },
+    { "type": "implements", "target": "REQ-KVD-SKILLS-000001" }
+  ]
+}
 ```
