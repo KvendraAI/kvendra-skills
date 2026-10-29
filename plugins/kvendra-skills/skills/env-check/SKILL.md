@@ -125,7 +125,7 @@ tier: <free|pro|team|enterprise>
 
 - Without `project_id`: skills will not function. Suggest `/onboard-project`.
 - Without `tier`: ambiguous routing. Suggest adding the line (see the
-  canonical template `STD-KVD-CLAUDEMD-TEMPLATE` in the KB or the existing
+  canonical template in the KB (found by `entity_query` for `entity_type: "STD"` with `tags_all: ["scope:claudemd", "playbook_type:doc-template"]`) or the existing
   `CLAUDE.md` files of Kvendra projects as reference).
 
 If all OK, validate that the PRJ exists in the KB:
