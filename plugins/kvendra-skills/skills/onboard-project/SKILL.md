@@ -7,7 +7,7 @@ args: "[project_id (uppercase 3-6 chars) or 'add-component <component-name>' for
 
 # Onboard Project v2 — Bootstrap a Kvendra project end-to-end
 
-Creates the full structure of a new project (or a new component for an existing project) in the Kvendra KB, generates a canonical `CLAUDE.md` from `STD-KVD-CLAUDEMD-TEMPLATE`, and applies the schema conventions documented in `help({topic:"workspace-layout"})`. Soft orchestrator — opens a TXN to bundle creates but does NOT delegate to other v3 subagents.
+Creates the full structure of a new project (or a new component for an existing project) in the Kvendra KB, generates a canonical `CLAUDE.md` from the canonical template STD (found by `entity_query` for `entity_type: "STD"` with `tags_all: ["scope:claudemd", "playbook_type:doc-template"]`), and applies the schema conventions documented in `help({topic:"workspace-layout"})`. Soft orchestrator — opens a TXN to bundle creates but does NOT delegate to other v3 subagents.
 
 The skill **auto-detects** the engine tier via `whoami` and **does not ask the user** for information that can be inferred from the environment.
 
@@ -588,7 +588,7 @@ each one before writing any entity:
 
 ## Step 6 — Generate CLAUDE.md from the canonical template
 
-1. Read `STD-KVD-CLAUDEMD-TEMPLATE` from the KB (or read the local file `kvendra-skills/plugins/kvendra-skills/CLAUDE.md.template` if running offline against Platform self-host).
+1. Read the canonical template STD from the KB, found by `entity_query` for `entity_type: "STD"` with `tags_all: ["scope:claudemd", "playbook_type:doc-template"]` (or read the local file `kvendra-skills/plugins/kvendra-skills/CLAUDE.md.template` if running offline against Platform self-host).
 2. Render with substitutions:
    - `{{PROJECT_ID}}` → uppercase project_id.
    - `{{TIER}}` → tier from Step 1 (free|pro|team|enterprise).
@@ -626,7 +626,7 @@ Run a smoke verification of the rendered CLAUDE.md:
 - File size ≤40 lines.
 - 3 sections present with markers (`KVENDRA:MANUAL`, `KVENDRA:PROJECT`, Particularidades unmarked).
 - `tier` flag is valid (free|pro|team|enterprise).
-- `manual_version` matches `STD-KVD-CLAUDEMD-TEMPLATE.metadata.manual_version`.
+- `manual_version` matches the canonical template STD's `metadata.manual_version`.
 
 ## Step 8 — Activate or cancel the TXN
 

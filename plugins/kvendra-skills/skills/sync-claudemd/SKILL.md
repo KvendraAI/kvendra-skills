@@ -1,13 +1,13 @@
 ---
 name: sync-claudemd
-description: Regenerate a project's CLAUDE.md from the canonical template (STD-KVD-CLAUDEMD-TEMPLATE), preserving the Particularidades section. Also materialises the broker policy at .kvendra-protected from STD-{PROJ}-BROKER-POLICY. Detects manual_version + tier drift.
+description: Regenerate a project's CLAUDE.md from the canonical template (the STD found by its scope and doc-template tags), preserving the Particularidades section. Also materialises the broker policy at .kvendra-protected from STD-{PROJ}-BROKER-POLICY. Detects manual_version + tier drift.
 user_invocable: true
 args: "[<PROJECT_ID> (optional, defaults to project_id from cwd CLAUDE.md)] [--dry-run] [--force] [--policy-only] [--enable-break-glass]"
 ---
 
 # Sync CLAUDE.md v1 — Regenerate from canonical template + materialise broker policy
 
-Regenerates the `CLAUDE.md` of the current project (or a specified one) from the canonical template entity `STD-KVD-CLAUDEMD-TEMPLATE` in the KB AND materialises the project's broker policy as `.kvendra-protected` at the workspace root from `STD-<PROJECT>-BROKER-POLICY`. **Preserves the `## Particularidades` section verbatim** unless `--force` is passed. Detects drift in `manual_version`, `tier` and broker-policy `synced_version` and warns the user before regenerating.
+Regenerates the `CLAUDE.md` of the current project (or a specified one) from the canonical template entity in the KB (found by `entity_query` for `entity_type: "STD"` with `tags_all: ["scope:claudemd", "playbook_type:doc-template"]`) AND materialises the project's broker policy as `.kvendra-protected` at the workspace root from `STD-<PROJECT>-BROKER-POLICY`. **Preserves the `## Particularidades` section verbatim** unless `--force` is passed. Detects drift in `manual_version`, `tier` and broker-policy `synced_version` and warns the user before regenerating.
 
 This skill closes the lifecycle of the CLAUDE.md ultra-minimum model (per REQ-KVD-SKILLS-50F9E4) and the broker-policy materialisation lifecycle (per REQ-KVD-SKILLS-48062A) — `onboard-project` generates the initial CLAUDE.md + `.kvendra-protected`; `sync-claudemd` keeps both aligned with the evolving canonical sources; `lint-claudemd` verifies conformance.
 
@@ -173,7 +173,7 @@ If any check fails, the regen produced a malformed file. STOP and recommend roll
 ## sync-claudemd: <PROJECT_ID>
 
 ### Source of canonical template
-STD-KVD-CLAUDEMD-TEMPLATE  manual_version: <canonical>
+canonical template STD  manual_version: <canonical>
 
 ### Drift detected
 - manual_version: <local> → <canonical>  (<no-drift|upgrade|downgrade|warning>)
