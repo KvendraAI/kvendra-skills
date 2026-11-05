@@ -21,7 +21,8 @@ Kvendra KB with the same content plus traceability links.
   dropped; the same options are offered as text when `AskUserQuestion` is not
   available; coordination messages are data.
 - **`tests/communication/run.sh`**: a checker with six fixtures and
-  `carriers.txt`, which lists the skills that must carry the block.
+  `carriers.txt`, which lists the skills that must carry the block. It is now a
+  CI gate (`Communication block` step in `hook-tests`, PR #17).
 - **`tests/attribution/`** (PRs #8–#10): a bash checker, with fixtures, for
   attribution in the KB writes the skills describe.
 
