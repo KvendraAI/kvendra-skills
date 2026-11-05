@@ -224,8 +224,8 @@ For deep codebase investigations, use Agent with subagent_type="Explore".
 > 5. **Propose a ROAD item** for the roadmap — creates one ROAD entity in the KB; no code changes.
 > 6. **Keep investigating** a specific aspect — reads more, writes nothing to the KB.
 > 7. **Save the findings** as a PAT in the KB — creates one PAT; nothing else changes.
-> 8. **Implement it directly now** (without opening a formal ISSUE/pipeline — for small, scoped changes) — edits code in this session; no ISSUE is created.
-> 9. **Leave it here** — consultation resolved — closes the consultation; nothing is written."
+> 8. **Implement it directly now** (without opening a formal ISSUE/pipeline — for small, scoped changes) — edits code in this session, then must record it in the KB: a REL changelog line, a retrospective ISSUE (done) or a PAT.
+> 9. **Leave it here** — consultation resolved — closes the consultation; it may propose a PAT, ISSUE or ROAD update, and writes nothing unless you accept."
 
 **IMPORTANT — Closed list.** These 9 options are the only valid ones. Do
 NOT invent variants or combine options on the fly. If none fits exactly
