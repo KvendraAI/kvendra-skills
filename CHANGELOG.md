@@ -4,6 +4,44 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.28.0] — 2026-11-05 — Skills talk to the human by message type
+
+> No engine change. The skills that pause to ask the human now choose how to
+> write by the type of message, with a hard floor that always applies, and the
+> attribution checker joins the suites CI runs.
+
+### Added
+- **Communication block** (`ADR-KVD-SKILLS-561550`):
+  `tests/communication/block.md`, a canonical block copied verbatim into
+  `new-feature`, `bug`, `deploy`, `tester` and `kvendra`. The message type
+  decides the mode (`free`, `concise`, `bluf_sbar`, `minto`, `plain`); an
+  optional, closed project STD tagged `scope:communication` adjusts it; a hard
+  floor always applies: a decision request says what is approved, whether it
+  is reversible and what happens on yes; risks come first; evidence is never
+  dropped; the same options are offered as text when `AskUserQuestion` is not
+  available; coordination messages are data.
+- **`tests/communication/run.sh`**: a checker with six fixtures and
+  `carriers.txt`, which lists the skills that must carry the block.
+- **`tests/attribution/`** (PRs #8–#10): a bash checker, with fixtures, for
+  attribution in the KB writes the skills describe.
+
+### Changed
+- **`new-feature` / `bug`**: every pause states approval, reversibility and
+  consequence, risks first. Same number of pauses.
+- **`deploy`**: every confirmation (production guard included) states
+  approval, reversibility and consequence. Guard logic unchanged.
+- **`tester`**: the final report puts failures and blockers first, then
+  status, then evidence.
+- **`kvendra`**: answer-first consultancy template (Conclusion, Risks and
+  blockers, Why, Options, KB context, Next step); each of the nine menu options
+  states what happens if chosen.
+- **Attribution**: the skills now say what the engine honours about
+  attribution (PR #9).
+
+### Fixed
+- The `CLAUDE.md` template mirror is found by tag, not by a nonexistent id
+  (PR #11).
+
 ## [1.27.0] — 2026-10-28 — The pipeline contract: ISSUEs the roadmap engine can drive
 
 > No engine change. This release writes down what an ISSUE must carry for the
