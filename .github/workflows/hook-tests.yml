@@ -107,3 +107,22 @@ jobs:
           fi
           bash "$runner" --fixtures
           bash "$runner"
+
+      # The communication block — ROAD-KVD-SKILLS-DFA66F (ADR-KVD-SKILLS-561550).
+      #
+      # Wired by hand on 2026-11-05, after T1–T5 merged. `.github/**` is a sensitive path the
+      # engine refuses, so this step is a person's job, as the two above were.
+      #
+      # The block is copied verbatim into every carrier skill (there is no cross-skill include).
+      # run.sh proves its own fixtures, then checks that every skill in carriers.txt carries the
+      # block and that every copy is byte-identical to tests/communication/block.md. A missing
+      # checker is an error, not a skip: it merged in T1 and must not disappear.
+      - name: Communication block
+        run: |
+          set -euo pipefail
+          runner=plugins/kvendra-skills/tests/communication/run.sh
+          if [[ ! -f "$runner" ]]; then
+            echo "::error::communication checker missing — it merged in ROAD-KVD-SKILLS-DFA66F T1 and must not disappear"
+            exit 1
+          fi
+          bash "$runner"
