@@ -4,6 +4,26 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.29.0] — 2026-11-05 — Shorter decisions and recommendations
+
+> No engine change. The communication block asks for shorter decisions and
+> recommendations, and the `kvendra` consultancy template loses a section.
+
+### Changed
+- **Communication block**: decisions default to `concise` (line 1 is the
+  question and the recommended answer; one closing line says what a yes
+  approves, whether it is reversible and what happens next); `bluf_sbar` is
+  used only when a project STD selects it; `minto` puts evidence ids inline,
+  with no separate context section; no section headings in messages shorter
+  than about 15 lines. The block is copied verbatim into `new-feature`, `bug`,
+  `deploy`, `tester` and `kvendra` (PR #19).
+- **`kvendra`**: the consultancy template drops the separate *Kvendra KB
+  context* section; its ids move into *Why* (PR #19).
+
+### Why
+- The blind A/B of 1.28.0 preferred the new outputs in only 4 of 12 pairs; they
+  lost where structure had been added.
+
 ## [1.28.0] — 2026-11-05 — Skills talk to the human by message type
 
 > No engine change. The skills that pause to ask the human now choose how to
