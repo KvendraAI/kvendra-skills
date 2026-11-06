@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# Checks that every carrier SKILL.md holds the canonical communication block verbatim.
+# Checks that every carrier SKILL.md holds the canonical communication block verbatim, and that no fenced block outside a machine-output zone holds a ##/### line.
 # Usage: bash run.sh   (no arguments)
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BLOCK="$HERE/block.md"
-OPEN='<!-- kvendra:communication v1 -->'
+OPEN='<!-- kvendra:communication v2 -->'
 CLOSE='<!-- /kvendra:communication -->'
+ZONE_AWK='
+BEGIN { inf = 0; mo = 0; mark = ""; rc = 0 }
+rc { next }
+!inf && $0 == "<!-- kvendra:machine-output -->" { if (mo) { print NR; rc = 3; next } mo = 1; next }
+!inf && $0 == "<!-- /kvendra:machine-output -->" { if (!mo) { print NR; rc = 3; next } mo = 0; next }
+!inf && /^[[:space:]]*(```|~~~)/ { s = $0; sub(/^[[:space:]]*/, "", s); match(s, /^(`+|~+)/); mlen = RLENGTH; mch = substr(s, 1, 1); inf = 1; next }
+inf { t = $0; sub(/^[[:space:]]*/, "", t); sub(/[[:space:]]*$/, "", t); if (t ~ /^(`+|~+)$/ && substr(t, 1, 1) == mch && length(t) >= mlen) { inf = 0; next } }
+inf && !mo && /^[[:space:]]*###?[[:space:]]/ { print NR; rc = 2; next }
+END { if (!rc && mo) { print "EOF"; rc = 3 } exit rc }'
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -13,7 +22,7 @@ trap 'rm -rf "$TMP"' EXIT
 # Sets CODE (ok or failure code), BAD (skill name) and, for block_differs, DIFFOUT (path).
 check() {
   local skills="$1" carriers="$2" name f n=0
-  CODE=ok; BAD=; DIFFOUT=; NCARR=0
+  CODE=ok; BAD=; DIFFOUT=; NCARR=0; LINE=
   while IFS= read -r name || [ -n "$name" ]; do
     [ -z "$name" ] && continue
     n=$((n + 1))
@@ -46,6 +55,18 @@ check() {
       return
     fi
   done
+  for d in "$skills"/*/; do
+    [ -f "${d}SKILL.md" ] || continue
+    f="${d}SKILL.md"
+    grep -qxF -- "$OPEN" "$f" || continue
+    name="$(basename "$d")"
+    LINE="$(awk "$ZONE_AWK" "$f")"
+    case $? in
+      0) LINE= ;;
+      2) CODE=chat_template; BAD="$name"; return ;;
+      *) CODE=unclosed_machine_output; BAD="$name"; return ;;
+    esac
+  done
 }
 
 fail=0; total=0; passed=0
@@ -66,7 +87,7 @@ check "$HERE/../../skills" "$HERE/carriers.txt"
 if [ "$CODE" = ok ]; then
   echo "PASS real ($NCARR carriers)"
 else
-  echo "FAIL real ($CODE in $BAD)"; fail=1
+  echo "FAIL real ($CODE in $BAD${LINE:+, line $LINE})"; fail=1
   [ "$CODE" = block_differs ] && cat "$DIFFOUT"
 fi
 

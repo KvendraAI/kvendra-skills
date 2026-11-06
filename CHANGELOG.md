@@ -4,6 +4,35 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.30.0] — 2026-11-06 — The mode sets the layout; skill templates become checklists
+
+> No engine change. With a project communication STD active, the mode of each
+> message now sets its layout, and the chat templates of five skills become
+> content checklists.
+
+### Changed
+- **Communication block v2** (`<!-- kvendra:communication v2 -->`): with an
+  active STD the mode sets the layout of every chat message; a skill's chat
+  template is a content checklist and ranks last in the precedence; sections
+  marked `<!-- kvendra:machine-output -->` are data for another skill and keep
+  their format. Without the STD: cover the checklist, no section headings in
+  short messages, hard floor. Copied verbatim into `new-feature`, `bug`,
+  `deploy`, `tester` and `kvendra`.
+- **`kvendra` Step 3, `deploy` Output, `tester` Step 5, `bug` and `new-feature`
+  progress formats**: fenced templates become content checklists; the tester
+  notes and the deploy release handoff are machine-output zones.
+- **CI**: `tests/communication/run.sh` fails with `chat_template` on a `##`/`###`
+  line inside a fence of a carrier outside a machine-output zone, and with
+  `unclosed_machine_output` on an unbalanced zone (6 new fixtures, including nested 4-backtick fences).
+
+### Why
+- On 1.29.0 a `/kvendra` session with the KVD STD active classified its message
+  as `exploration` (minto) and still printed the Step 3 headed template.
+
+### Upgrade
+- A project STD whose pre-condition names block v1 should name v2
+  (KVD: `STD-KVD-E83384`).
+
 ## [1.29.0] — 2026-11-05 — Shorter decisions and recommendations
 
 > No engine change. The communication block asks for shorter decisions and
