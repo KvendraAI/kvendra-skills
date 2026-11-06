@@ -4,6 +4,57 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.31.0] — 2026-11-06 — Line 1 is the answer; a closing choice carries a checkable approval line
+
+> No engine change. Block v3 makes every message start with the answer and
+> gives a closing choice a fixed approval line; a new plugin `Stop` hook checks
+> both, by form only, in sessions that run a carrier skill.
+
+### Changed
+- **Communication block v3** (`<!-- kvendra:communication v3 -->`), a two-part
+  message: the body keeps the mode of its own type; a closing that asks the
+  human to choose (`AskUserQuestion` or a numbered list of options) is the
+  decision part; a message whose purpose is to ask for a decision is a
+  `decision`. The type is set by observable signals, never by the step's
+  usual label. Hard floor: line 1 is the answer or the point, never process
+  narration; a decision and a closing choice end with one approval line that
+  starts with `**If you approve:**` (`**Si apruebas:**` in Spanish), says what a
+  yes approves, contains `reversible` or `irreversible`, and says what happens
+  next. Copied verbatim into `new-feature`, `bug`, `deploy`, `tester` and
+  `kvendra`.
+- **`kvendra` Step 3** classifies by rule 2 of the block (a request to decide is
+  a `decision`); **Step 4** ends with the approval line, also when the options
+  are printed as text. The confirmation texts of `deploy`, `new-feature` and
+  `bug` point to the approval line of rule 3.
+
+### Added
+- **`Stop` hook `scripts/communication-stop-check.sh`** with its data file
+  `scripts/communication-check.tsv` (marker, carriers, labels, words, narration
+  phrases). It checks line 1 (no process narration) and, when a message ends
+  with a numbered choice, the approval line. It is silent outside carrier
+  sessions (the latest skill load must be a carrier carrying the v3 marker, with
+  no compact boundary after it), blocks once per turn and then only warns
+  (`stop_hook_active`), and fails open (no `jq`, no data file, unreadable
+  transcript → exit 0). Never calls `kvendra`, `curl` or the network; writes no
+  files; `/bin/bash` 3.2 compatible.
+
+### CI
+- `tests/communication/run.sh` fails with `data_file_drift` when the data file
+  and `block.md` / `carriers.txt` disagree (marker, labels, words, carriers),
+  and runs the Stop hook fixtures (`tests/hook/run-stop-fixtures.sh`: 34
+  fixtures in Spanish and English plus a 20 MB transcript performance case).
+
+### Why
+- `TEST-KVD-SKILLS-5CD8F5`: a `/kvendra` run on a «Decide:» prompt opened with
+  process narration (F2) and was not classified as a `decision` (F1); a closing
+  offer lacked the approval line.
+
+### Upgrade
+- A project STD whose pre-condition names block v2 should name v3
+  (KVD: `STD-KVD-E83384`).
+- Closings made with `AskUserQuestion` are not checked by the `Stop` hook (the
+  turn does not stop there); only text closings are.
+
 ## [1.30.0] — 2026-11-06 — The mode sets the layout; skill templates become checklists
 
 > No engine change. With a project communication STD active, the mode of each

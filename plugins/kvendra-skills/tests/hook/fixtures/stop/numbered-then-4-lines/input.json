@@ -1,0 +1,9 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "__DIR__/transcript.jsonl",
+  "cwd": "/home/user/project",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "The plan has two steps.\n\n1. Write the hook\n2. Write the fixtures\n\nLine one of the trailer.\nLine two of the trailer.\nLine three of the trailer.\nLine four of the trailer."
+}

@@ -1,0 +1,58 @@
+# communication-check.tsv - data for communication-stop-check.sh (REQ-KVD-SKILLS-49224B).
+# Format: <kind><TAB><value>. Lines starting with # and empty lines are ignored.
+# Kinds: marker (exactly 1), carrier (1+), label (1+), word (1+), narration (1+, lower-case literal prefixes, never regex).
+# CI (tests/communication/run.sh) checks that block.md carries the marker, every label and word, and that the carriers equal carriers.txt.
+
+marker	<!-- kvendra:communication v3 -->
+
+carrier	bug
+carrier	deploy
+carrier	kvendra
+carrier	new-feature
+carrier	tester
+
+label	**If you approve:**
+label	**Si apruebas:**
+
+word	reversible
+word	irreversible
+
+narration	ya tengo
+narration	tengo lo necesario
+narration	tengo todo lo necesario
+narration	ahora voy
+narration	déjame
+narration	dejame
+narration	he leído
+narration	he leido
+narration	he consultado
+narration	i will now
+narration	i have everything
+narration	i have what i need
+narration	i now have
+narration	i've read
+narration	i've checked
+narration	i've gathered
+narration	alright,
+narration	got it
+narration	voy a revisar
+narration	voy a mirar
+narration	voy a comprobar
+narration	voy a leer
+narration	voy a lanzar
+narration	voy a buscar
+narration	let me check
+narration	let me look
+narration	let me start
+narration	let me read
+narration	let me review
+narration	let me summarise
+narration	let me summarize
+narration	let me see
+narration	i'll check
+narration	i'll look
+narration	i'll start
+narration	i'll read
+narration	i'll review
+narration	now i will
+narration	now i'll
