@@ -1,0 +1,9 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "__DIR__/transcript.jsonl",
+  "cwd": "/home/user/project",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Option 1 is best: it is small and can be undone.\n\n1. Create one ISSUE for the first part\n2. Wait for the next release\n3. Do nothing\n\n**If you approve:** one ISSUE is created for the first part, reversible (it can be archived), then planning starts."
+}

@@ -70,6 +70,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-check.sh",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
