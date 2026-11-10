@@ -2,6 +2,13 @@
 
 Claude Code plugin that drives the Kvendra hosted knowledge base (KB) with a set of skills (feature delivery, bug triage, releases, documentation and more). This page states what the plugin runs on your machine and what it sends. For installation and the skill catalogue, see the [repository README](../../README.md).
 
+## Install
+
+```
+/plugin marketplace add KvendraAI/kvendra-skills
+/plugin install kvendra-skills@kvendra-marketplace
+```
+
 ## MCP server
 
 The plugin declares one MCP server, `kvendra-cloud`, in `.mcp.json`. It connects over HTTP to `https://api.kvendra.cloud/mcp`. Sign-in uses OAuth 2.1 with PKCE against `auth.kvendra.cloud`. A Kvendra account (hosted KB, Pro tier or above) is required; without one the skills have nothing to talk to. The URL accepts an optional suffix from the `KVENDRA_WS` environment variable (for example `?ws=acme`) so that each directory can keep a separate OAuth credential per account. When the variable is unset, the URL is exactly the one above.
