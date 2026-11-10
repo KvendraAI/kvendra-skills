@@ -4,6 +4,33 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.32.0] — 2026-11-10 — Directory readiness: plugin README, quoted hook paths, privacy policy URL
+
+> No engine change and no change to what any hook does. Three small changes
+> so the plugin passes `claude plugin validate` cleanly and tells the plugin
+> directory what it runs and sends.
+
+### Added
+- **`plugins/kvendra-skills/README.md`**: states what the plugin executes and
+  sends: the `kvendra-cloud` MCP server and its OAuth sign-in, every hook in
+  `hooks/hooks.json` with what its script does, what the skills write to the
+  user's Kvendra knowledge base, and links to the privacy policy and the root
+  README. The `kvendra-companion` README gains the privacy policy link and a
+  line saying it declares no hooks or MCP server of its own.
+- **`privacyPolicyUrl`** (`https://kvendra.com/legal/privacy`) in
+  `plugins/kvendra-skills/.claude-plugin/plugin.json`, which clears
+  `PRIVACY_URL_MISSING`.
+
+### Fixed
+- **Hook commands quote `${CLAUDE_PLUGIN_ROOT}`** in all 8 entries of
+  `hooks/hooks.json`, so a plugin path that contains a space no longer splits
+  the command. Matchers, order and scripts are unchanged.
+
+### Notes
+- `ICON_MISSING` may still be reported by the validator: the icon is an owner
+  asset, not part of this release.
+- Boot ROM (`CLAUDE.md.template`) unchanged: no `lint-claudemd` drift.
+
 ## [1.31.0] — 2026-11-06 — Line 1 is the answer; a closing choice carries a checkable approval line
 
 > No engine change. Block v3 makes every message start with the answer and
