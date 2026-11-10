@@ -41,6 +41,8 @@ Or, with the marketplace already added: `/plugin install kvendra-companion@kvend
 - It refreshes TXNs and the skills version every 30 seconds and the rest every 5 minutes.
 - The comparison with published `kvendra-skills` releases is only made in the Kvendra project itself.
 
+The plugin declares no hooks and no MCP server of its own; what `kvendra-skills` runs is described in its own README. Privacy policy: <https://kvendra.com/legal/privacy>.
+
 ## Optional per-turn usage log (off by default)
 
 To measure your own consumption, create an empty file:
