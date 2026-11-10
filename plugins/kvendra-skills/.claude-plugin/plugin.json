@@ -8,5 +8,6 @@
   },
   "homepage": "https://github.com/KvendraAI/kvendra-skills",
   "repository": "https://github.com/KvendraAI/kvendra-skills",
-  "license": "MIT"
+  "license": "MIT",
+  "privacyPolicyUrl": "https://kvendra.com/legal/privacy"
 }
