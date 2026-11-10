@@ -4,6 +4,24 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.32.1] — 2026-11-10 — Plugin icon and install line
+
+> No engine change and no change to what any skill or hook does. Two small
+> additions for the plugin directory listing.
+
+### Added
+- **Plugin icon**: `plugins/kvendra-skills/.claude-plugin/icon.png`, which
+  clears `ICON_MISSING` in `claude plugin validate` (PR #28,
+  ISSUE-KVD-SKILLS-40A1C2).
+- **Install line**: `plugins/kvendra-skills/README.md` gains an *Install*
+  section with the two commands (`/plugin marketplace add
+  KvendraAI/kvendra-skills` and `/plugin install
+  kvendra-skills@kvendra-marketplace`) (PR #29, ISSUE-KVD-SKILLS-B39397).
+
+### Notes
+- `kvendra-companion` keeps its own version; it is not part of this release.
+- Boot ROM (`CLAUDE.md.template`) unchanged: no `lint-claudemd` drift.
+
 ## [1.32.0] — 2026-11-10 — Directory readiness: plugin README, quoted hook paths, privacy policy URL
 
 > No engine change and no change to what any hook does. Three small changes
