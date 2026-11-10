@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/block-unsafe-ops.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/block-unsafe-ops.sh\""
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/lvr-scan-tool-input.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/lvr-scan-tool-input.sh\""
           }
         ]
       },
@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/deny-vault-paths.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/deny-vault-paths.sh\""
           }
         ]
       }
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/lvr-scan-subagent.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/lvr-scan-subagent.sh\""
           }
         ]
       }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/inbox-nudge.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/inbox-nudge.sh\"",
             "timeout": 10
           }
         ]
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/session-resume-nudge.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/session-resume-nudge.sh\"",
             "timeout": 5
           }
         ]
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/inbox-nudge.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/inbox-nudge.sh\"",
             "timeout": 10
           }
         ]
@@ -76,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-check.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-check.sh\"",
             "timeout": 5
           }
         ]
