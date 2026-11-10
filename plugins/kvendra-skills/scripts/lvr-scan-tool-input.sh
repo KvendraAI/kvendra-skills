@@ -36,7 +36,7 @@ case "$TOOL_NAME" in
   *) exit 0 ;;
 esac
 
-TEXT="$(printf '%s' "$INPUT" | jq -r '[.tool_input | .. | strings] | join("\n")' 2>/dev/null || true)"
+TEXT="$(printf '%s' "$INPUT" | jq -r '[.tool_input | recurse | strings] | join("\n")' 2>/dev/null || true)"
 [[ -z "$TEXT" ]] && exit 0
 
 lvr_scan "$TEXT"
