@@ -4,6 +4,33 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.32.4] — 2026-11-11 — Stop hook readable by the plugin directory validator
+
+> No engine change and **no hook changes what it decides**: every hook allows,
+> blocks and warns on exactly the same inputs as in 1.32.3. One change so the
+> plugin directory's Validate can confirm which code the Stop hook runs.
+
+### Changed
+- **`communication-stop-check.sh`**: ASCII-only command lines, literal program
+  paths and unquoted assignments. The four non-ASCII characters it passed to
+  awk with `-v` (apostrophe, ellipsis, em dash, en dash) now live in the
+  `BEGIN` block of `communication-stop-checks.awk`, and the `-v` options are
+  gone. Every `awk -f` / `jq -f` and the data file use
+  `"${CLAUDE_PLUGIN_ROOT}/scripts/..."`; when `CLAUDE_PLUGIN_ROOT` is unset it
+  is derived once from `BASH_SOURCE`, and the `HERE`, `DATA` and
+  `COMMUNICATION_CHECK_TSV` variables are removed. A missing data file still
+  exits 0 (fail-open). Command-substitution assignments are written
+  `X=$(cmd)`. `run-stop-fixtures.sh` points `CLAUDE_PLUGIN_ROOT` at a missing
+  directory for its no-data case instead of setting `COMMUNICATION_CHECK_TSV`
+  (PR #40, ISSUE-KVD-SKILLS-A49B6A).
+
+### Notes
+- No hook changes what it decides: the Stop hook blocks, lets through and
+  prints exactly what it did in 1.32.3. `run-stop-fixtures.sh` passes 39/39
+  with no expectation changed, and every `tests/hook/` suite is green.
+- `kvendra-companion` keeps its own version; it is not part of this release.
+- Boot ROM (`CLAUDE.md.template`) unchanged: no `lint-claudemd` drift.
+
 ## [1.32.3] — 2026-11-11 — Last hooks readable by the plugin directory validator
 
 > No engine change and **no hook changes what it decides**: every hook allows,
