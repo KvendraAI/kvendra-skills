@@ -22,15 +22,22 @@
 # The awk and jq programs live next to this script and are run by literal path (awk -f, jq -f),
 # one command per line, so the portal validator can name every program this hook runs:
 #   communication-stop-meta.awk    data-file summary (marker, carriers)
+#   communication-stop-input-tp.jq      hook input: transcript_path
+#   communication-stop-input-active.jq  hook input: stop_hook_active
+#   communication-stop-input-msg.jq     hook input: last_assistant_message
 #   communication-stop-load.jq     the most recent skill-load entry
+#   communication-stop-after.awk   grep hits after the skill-load line
 #   communication-stop-later.jq    compact boundaries after it
 #   communication-stop-tail.jq     last assistant text of the transcript tail
 #   communication-stop-checks.awk  checks (a) and (b)
 #   communication-stop-block.jq    the block decision
+#   communication-stop-system.jq   the let-through message (second failure in a turn)
 
 set -u
 exec 2>/dev/null
-trap 'exit 0' EXIT
+# Fail open: whatever happens, the hook exits 0.
+stop_check_exit() { exit 0; }
+trap stop_check_exit EXIT
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -50,9 +57,9 @@ CARRIERS="${META#*"$NL"}"
 [ -n "$MARKER" ] || exit 0
 
 INPUT="$(cat)"
-TP="$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty | strings')"
-ACTIVE="$(printf '%s' "$INPUT" | jq -r '.stop_hook_active == true')"
-MSG="$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // empty | strings')"
+TP="$(printf '%s' "$INPUT" | jq -r -f "$HERE/communication-stop-input-tp.jq")"
+ACTIVE="$(printf '%s' "$INPUT" | jq -r -f "$HERE/communication-stop-input-active.jq")"
+MSG="$(printf '%s' "$INPUT" | jq -r -f "$HERE/communication-stop-input-msg.jq")"
 
 # ---- Carrier gate: the most recent skill-load entry names a carrier and carries the marker.
 [ -n "$TP" ] && [ -f "$TP" ] && [ -r "$TP" ] || exit 0
@@ -69,7 +76,7 @@ HASMARK="${REST#*"$TAB"}"
 [ "$HASMARK" = "1" ] || exit 0
 case "$CARRIERS" in *" $NAME "*) ;; *) exit 0 ;; esac
 BOUNDS="$(printf '%s\n' "$HITS" | LC_ALL=C grep -F '"compact_boundary"')"
-AFTER="$(printf '%s\n' "$BOUNDS" | LC_ALL=C awk -v L="$L" -F: '($1 + 0) > (L + 0)')"
+AFTER="$(printf '%s\n' "$BOUNDS" | LC_ALL=C awk -v L="$L" -f "$HERE/communication-stop-after.awk")"
 LATERS="$(printf '%s\n' "$AFTER" | jq -rR -f "$HERE/communication-stop-later.jq")"
 LATER="$(printf '%s\n' "$LATERS" | tail -n 1)"
 [ -z "$LATER" ] || exit 0
@@ -88,7 +95,7 @@ L1="${RES#*"$NL"}"
 
 if [ "$ACTIVE" = "true" ]; then
   case "$CODE" in ab) W="a+b" ;; *) W="$CODE" ;; esac
-  jq -cn --arg w "$W" '{systemMessage: ("kvendra communication: final message still fails " + $w + " after one rewrite; let through.")}'
+  jq -cn --arg w "$W" -f "$HERE/communication-stop-system.jq"
   exit 0
 fi
 jq -cn --arg code "$CODE" --arg l1 "$L1" -f "$HERE/communication-stop-block.jq"
