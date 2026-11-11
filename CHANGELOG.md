@@ -4,6 +4,30 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.32.5] — 2026-11-11 — Stop hook accepted by the plugin directory validator
+
+> No engine change and **no hook changes what it decides**: every hook allows,
+> blocks and warns on exactly the same inputs as in 1.32.4. One change so the
+> plugin directory's Validate accepts the Stop hook.
+
+### Changed
+- **`communication-stop-check.sh`**: no nested quotes in parameter expansions
+  and `CLAUDE_PLUGIN_ROOT` is never reassigned. The eight NL/TAB splits are
+  unquoted assignments (`MARKER=${META%%$NL*}`, ...), which behave the same:
+  assignments do not word-split and NL/TAB contain no glob characters. The
+  `BASH_SOURCE` fallback block is replaced with
+  `[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || exit 0` (fail open).
+  `run-stop-fixtures.sh` sets `CLAUDE_PLUGIN_ROOT` to the plugin directory on
+  every run, and to a missing directory for its no-data case
+  (PR #42, ISSUE-KVD-SKILLS-07DFC3).
+
+### Notes
+- No hook changes what it decides inside Claude Code: the Stop hook blocks,
+  lets through and prints exactly what it did in 1.32.4 whenever Claude Code
+  sets `CLAUDE_PLUGIN_ROOT`, as it always does for plugin hooks.
+  `run-stop-fixtures.sh` passes 39/39 with no expectation changed, and every
+  `tests/hook/` suite is green.
+
 ## [1.32.4] — 2026-11-11 — Stop hook readable by the plugin directory validator
 
 > No engine change and **no hook changes what it decides**: every hook allows,
