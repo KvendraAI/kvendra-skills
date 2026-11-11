@@ -1,12 +1,13 @@
 {
   "name": "kvendra-skills",
   "description": "Kvendra skills — orchestrators (feature, bug, incident, release), analysts, testers, doc + ops tooling on top of the Kvendra KB engine hosted at api.kvendra.cloud",
-  "version": "1.29.0",
+  "version": "1.32.2",
   "author": {
     "name": "Kvendra",
     "url": "https://kvendra.com"
   },
   "homepage": "https://github.com/KvendraAI/kvendra-skills",
   "repository": "https://github.com/KvendraAI/kvendra-skills",
-  "license": "MIT"
+  "license": "MIT",
+  "privacyPolicyUrl": "https://kvendra.com/legal/privacy"
 }

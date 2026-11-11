@@ -50,6 +50,14 @@
 
 set -euo pipefail
 
+# Directory of the hook's helper files (the YAML reader). Derived once from
+# this script's own path, the same way communication-stop-check.sh finds its
+# data file, so it does not depend on CLAUDE_PLUGIN_ROOT being exported.
+case "${BASH_SOURCE[0]}" in
+  */*) HOOK_LIB_DIR="${BASH_SOURCE[0]%/*}/lib" ;;
+  *) HOOK_LIB_DIR="./lib" ;;
+esac
+
 INPUT="$(cat)"
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -79,15 +87,14 @@ shopt -s nocasematch
 VAULT_HIT=0; [[ "$COMMAND" =~ $VAULT_RE ]] && VAULT_HIT=1
 shopt -u nocasematch
 if [[ $VAULT_HIT -eq 1 ]]; then
-  cat >&2 <<EOF
-[KVD-PROTECTED] Bash access to the Kvendra vault directory (~/.kvendra) is blocked by the kvendra-skills built-in rule (RF-SK-4). Local values and credentials live there: use \`kvendra vars status\` / \`kvendra vars list\` (value-free) or ask the owner to run the command in their own terminal.
-Para ver un allowlist usa \`kvendra secret show-allowlist <profile_id>\` (CLI ≥ 0.7.0).
-
-Command: ${COMMAND}
-
-This rule is a local brake, not a control: the protection of the values is
-the vault's encryption and the broker.
-EOF
+  printf '%s\n' \
+    "[KVD-PROTECTED] Bash access to the Kvendra vault directory (~/.kvendra) is blocked by the kvendra-skills built-in rule (RF-SK-4). Local values and credentials live there: use \`kvendra vars status\` / \`kvendra vars list\` (value-free) or ask the owner to run the command in their own terminal." \
+    "Para ver un allowlist usa \`kvendra secret show-allowlist <profile_id>\` (CLI ≥ 0.7.0)." \
+    "" \
+    "Command: ${COMMAND}" \
+    "" \
+    "This rule is a local brake, not a control: the protection of the values is" \
+    "the vault's encryption and the broker." >&2
   exit 2
 fi
 
@@ -140,17 +147,16 @@ emit_block() {
   local pattern="$1" std_id="$2" version="$3" mode="$4" primitive="$5" hint="$6" bg_reason="${7:-}"
   local bg_suffix=""
   [[ -n "$bg_reason" ]] && bg_suffix=" Break-glass: ${bg_reason}."
-  cat >&2 <<EOF
-[KVD-PROTECTED] Bash op '${pattern}' blocked by policy '${std_id}' v${version} (mode: ${mode}).${bg_suffix} Use broker primitive '${primitive}' instead. Install hint: ${hint}
-
-Workspace root: ${MARKER_DIR}
-Marker:         ${MARKER_KIND}
-Command:        ${COMMAND}
-
-Read-only Bash (git status/log/diff, gh issue view, aws sts
-get-caller-identity, etc.) IS allowed. The hook only blocks writes /
-deploys that need credentialed broker primitives.
-EOF
+  printf '%s\n' \
+    "[KVD-PROTECTED] Bash op '${pattern}' blocked by policy '${std_id}' v${version} (mode: ${mode}).${bg_suffix} Use broker primitive '${primitive}' instead. Install hint: ${hint}" \
+    "" \
+    "Workspace root: ${MARKER_DIR}" \
+    "Marker:         ${MARKER_KIND}" \
+    "Command:        ${COMMAND}" \
+    "" \
+    "Read-only Bash (git status/log/diff, gh issue view, aws sts" \
+    "get-caller-identity, etc.) IS allowed. The hook only blocks writes /" \
+    "deploys that need credentialed broker primitives." >&2
   exit 2
 }
 
@@ -293,11 +299,10 @@ maybe_break_glass() {
 # Path A — legacy .kvendra-workspace only (hard error, no fallback)
 # ------------------------------------------------------------------
 if [[ "$MARKER_KIND" == ".kvendra-workspace" ]]; then
-  cat >&2 <<EOF
-[KVD-PROTECTED] legacy marker .kvendra-workspace at ${MARKER_DIR} is no longer supported. Run /sync-claudemd --policy-only to materialise .kvendra-protected from STD-KVD-BROKER-POLICY, then retry. The hardcoded seed strict policy that covered the v1.2.0-alpha.1 transition window was removed in v1.2.0-alpha.2.
-
-Command: ${COMMAND}
-EOF
+  printf '%s\n' \
+    "[KVD-PROTECTED] legacy marker .kvendra-workspace at ${MARKER_DIR} is no longer supported. Run /sync-claudemd --policy-only to materialise .kvendra-protected from STD-KVD-BROKER-POLICY, then retry. The hardcoded seed strict policy that covered the v1.2.0-alpha.1 transition window was removed in v1.2.0-alpha.2." \
+    "" \
+    "Command: ${COMMAND}" >&2
   exit 2
 fi
 
@@ -305,7 +310,8 @@ fi
 # Path B — .kvendra-protected (canonical policy-driven path)
 # ------------------------------------------------------------------
 
-# Minimal pure-awk YAML reader. Supports:
+# Minimal pure-awk YAML reader (the program lives in lib/yaml-reader.awk,
+# run by path with `awk -f`). Supports:
 #   - top-level scalar keys (mode, broker_install_hint, broker_min_version,
 #     schema_version, std_id, synced_version)
 #   - top-level list keys (block_bash, allow_bash) as sequences of `- '<re>'`
@@ -321,124 +327,11 @@ fi
 # On parse error → prints `ERROR<TAB><line>:<col>:<reason>` on stderr and
 # returns exit 1.
 
-YAML_DUMP="$(awk '
-  function strip_quotes(s,    n) {
-    n = length(s)
-    if (n >= 2) {
-      if ((substr(s,1,1) == "\"" && substr(s,n,1) == "\"") ||
-          (substr(s,1,1) == "'\''" && substr(s,n,1) == "'\''")) {
-        return substr(s, 2, n-2)
-      }
-    }
-    return s
-  }
-  function trim(s) {
-    sub(/^[[:space:]]+/, "", s)
-    sub(/[[:space:]]+$/, "", s)
-    return s
-  }
-  BEGIN { current_list = ""; in_pair = 0; pair_key = ""; pair_op = ""; pair_prim = "" }
-  /^[[:space:]]*#/ { next }   # comment
-  /^[[:space:]]*$/ { next }   # blank
-
-  # Top-level scalar `key: value`
-  /^[A-Za-z_][A-Za-z0-9_]*:[[:space:]]/ {
-    # flush any pending mapping item under ITS OWN parent key (never a
-    # hardcoded `require_broker`, or an unknown container shaped like a
-    # sequence of mappings would be promoted into the policy).
-    if (in_pair) {
-      print "PAIR\t" current_list "\t" "op_pattern=" pair_op ";primitive=" pair_prim
-      in_pair = 0; pair_op = ""; pair_prim = ""
-    }
-    current_list = ""
-    pos = index($0, ":")
-    key = substr($0, 1, pos-1)
-    val = trim(substr($0, pos+1))
-    val = strip_quotes(val)
-    print "SCALAR\t" key "\t" val
-    next
-  }
-
-  # Top-level list opener `key:` (followed by indented `- ...` lines)
-  /^[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*$/ {
-    # Same flush contract as the scalar rule above: label the pair with the
-    # key it actually belongs to, resolved BEFORE current_list is reassigned.
-    if (in_pair) {
-      print "PAIR\t" current_list "\t" "op_pattern=" pair_op ";primitive=" pair_prim
-      in_pair = 0; pair_op = ""; pair_prim = ""
-    }
-    sub(/:[[:space:]]*$/, "", $0)
-    current_list = $0
-    next
-  }
-
-  # Sequence item under a list key
-  /^[[:space:]]+-[[:space:]]+/ {
-    if (current_list == "") { print "ERROR\t" NR ":1:sequence item without parent list" > "/dev/stderr"; exit 1 }
-    item = $0
-    sub(/^[[:space:]]+-[[:space:]]+/, "", item)
-    # if this is a mapping item (e.g. `op_pattern: ...`)
-    if (item ~ /^op_pattern:/) {
-      # flush previous pair if any
-      if (in_pair) {
-        print "PAIR\t" current_list "\t" "op_pattern=" pair_op ";primitive=" pair_prim
-      }
-      in_pair = 1
-      val = trim(substr(item, length("op_pattern:")+1))
-      pair_op = strip_quotes(val)
-      pair_prim = ""
-      next
-    }
-    item = strip_quotes(item)
-    print "LIST\t" current_list "\t" item
-    next
-  }
-
-  # Continuation key under a sequence-of-mappings (e.g. `primitive: kvendra.git`)
-  # OR a nested key under the `break_glass:` mapping (e.g. `enabled: true`).
-  /^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:[[:space:]]/ {
-    # Nested keys under the break_glass mapping (not a sequence item).
-    if (current_list == "break_glass" && !in_pair) {
-      line = $0
-      sub(/^[[:space:]]+/, "", line)
-      pos = index(line, ":")
-      k = substr(line, 1, pos-1)
-      v = trim(substr(line, pos+1))
-      v = strip_quotes(v)
-      print "BG\t" k "\t" v
-      next
-    }
-    if (!in_pair) {
-      if (current_list == "" || current_list == "block_bash" ||
-          current_list == "allow_bash" || current_list == "require_broker") {
-        print "ERROR\t" NR ":1:mapping continuation outside sequence item" > "/dev/stderr"
-        exit 1
-      }
-      next   # unknown top-level container -> ignore its nested mapping
-    }
-    line = $0
-    sub(/^[[:space:]]+/, "", line)
-    pos = index(line, ":")
-    k = substr(line, 1, pos-1)
-    v = trim(substr(line, pos+1))
-    v = strip_quotes(v)
-    if (k == "primitive") {
-      pair_prim = v
-    }
-    next
-  }
-
-  END {
-    if (in_pair) {
-      print "PAIR\t" current_list "\t" "op_pattern=" pair_op ";primitive=" pair_prim
-    }
-  }
-' "$PROTECTED_PATH" 2>&1)" || YAML_ERR=$?
+YAML_DUMP="$(awk -f "${HOOK_LIB_DIR}/yaml-reader.awk" "$PROTECTED_PATH" 2>&1)" || YAML_ERR=$?
 
 if [[ "${YAML_ERR:-0}" -ne 0 ]]; then
-  cat >&2 <<EOF
-[KVD-PROTECTED] malformed .kvendra-protected at ${PROTECTED_PATH} — YAML parse error. Re-sync via /sync-claudemd --policy-only.
-EOF
+  printf '%s\n' \
+    "[KVD-PROTECTED] malformed .kvendra-protected at ${PROTECTED_PATH} — YAML parse error. Re-sync via /sync-claudemd --policy-only." >&2
   exit 2
 fi
 
@@ -493,9 +386,8 @@ done <<< "$YAML_DUMP"
 
 # Validate schema_version.
 if [[ "$SCHEMA_VERSION" != "1" ]]; then
-  cat >&2 <<EOF
-[KVD-PROTECTED] unsupported schema_version '${SCHEMA_VERSION}' in ${PROTECTED_PATH}. Hook v2 supports schema_version 1. Upgrade kvendra-skills or re-sync.
-EOF
+  printf '%s\n' \
+    "[KVD-PROTECTED] unsupported schema_version '${SCHEMA_VERSION}' in ${PROTECTED_PATH}. Hook v2 supports schema_version 1. Upgrade kvendra-skills or re-sync." >&2
   exit 2
 fi
 
@@ -503,9 +395,8 @@ fi
 case "$MODE" in
   strict|permissive|hybrid) : ;;
   *)
-    cat >&2 <<EOF
-[KVD-PROTECTED] invalid mode '${MODE}' in ${PROTECTED_PATH}. Must be strict|permissive|hybrid. Re-sync via /sync-claudemd --policy-only.
-EOF
+    printf '%s\n' \
+      "[KVD-PROTECTED] invalid mode '${MODE}' in ${PROTECTED_PATH}. Must be strict|permissive|hybrid. Re-sync via /sync-claudemd --policy-only." >&2
     exit 2
     ;;
 esac

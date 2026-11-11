@@ -1,5 +1,22 @@
 # kvendra-skills
 
+The decisions, standards and reasons behind your project live in a knowledge base that your agent reads and writes across sessions. kvendra-skills is the Claude Code plugin that connects your agent to that knowledge base.
+
+Every change is traceable: who, when, which version and why.
+
+```text
+/plugin marketplace add KvendraAI/kvendra-skills
+/plugin install kvendra-skills@kvendra-marketplace
+```
+
+The plugin is MIT-licensed and the skills are plain Markdown prompts.
+
+The hosted knowledge base needs a Kvendra account ([kvendra.com](https://kvendra.com)). Try Pro for 15 days. No card required. The trial starts with your first write to the knowledge base.
+
+[kvendra-platform](https://github.com/KvendraAI/kvendra-platform): The open-source engine of Kvendra's knowledge base for AI agents.
+
+---
+
 **Skills + remote MCP server** for the Kvendra hosted knowledge engine
 (<https://api.kvendra.cloud/mcp>). Plugin for Claude Code,
 installable through the native `/plugin` command.
