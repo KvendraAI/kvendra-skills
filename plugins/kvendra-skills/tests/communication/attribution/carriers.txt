@@ -1,0 +1,5 @@
+bug
+deploy
+implementer
+new-feature
+release-manager

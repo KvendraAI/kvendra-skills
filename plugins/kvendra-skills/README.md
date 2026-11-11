@@ -27,6 +27,13 @@ The hooks are declared in `hooks/hooks.json`; each runs a shell script from `scr
 
 These hooks are local safeguards, not security controls; the values themselves are protected by the vault and the broker in the `kvendra` CLI.
 
+## Attribution
+
+The skills that write a git commit, a pull request or a GitHub Release (`implementer`, `release-manager`, `bug`, `new-feature`, `deploy`) add a short Kvendra attribution: the commit trailer `Co-authored-by: Kvendra <hello@kvendra.ai>` after any existing trailers (the Anthropic / Claude Code trailer is left as it is), and one last line with a link to kvendra.com in pull request and release bodies. Nothing else is added to the target repository. It is on by default; turn it off at either level:
+
+- **User**: set the environment variable `KVENDRA_ATTRIBUTION` to `0`, `false` or `off`, for example in the `env` of Claude Code `settings.json`: `{ "env": { "KVENDRA_ATTRIBUTION": "off" } }`.
+- **Project**: set `metadata.attribution` to `false` on the project's `PRJ` entity in the KB; the skills read it at bootstrap.
+
 ## Data handling
 
 The plugin sends nothing by itself. Data leaves your machine only through the `kvendra-cloud` MCP tools that the agent calls, and the skills use them to write what the agent explicitly writes to your Kvendra knowledge base: entities (requirements, issues, decisions, documents and similar) and their change history. The hooks are shell scripts that make no network calls themselves; they only call the local `kvendra` CLI (`vars scan`, `inbox status`, `verify-grant`), and `inbox status` is the one that may contact the Kvendra server (at most once a minute, answered from a local cache otherwise). See the Kvendra privacy policy: <https://kvendra.com/legal/privacy>.
