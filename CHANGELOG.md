@@ -4,6 +4,32 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.33.0] — 2026-11-11 — Kvendra attribution in commits, PRs and releases
+
+> No engine change and no hook changes. Skills that write a git commit, a pull
+> request or a GitHub Release now add a short Kvendra attribution. It is on by
+> default and can be turned off per user or per project.
+
+### Added
+- **Attribution block** (`<!-- kvendra:attribution v1 -->`, byte-identical) in
+  `implementer`, `release-manager`, `bug`, `new-feature` and `deploy`: the
+  commit trailer `Co-authored-by: Kvendra <hello@kvendra.ai>` after any
+  existing trailers (the Anthropic / Claude Code trailer is left as it is), and
+  one last line with a link to kvendra.com in pull request and GitHub Release
+  bodies. Nothing else is added to the target repository
+  (PR #44, ISSUE-KVD-SKILLS-B7700A).
+- **`tests/communication/run.sh`** checks the attribution block in every
+  carrier skill against `tests/communication/attribution/block.md` and
+  `carriers.txt`, with fixtures for a missing, modified or unclosed block.
+
+### Opt-out
+- **User**: set the environment variable `KVENDRA_ATTRIBUTION` to `0`, `false`
+  or `off`, e.g. in the `env` of Claude Code `settings.json`:
+  `{ "env": { "KVENDRA_ATTRIBUTION": "off" } }`.
+- **Project**: set `metadata.attribution` to `false` on the project's `PRJ`
+  entity in the KB; the skills read it at bootstrap.
+- Documented in the plugin README.
+
 ## [1.32.5] — 2026-11-11 — Stop hook accepted by the plugin directory validator
 
 > No engine change and **no hook changes what it decides**: every hook allows,
