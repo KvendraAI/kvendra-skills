@@ -120,5 +120,48 @@ fi
 
 echo "fixtures: $passed of $total passed; real: $([ "$CODE" = ok ] && echo pass || echo fail)"
 
+# The attribution block (ISSUE-KVD-SKILLS-B7700A): same rule, no chat-template zone check.
+# Every skill in attribution/carriers.txt carries it, and every copy anywhere equals attribution/block.md.
+ABLOCK="$HERE/attribution/block.md"
+AOPEN='<!-- kvendra:attribution v1 -->'
+ACLOSE='<!-- /kvendra:attribution -->'
+# acheck <skills_dir> <carriers_file> -> ACODE (ok | missing_block | unclosed_block | block_differs), ABAD
+acheck() {
+  local skills="$1" carriers="$2" name f d
+  ACODE=ok; ABAD=
+  while IFS= read -r name || [ -n "$name" ]; do
+    [ -z "$name" ] && continue
+    f="$skills/$name/SKILL.md"
+    if [ ! -f "$f" ] || ! grep -qxF -- "$AOPEN" "$f"; then ACODE=missing_block; ABAD="$name"; return; fi
+  done < "$carriers"
+  for d in "$skills"/*/; do
+    f="${d}SKILL.md"
+    [ -f "$f" ] && grep -qxF -- "$AOPEN" "$f" || continue
+    name="$(basename "$d")"
+    if ! awk -v o="$AOPEN" -v c="$ACLOSE" '$0==o{s=1;next} s&&$0==c{f=1} END{exit f?0:1}' "$f"; then
+      ACODE=unclosed_block; ABAD="$name"; return
+    fi
+    awk -v o="$AOPEN" -v c="$ACLOSE" '$0==o&&!s{s=1} s{print} s&&$0==c{exit}' "$f" > "$TMP/aextract"
+    if ! cmp -s "$TMP/aextract" "$ABLOCK"; then
+      ACODE=block_differs; ABAD="$name"; diff "$ABLOCK" "$TMP/aextract" > "$TMP/adiff" 2>&1; return
+    fi
+  done
+}
+[ "$(head -n1 "$ABLOCK")" = "$AOPEN" ] || { echo "FAIL attribution block.md line 1 is not $AOPEN"; fail=1; }
+for fx in "$HERE"/attribution/fixtures/*/; do
+  [ -d "$fx" ] || continue
+  expect="$(head -n1 "$fx/expect")"
+  acheck "$fx/skills" "$fx/carriers.txt"
+  if [ "$ACODE" = "$expect" ]; then echo "PASS attribution/$(basename "$fx")"
+  else echo "FAIL attribution/$(basename "$fx") (expected $expect, got $ACODE)"; fail=1; fi
+done
+acheck "$HERE/../../skills" "$HERE/attribution/carriers.txt"
+if [ "$ACODE" = ok ]; then
+  echo "PASS attribution real ($(grep -c . "$HERE/attribution/carriers.txt") carriers)"
+else
+  echo "FAIL attribution real ($ACODE in $ABAD)"; fail=1
+  [ "$ACODE" = block_differs ] && cat "$TMP/adiff"
+fi
+
 bash "$HERE/../hook/run-stop-fixtures.sh" || fail=1
 exit $fail
