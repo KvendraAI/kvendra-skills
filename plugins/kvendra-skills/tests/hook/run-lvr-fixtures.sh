@@ -201,7 +201,10 @@ run_case "read-nocli-still-deny"  deny-vault-paths.sh "$(file_tool Read '{"file_
 run_case "read-dollar-home-deny"  deny-vault-paths.sh "$(file_tool Read '{"file_path":"$HOME/.kvendra/sessions/x.token"}')" scan deny
 run_case "read-abs-deny"          deny-vault-paths.sh "$(file_tool Read "{\"file_path\":\"$H/.kvendra/allowlists/a.yaml\"}")" scan deny
 run_case "read-dotdot-deny"       deny-vault-paths.sh "$(file_tool Read '{"file_path":"../.kvendra/vars.blob"}')" scan deny
-run_case "read-symlink-deny"      deny-vault-paths.sh "$(file_tool Read "{\"file_path\":\"$H/innocent-link/vars.blob\"}")" scan deny
+run_case "read-dot-dotdot-mix-deny" deny-vault-paths.sh "$(file_tool Read "{\"file_path\":\"$H/a/./b/../../.kvendra/x\"}")" scan deny
+# A three-dot segment is a plain name, not a parent: "$H/sub/..." must NOT fold back to $H.
+run_case "read-tripledot-plain-allow" deny-vault-paths.sh "$(file_tool Read "{\"file_path\":\"$H/sub/.../.kvendra/vars.blob\"}")" scan silent
+run_case "read-symlink-deny"     deny-vault-paths.sh "$(file_tool Read "{\"file_path\":\"$H/innocent-link/vars.blob\"}")" scan deny
 run_case "read-case-deny"         deny-vault-paths.sh "$(file_tool Read '{"file_path":"~/.KVENDRA/vars.blob"}')" scan deny
 run_case "write-deny"             deny-vault-paths.sh "$(file_tool Write '{"file_path":"~/.kvendra/x","content":"y"}')" scan deny
 run_case "edit-deny"              deny-vault-paths.sh "$(file_tool Edit '{"file_path":"~/.kvendra/config.toml","old_string":"a","new_string":"b"}')" scan deny

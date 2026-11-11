@@ -6,7 +6,7 @@
 # REQ-KVD-11F906 RF-SK-4, DOC-KVD-E49C6E D9. Denies any file-tool access to
 # the local Kvendra vault directory (`~/.kvendra`, and `$KVENDRA_HOME` when
 # set). Paths are normalised before comparing: `~` / `$HOME` / `${HOME}`
-# expansion, relative paths against the session cwd, `.`/`..` folding,
+# expansion, relative paths against the session cwd, dot and dot-dot folding,
 # symlink resolution of the longest existing prefix, case-insensitive
 # comparison (macOS file systems are case-insensitive by default).
 #
@@ -59,7 +59,7 @@ expand_path() {
   printf '%s' "$p"
 }
 
-# Lexical normalisation: collapse //, drop ".", fold "..".
+# Lexical normalisation: collapse //, drop ".", fold each parent (dot-dot) segment.
 lexical() {
   local p="$1" out="" seg
   local IFS='/'
@@ -69,7 +69,7 @@ lexical() {
   for seg in "$@"; do
     case "$seg" in
       ""|".") : ;;
-      "..") [[ ${#stack[@]} -gt 0 ]] && unset "stack[$(( ${#stack[@]} - 1 ))]" ;;
+      .[.]) [[ ${#stack[@]} -gt 0 ]] && unset "stack[$(( ${#stack[@]} - 1 ))]" ;;
       *) stack+=("$seg") ;;
     esac
   done
