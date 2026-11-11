@@ -4,6 +4,37 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.32.3] — 2026-11-11 — Last hooks readable by the plugin directory validator
+
+> No engine change and **no hook changes what it decides**: every hook allows,
+> blocks and warns on exactly the same inputs as in 1.32.2. Two changes so the
+> plugin directory's Validate can read the last two hook scripts it flagged.
+
+### Changed
+- **`communication-stop-check.sh`**: no command or program left inside a
+  quoted string. The `trap 'exit 0' EXIT` becomes the named function
+  `stop_check_exit` (it still always exits 0); the inline awk boundary filter
+  moves to `scripts/communication-stop-after.awk` (run with `awk -f`); the
+  inline jq `systemMessage` program moves to
+  `scripts/communication-stop-system.jq` with the same text; and the three
+  hook-input jq filters move to `communication-stop-input-{tp,active,msg}.jq`.
+  `run-stop-fixtures.sh` passes 39/39 with no expectation changed (PR #37,
+  ISSUE-KVD-SKILLS-E1A311).
+- **`deny-vault-paths.sh`**: no literal two-dot (parent-directory) segment.
+  `lexical()` matches it with the glob `.[.]`, which matches exactly that
+  two-character segment and nothing else, and two comments are reworded.
+  **`deny-vault-paths.sh` denies exactly the same paths**: an exhaustive
+  old-vs-new comparison of `lexical()` over 101,250 paths shows no difference,
+  and every existing fixture expectation is untouched. Two lvr fixtures are
+  added: a mixed dot/parent path into the vault (deny) and a three-dot segment
+  treated as a plain name (allow) (PR #38, ISSUE-KVD-SKILLS-BA20BA).
+
+### Notes
+- No hook changes what it decides: these are moves and rewrites of the same
+  programs; the `tests/hook/` suites pass with no expectation changed.
+- `kvendra-companion` keeps its own version; it is not part of this release.
+- Boot ROM (`CLAUDE.md.template`) unchanged: no `lint-claudemd` drift.
+
 ## [1.32.2] — 2026-11-11 — Hooks readable by the plugin directory validator
 
 > No engine change and **no hook changes what it decides**: every hook allows,
