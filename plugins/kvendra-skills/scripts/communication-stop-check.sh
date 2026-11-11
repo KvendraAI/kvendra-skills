@@ -16,11 +16,13 @@
 # Fail and stop_hook_active != true -> {"decision":"block","reason":...}
 # Fail and stop_hook_active == true -> {"systemMessage":...} (never blocks twice in a turn).
 #
-# Data: scripts/communication-check.tsv next to this script (COMMUNICATION_CHECK_TSV overrides
-# it, for tests only). Portable to /bin/bash 3.2: only jq, grep, awk, tail, sed and cat.
+# Data: ${CLAUDE_PLUGIN_ROOT}/scripts/communication-check.tsv. When CLAUDE_PLUGIN_ROOT is unset
+# (tests), it is derived once from BASH_SOURCE. Portable to /bin/bash 3.2: only jq, grep, awk,
+# tail, sed and cat.
 #
-# The awk and jq programs live next to this script and are run by literal path (awk -f, jq -f),
-# one command per line, so the portal validator can name every program this hook runs:
+# The awk and jq programs live in ${CLAUDE_PLUGIN_ROOT}/scripts/ and are run by literal path
+# (awk -f, jq -f), one command per line, so the portal validator can name every program this
+# hook runs:
 #   communication-stop-meta.awk    data-file summary (marker, carriers)
 #   communication-stop-input-tp.jq      hook input: transcript_path
 #   communication-stop-input-active.jq  hook input: stop_hook_active
@@ -41,33 +43,35 @@ trap stop_check_exit EXIT
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-case "${BASH_SOURCE[0]}" in
-  */*) HERE="${BASH_SOURCE[0]%/*}" ;;
-  *) HERE="." ;;
-esac
-DATA="${COMMUNICATION_CHECK_TSV:-$HERE/communication-check.tsv}"
-[ -r "$DATA" ] || exit 0
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  case "${BASH_SOURCE[0]}" in
+    */scripts/*) CLAUDE_PLUGIN_ROOT=${BASH_SOURCE[0]%/scripts/*} ;;
+    scripts/*) CLAUDE_PLUGIN_ROOT=. ;;
+    *) CLAUDE_PLUGIN_ROOT=.. ;;
+  esac
+fi
+[ -r "${CLAUDE_PLUGIN_ROOT}/scripts/communication-check.tsv" ] || exit 0
 NL=$'\n'
 TAB=$'\t'
 
 # Line 1: the marker. Line 2: the carriers, space separated. Exit 1 when a kind is missing.
-META="$(LC_ALL=C awk -f "$HERE/communication-stop-meta.awk" "$DATA")" || exit 0
+META=$(LC_ALL=C awk -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-meta.awk" "${CLAUDE_PLUGIN_ROOT}/scripts/communication-check.tsv") || exit 0
 MARKER="${META%%"$NL"*}"
 CARRIERS="${META#*"$NL"}"
 [ -n "$MARKER" ] || exit 0
 
-INPUT="$(cat)"
-TP="$(printf '%s' "$INPUT" | jq -r -f "$HERE/communication-stop-input-tp.jq")"
-ACTIVE="$(printf '%s' "$INPUT" | jq -r -f "$HERE/communication-stop-input-active.jq")"
-MSG="$(printf '%s' "$INPUT" | jq -r -f "$HERE/communication-stop-input-msg.jq")"
+INPUT=$(cat)
+TP=$(printf '%s' "$INPUT" | jq -r -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-input-tp.jq")
+ACTIVE=$(printf '%s' "$INPUT" | jq -r -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-input-active.jq")
+MSG=$(printf '%s' "$INPUT" | jq -r -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-input-msg.jq")
 
 # ---- Carrier gate: the most recent skill-load entry names a carrier and carries the marker.
 [ -n "$TP" ] && [ -f "$TP" ] && [ -r "$TP" ] || exit 0
 # One pass over the transcript for both patterns (C locale: byte search, faster on large files).
-HITS="$(LC_ALL=C grep -nF -e 'Base directory for this skill:' -e '"compact_boundary"' -- "$TP")"
+HITS=$(LC_ALL=C grep -nF -e 'Base directory for this skill:' -e '"compact_boundary"' -- "$TP")
 [ -n "$HITS" ] || exit 0
-LOADS="$(printf '%s\n' "$HITS" | jq -rR --arg m "$MARKER" -f "$HERE/communication-stop-load.jq")"
-LOAD="$(printf '%s\n' "$LOADS" | tail -n 1)"
+LOADS=$(printf '%s\n' "$HITS" | jq -rR --arg m "$MARKER" -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-load.jq")
+LOAD=$(printf '%s\n' "$LOADS" | tail -n 1)
 [ -n "$LOAD" ] || exit 0
 L="${LOAD%%"$TAB"*}"
 REST="${LOAD#*"$TAB"}"
@@ -75,28 +79,28 @@ NAME="${REST%%"$TAB"*}"
 HASMARK="${REST#*"$TAB"}"
 [ "$HASMARK" = "1" ] || exit 0
 case "$CARRIERS" in *" $NAME "*) ;; *) exit 0 ;; esac
-BOUNDS="$(printf '%s\n' "$HITS" | LC_ALL=C grep -F '"compact_boundary"')"
-AFTER="$(printf '%s\n' "$BOUNDS" | LC_ALL=C awk -v L="$L" -f "$HERE/communication-stop-after.awk")"
-LATERS="$(printf '%s\n' "$AFTER" | jq -rR -f "$HERE/communication-stop-later.jq")"
-LATER="$(printf '%s\n' "$LATERS" | tail -n 1)"
+BOUNDS=$(printf '%s\n' "$HITS" | LC_ALL=C grep -F '"compact_boundary"')
+AFTER=$(printf '%s\n' "$BOUNDS" | LC_ALL=C awk -v L="$L" -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-after.awk")
+LATERS=$(printf '%s\n' "$AFTER" | jq -rR -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-later.jq")
+LATER=$(printf '%s\n' "$LATERS" | tail -n 1)
 [ -z "$LATER" ] || exit 0
 
 # ---- Message: last_assistant_message, else the last assistant text of the transcript tail.
 if [ -z "$MSG" ]; then
-  MSG="$(tail -n 400 -- "$TP" | jq -nrR -f "$HERE/communication-stop-tail.jq")"
+  MSG=$(tail -n 400 -- "$TP" | jq -nrR -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-tail.jq")
 fi
 [ -n "$MSG" ] || exit 0
 
 # ---- Checks (one awk pass). Output line 1: "", "a", "b" or "ab". Line 2: line 1 of the message.
-RES="$(printf '%s\n' "$MSG" | LC_ALL=C awk -v d="$DATA" -v apo="’" -v ell="…" -v emd="—" -v end="–" -f "$HERE/communication-stop-checks.awk")"
+RES=$(printf '%s\n' "$MSG" | LC_ALL=C awk -v d="${CLAUDE_PLUGIN_ROOT}/scripts/communication-check.tsv" -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-checks.awk")
 CODE="${RES%%"$NL"*}"
 L1="${RES#*"$NL"}"
 [ -n "$CODE" ] || exit 0
 
 if [ "$ACTIVE" = "true" ]; then
   case "$CODE" in ab) W="a+b" ;; *) W="$CODE" ;; esac
-  jq -cn --arg w "$W" -f "$HERE/communication-stop-system.jq"
+  jq -cn --arg w "$W" -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-system.jq"
   exit 0
 fi
-jq -cn --arg code "$CODE" --arg l1 "$L1" -f "$HERE/communication-stop-block.jq"
+jq -cn --arg code "$CODE" --arg l1 "$L1" -f "${CLAUDE_PLUGIN_ROOT}/scripts/communication-stop-block.jq"
 exit 0

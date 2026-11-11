@@ -27,6 +27,9 @@
       else if (k == "narration") nar[++nn] = tolower(v)
     }
     close(d)
+    # U+2019 apostrophe, U+2026 ellipsis, U+2014 em dash, U+2013 en dash, as UTF-8 bytes in
+    # octal (the hook runs awk under LC_ALL=C, so these are plain byte strings).
+    apo = "\342\200\231"; ell = "\342\200\246"; emd = "\342\200\224"; end = "\342\200\223"
     inf = 0; mo = 0; n = 0
   }
   {

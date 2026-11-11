@@ -39,14 +39,14 @@ done
 pass=0; fail=0
 # run_hook <input-file> <mode>  -> sets OUT, RC; stderr in $WORK/stderr
 run_hook() {
-  local path="$STUB:$TOOLS:/usr/bin:/bin" tsv=""
+  local path="$STUB:$TOOLS:/usr/bin:/bin" root=""
   case "$2" in
     nojq) path="$STUB:$NOJQ" ;;
-    nodata) tsv="$WORK/no-such-dir/communication-check.tsv" ;;
+    nodata) root="$WORK/no-such-dir" ;;
   esac
   rm -f "$CALLS"
-  if [ -n "$tsv" ]; then
-    OUT="$(env -i HOME="$WORK/home" PATH="$path" COMMUNICATION_CHECK_TSV="$tsv" /bin/bash "$HOOK" < "$1" 2>"$WORK/stderr")"
+  if [ -n "$root" ]; then
+    OUT="$(env -i HOME="$WORK/home" PATH="$path" CLAUDE_PLUGIN_ROOT="$root" /bin/bash "$HOOK" < "$1" 2>"$WORK/stderr")"
   else
     OUT="$(env -i HOME="$WORK/home" PATH="$path" /bin/bash "$HOOK" < "$1" 2>"$WORK/stderr")"
   fi
