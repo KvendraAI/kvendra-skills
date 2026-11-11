@@ -4,6 +4,37 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.32.2] — 2026-11-11 — Hooks readable by the plugin directory validator
+
+> No engine change and **no hook changes what it decides**: every hook allows,
+> blocks and warns on exactly the same inputs as in 1.32.1. Four changes so the
+> plugin directory's Validate can read the hooks and their scripts.
+
+### Changed
+- **`lvr-scan-tool-input.sh`**: jq's recursive descent `..` becomes the
+  equivalent `recurse`, which clears «Command reaches above the plugin folder».
+  Same output for every input (PR #32, ISSUE-KVD-SKILLS-9F7C82, which replaces
+  ISSUE-KVD-SKILLS-C4853B).
+- **`block-unsafe-ops.sh`**: the inline awk YAML reader moves verbatim to
+  `scripts/lib/yaml-reader.awk` (run with `awk -f`), and the six `cat >&2 <<EOF`
+  here-docs become `printf '%s\n' ... >&2` with the same text (PR #33,
+  ISSUE-KVD-SKILLS-11720F).
+- **`communication-stop-check.sh`**: its inline awk and jq programs move to
+  files next to it (`communication-stop-{meta,checks}.awk`,
+  `communication-stop-{load,later,tail,block}.jq`), run by literal path. The
+  fixtures pass with no expectation changed and a byte-for-byte differential
+  against the previous script shows no difference (PR #34,
+  ISSUE-KVD-SKILLS-846AE6).
+- **`hooks/hooks.json`**: every hook command names its interpreter
+  (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh"`). Matchers, events, order
+  and timeouts unchanged (PR #35, ISSUE-KVD-SKILLS-A1250F).
+
+### Notes
+- No hook changes what it decides: these are moves and rewrites of the same
+  programs; the `tests/hook/` suites pass with no expectation changed.
+- `kvendra-companion` keeps its own version; it is not part of this release.
+- Boot ROM (`CLAUDE.md.template`) unchanged: no `lint-claudemd` drift.
+
 ## [1.32.1] — 2026-11-10 — Plugin icon and install line
 
 > No engine change and no change to what any skill or hook does. Two small
