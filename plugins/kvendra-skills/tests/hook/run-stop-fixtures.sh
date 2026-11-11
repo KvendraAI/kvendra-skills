@@ -16,6 +16,8 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$(cd "$SCRIPT_DIR/../../scripts" && pwd)/communication-stop-check.sh"
+# Claude Code always sets CLAUDE_PLUGIN_ROOT for plugin hooks and the hook never derives it.
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FIX="$SCRIPT_DIR/fixtures/stop"
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -39,17 +41,13 @@ done
 pass=0; fail=0
 # run_hook <input-file> <mode>  -> sets OUT, RC; stderr in $WORK/stderr
 run_hook() {
-  local path="$STUB:$TOOLS:/usr/bin:/bin" root=""
+  local path="$STUB:$TOOLS:/usr/bin:/bin" root="$PLUGIN_ROOT"
   case "$2" in
     nojq) path="$STUB:$NOJQ" ;;
     nodata) root="$WORK/no-such-dir" ;;
   esac
   rm -f "$CALLS"
-  if [ -n "$root" ]; then
-    OUT="$(env -i HOME="$WORK/home" PATH="$path" CLAUDE_PLUGIN_ROOT="$root" /bin/bash "$HOOK" < "$1" 2>"$WORK/stderr")"
-  else
-    OUT="$(env -i HOME="$WORK/home" PATH="$path" /bin/bash "$HOOK" < "$1" 2>"$WORK/stderr")"
-  fi
+  OUT="$(env -i HOME="$WORK/home" PATH="$path" CLAUDE_PLUGIN_ROOT="$root" /bin/bash "$HOOK" < "$1" 2>"$WORK/stderr")"
   RC=$?
 }
 
