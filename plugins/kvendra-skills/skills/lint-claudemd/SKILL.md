@@ -39,7 +39,7 @@ Required markers (case-sensitive):
 - `<!-- manual_version: ` line (must be present somewhere in the file, conventionally line 1).
 - `<!-- KVENDRA:MANUAL -->` and `<!-- /KVENDRA:MANUAL -->` (pair, in order).
 - `<!-- KVENDRA:PROJECT -->` and `<!-- /KVENDRA:PROJECT -->` (pair, in order, AFTER Manual).
-- `## Particularidades` heading (anywhere after the Project closing marker — section content can be empty).
+- `## Particulars` heading (anywhere after the Project closing marker — section content can be empty). The legacy Spanish heading `## Particularidades` is an accepted variant for existing projects: report it as OK, never as drift. <!-- lint-allow-es -->
 
 Missing or mis-ordered markers → ERROR with the specific defect.
 
@@ -126,8 +126,8 @@ localise. Compare its meaning, never its language:
 
 ## Step 7 — Validate Particularidades section
 
-The Particularidades section is free-form by design. Validate only:
-- Section exists with the correct heading.
+The Particulars section (legacy heading `## Particularidades`) is free-form by design. Validate only: <!-- lint-allow-es -->
+- Section exists with an accepted heading: `## Particulars` (template) or `## Particularidades` (legacy, OK). <!-- lint-allow-es -->
 - Content is NOT empty (if empty, INFO — "no particularidades; consider documenting any cross-cutting facts").
 
 ## Step 8 — Private-value references
@@ -179,8 +179,8 @@ A reference is never a defect, and this skill never resolves one.
 - Size ≤40 lines:                 ✅ <N> | ⚠️ <N> exceeds target
 - Fail-safe message:              ✅ template (EN) | ✅ localised | ⚠️ missing
 
-### Particularidades
-- Section present:               ✅
+### Particulars
+- Section present:               ✅ Particulars | ✅ Particularidades (legacy) <!-- lint-allow-es -->
 - Has content:                   ✅ | ℹ️ empty
 
 ### Private values

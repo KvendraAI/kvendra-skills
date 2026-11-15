@@ -430,7 +430,7 @@ Free-form prompt: anything cross-cutting that affects the agent's reasoning and 
 - Atypical operational constraints.
 - Key contacts.
 
-This goes verbatim under `## Particularidades` in the generated CLAUDE.md.
+This goes verbatim under `## Particulars` in the generated CLAUDE.md (the template heading; never write the legacy Spanish `## Particularidades` for a new project). <!-- lint-allow-es -->
 
 ## Step 4 — Open a TXN
 
@@ -602,7 +602,7 @@ each one before writing any entity:
    - `{{TIER}}` → tier from Step 1 (free|pro|team|enterprise).
    - `{{PARTICULARITIES}}` → answer from Step 3 (or an empty placeholder comment if no particularities).
 3. Keep private-value references (`{{cfg:<key>}}`) unresolved. If the rendered file contains one, add the `<!-- kvendra:private-refs … -->` comment as line 2 (see "Private values" in Step 5).
-4. Write the template text as is: the fail-safe `Canonical message:` line stays in English as the template ships it. Do not translate any Manual line for a new project.
+4. Write the template text as is: the fail-safe `Canonical message:` line stays in English and the last section heading is `## Particulars`, as the template ships them. Do not translate any line for a new project; the generated CLAUDE.md is all English.
 5. Write the resulting file to `<cwd>/CLAUDE.md` (only in new-project mode — in add-component mode the existing CLAUDE.md is preserved).
 6. **Do NOT overwrite** an existing CLAUDE.md without `--force`. If one exists, show the diff and ask the user.
 
@@ -633,7 +633,7 @@ Verify the component profile (`component_type` → required entities):
 
 Run a smoke verification of the rendered CLAUDE.md:
 - File size ≤40 lines.
-- 3 sections present with markers (`KVENDRA:MANUAL`, `KVENDRA:PROJECT`, Particularidades unmarked).
+- 3 sections present with markers (`KVENDRA:MANUAL`, `KVENDRA:PROJECT`, `## Particulars` unmarked).
 - `tier` flag is valid (free|pro|team|enterprise).
 - `manual_version` matches the canonical template STD's `metadata.manual_version`.
 
@@ -689,7 +689,7 @@ is NOT listed under "Entities created".)
 ### CLAUDE.md generated
 - Path: <cwd>/CLAUDE.md
 - Lines: <N> (target ≤40)
-- Sections: 3/3 (Manual marked, Project marked, Particularidades present)
+- Sections: 3/3 (Manual marked, Project marked, Particulars present)
 - manual_version: 1.0
 - tier: <tier>
 

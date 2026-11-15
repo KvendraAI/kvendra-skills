@@ -19,6 +19,11 @@ Kvendra KB with the same content plus traceability links.
   `trial_write_gated: true` is informational ("Pro trial — writes are enabled
   while the trial is active"), never a "may not be able to save" warning. A
   real 403 trial/tier write failure is still reported as an error.
+- **`CLAUDE.md.template`**: the last section heading is now `## Particulars`,
+  so a new project's CLAUDE.md is all English. `onboard-project` writes it;
+  `lint-claudemd` and `sync-claudemd` accept the legacy `## Particularidades`
+  heading of existing projects as a variant and keep it verbatim, never as
+  drift.
 
 ## [1.33.0] — 2026-11-11 — Kvendra attribution in commits, PRs and releases
 

@@ -111,7 +111,7 @@ Parse the file structure:
 - Extract `<!-- manual_version: X.Y -->` from the first HTML comment.
 - Extract everything between `<!-- KVENDRA:MANUAL -->` and `<!-- /KVENDRA:MANUAL -->` (current Manual section).
 - Extract everything between `<!-- KVENDRA:PROJECT -->` and `<!-- /KVENDRA:PROJECT -->` (current Project section, including current `tier:` value).
-- Extract everything from `## Particularidades` heading to EOF (current Particularidades section).
+- Extract everything from the `## Particulars` heading — or the legacy `## Particularidades` heading — to EOF (current Particulars section). Keep the heading the file already uses: a legacy Spanish heading is preserved verbatim, never reported as drift. A file with neither heading gets the template's `## Particulars`. <!-- lint-allow-es -->
 - Extract the `Canonical message:` line inside the Manual section (current fail-safe message).
 
 The fail-safe message is the one Manual line a project may localise. The
