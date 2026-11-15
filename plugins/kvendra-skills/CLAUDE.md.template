@@ -13,7 +13,7 @@ This file is the agent's boot ROM (≤40 lines). Operational protocol lives in t
 ## Fail-safe
 If the MCP for this tier does not respond, or `help()` is unreachable: **STOP and notify the user**. No fallback to Bash for writes, no operating from memory.
 
-Canonical message: *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*
+Canonical message: *"The Kvendra environment is not available. Reconnect before going on — working without Kvendra breaks more than it fixes."*
 <!-- /KVENDRA:MANUAL -->
 
 <!-- KVENDRA:PROJECT -->

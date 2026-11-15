@@ -109,6 +109,18 @@ Scan for known infra commands (sub-skill drift):
 - Regex: `\b(aws |sam |cargo |npm publish|docker run|cloudfront )\b`
 - Matches → INFO ("Manual section contains tech-specific commands — these should live in STD playbooks per ADR-KVD-SKILLS-BB0E8A").
 
+### Fail-safe canonical message (language)
+The Manual section's `Canonical message:` line is the one line a project may
+localise. Compare its meaning, never its language:
+- The English template text (*"The Kvendra environment is not available.
+  Reconnect before going on — working without Kvendra breaks more than it
+  fixes."*) → OK.
+- The same message in the project's own language (for example the Spanish
+  variant, see `sync-claudemd` Step 2) → OK. Never report a localised message
+  as drift or as a Manual edit.
+- Line missing → WARNING ("fail-safe canonical message missing — run
+  `/sync-claudemd`").
+
 ### Size smell
 - File > 40 lines → WARNING ("CLAUDE.md exceeds canonical target — particularities inflation or markdown bloat. Consider extracting content to KB entities.").
 
@@ -165,6 +177,7 @@ A reference is never a defect, and this skill never resolves one.
 - No specific entity IDs:         ✅ | ⚠️ found <list>
 - No tech-specific commands:      ✅ | ℹ️ found <list>
 - Size ≤40 lines:                 ✅ <N> | ⚠️ <N> exceeds target
+- Fail-safe message:              ✅ template (EN) | ✅ localised | ⚠️ missing
 
 ### Particularidades
 - Section present:               ✅

@@ -240,6 +240,14 @@ for inst in reg.get("plugins", reg).get("kvendra-skills@kvendra-marketplace", []
 EOF
 ```
 
+**Trial accounts.** `whoami` returns `trial_write_gated: true` on every
+`tier: trial` caller. It means writes depend on the trial being active, and
+the trial is checked at write time; it is not a sign that saving is blocked.
+Treat it as **informational, never a warning**: report it as "Pro trial —
+writes are enabled while the trial is active", and never say the account
+"may not be able to save". A real write failure (a 403 with a trial or tier
+error) is still reported as an error, with its message.
+
 - `KVENDRA_WS` unset → **OK (single account)**. Report `tenant_id` and `tier`.
 - `KVENDRA_WS` set and the installed URL contains `${KVENDRA_WS` → **OK**.
   Report the label next to `tenant_id` and `tier` so the user can confirm the

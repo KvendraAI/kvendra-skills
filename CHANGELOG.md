@@ -4,6 +4,22 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [Unreleased]
+
+### Fixed
+- **`CLAUDE.md.template`**: the fail-safe canonical message is now English
+  (*"The Kvendra environment is not available. Reconnect before going on —
+  working without Kvendra breaks more than it fixes."*). `manual_version`
+  stays 1.1. `onboard-project` writes it as is (ISSUE-KVD-SKILLS-708B19).
+- **`lint-claudemd` / `sync-claudemd`**: the fail-safe message is compared by
+  meaning, not language. Both accept the English template text and a
+  project's localised text (e.g. Spanish); `sync-claudemd` keeps a project's
+  existing message when it regenerates, like Particularidades.
+- **`env-check` / `onboard-project`**: `tier: trial` with
+  `trial_write_gated: true` is informational ("Pro trial — writes are enabled
+  while the trial is active"), never a "may not be able to save" warning. A
+  real 403 trial/tier write failure is still reported as an error.
+
 ## [1.33.0] — 2026-11-11 — Kvendra attribution in commits, PRs and releases
 
 > No engine change and no hook changes. Skills that write a git commit, a pull

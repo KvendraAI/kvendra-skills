@@ -117,9 +117,17 @@ Call `whoami`. Decide the mode based on the response:
 | `tier:"free"`, `mode:"local"` or empty | `free` | local | `kvendra-platform` self-host |
 | ambiguous / no response | — | ask user as fallback | — |
 
+**Trial accounts.** `whoami` returns `trial_write_gated: true` on every
+`tier: trial` caller. It means writes depend on the trial being active, and
+the trial is checked at write time; it is not a sign that saving is blocked.
+Treat it as **informational, never a warning**: report it as "Pro trial —
+writes are enabled while the trial is active", and never say the account
+"may not be able to save". A real write failure (a 403 with a trial or tier
+error) is still reported as an error, with its message. The first session after onboarding follows the same rule.
+
 Record the resolved tier — it will be written to `CLAUDE.md` (section Project, `tier:` flag) verbatim. NEVER ask the user a tier that `whoami` already returned authoritatively.
 
-If `whoami` does not return — or if the broker / MCP is unreachable — apply the fail-safe per `PAT-KVD-2CBB6D` L3: STOP and notify the user with the canonical message. Do NOT attempt to onboard without a live KB connection.
+If `whoami` does not return — or if the broker / MCP is unreachable — apply the fail-safe per `PAT-KVD-2CBB6D` L3: STOP and notify the user with the canonical message (*"The Kvendra environment is not available. Reconnect before going on — working without Kvendra breaks more than it fixes."*). Do NOT attempt to onboard without a live KB connection.
 
 ## Step 1.5 — Broker discovery (capabilities snapshot)
 
@@ -594,8 +602,9 @@ each one before writing any entity:
    - `{{TIER}}` → tier from Step 1 (free|pro|team|enterprise).
    - `{{PARTICULARITIES}}` → answer from Step 3 (or an empty placeholder comment if no particularities).
 3. Keep private-value references (`{{cfg:<key>}}`) unresolved. If the rendered file contains one, add the `<!-- kvendra:private-refs … -->` comment as line 2 (see "Private values" in Step 5).
-4. Write the resulting file to `<cwd>/CLAUDE.md` (only in new-project mode — in add-component mode the existing CLAUDE.md is preserved).
-5. **Do NOT overwrite** an existing CLAUDE.md without `--force`. If one exists, show the diff and ask the user.
+4. Write the template text as is: the fail-safe `Canonical message:` line stays in English as the template ships it. Do not translate any Manual line for a new project.
+5. Write the resulting file to `<cwd>/CLAUDE.md` (only in new-project mode — in add-component mode the existing CLAUDE.md is preserved).
+6. **Do NOT overwrite** an existing CLAUDE.md without `--force`. If one exists, show the diff and ask the user.
 
 ## Step 6.5 — Materialise `.kvendra-protected` (broker policy)
 
