@@ -4,7 +4,7 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
-## [Unreleased]
+## [1.33.1] — 2026-11-15 — English CLAUDE.md template; trial wording
 
 ### Fixed
 - **`CLAUDE.md.template`**: the fail-safe canonical message is now English
@@ -24,6 +24,11 @@ Kvendra KB with the same content plus traceability links.
   `lint-claudemd` and `sync-claudemd` accept the legacy `## Particularidades`
   heading of existing projects as a variant and keep it verbatim, never as
   drift.
+
+### Notes
+- Existing projects: `lint-claudemd` accepts the Spanish fail-safe message and
+  the `## Particularidades` heading; `sync-claudemd` keeps them. New projects
+  get an all-English CLAUDE.md.
 
 ## [1.33.0] — 2026-11-11 — Kvendra attribution in commits, PRs and releases
 
