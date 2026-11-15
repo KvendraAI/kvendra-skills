@@ -111,7 +111,13 @@ Parse the file structure:
 - Extract `<!-- manual_version: X.Y -->` from the first HTML comment.
 - Extract everything between `<!-- KVENDRA:MANUAL -->` and `<!-- /KVENDRA:MANUAL -->` (current Manual section).
 - Extract everything between `<!-- KVENDRA:PROJECT -->` and `<!-- /KVENDRA:PROJECT -->` (current Project section, including current `tier:` value).
-- Extract everything from `## Particularidades` heading to EOF (current Particularidades section).
+- Extract everything from the `## Particulars` heading — or the legacy `## Particularidades` heading — to EOF (current Particulars section). Keep the heading the file already uses: a legacy Spanish heading is preserved verbatim, never reported as drift. A file with neither heading gets the template's `## Particulars`. <!-- lint-allow-es -->
+- Extract the `Canonical message:` line inside the Manual section (current fail-safe message).
+
+The fail-safe message is the one Manual line a project may localise. The
+template ships it in English; a project may keep its own language. The known
+Spanish variant is *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."* <!-- lint-allow-es -->
+Both are the same message: a difference in language alone is never drift.
 
 If any marker is missing: tell the user the file is not conformant — recommend running `/lint-claudemd` first.
 
@@ -138,6 +144,7 @@ Render the canonical template with substitutions:
 - `{{PROJECT_ID}}` → project_id (verified from the existing CLAUDE.md or PRJ.entity_id).
 - `{{TIER}}` → tier resolved in Step 3 (with user's confirmation if drift detected).
 - `{{PARTICULARITIES}}` → existing Particularidades section verbatim (or empty placeholder if `--force` is passed). Private-value references in it stay as they are.
+- Fail-safe `Canonical message:` line → keep the project's existing line verbatim, like Particularidades, when it is the same message in another language (for example the Spanish variant). Use the template's English line only when the file has none, or with `--force`. Never list a language-only difference in the drift report or the diff.
 
 If the rendered file contains an unescaped `{{cfg:<key>}}` reference, insert this
 HTML comment as line 2, right after the `manual_version` comment (it counts
@@ -191,6 +198,7 @@ canonical template STD  manual_version: <canonical>
 - manual_version: <X.Y>
 - tier: <free|pro|team|enterprise>
 - Particularidades: preserved
+- Fail-safe message: preserved (<language>) | template (EN)
 - Private-value references: none | <N> kept unresolved (keys: <list>), note present
 
 ### Next steps
@@ -389,7 +397,7 @@ If the outgoing file is absent or holds no such block, this sub-step is a no-op.
 
 ### Step 6.7 — Fail-safe
 
-If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*. Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers. <!-- lint-allow-es -->
+If the KB query in 6.1 errors (broker / MCP unreachable): STOP with the canonical message *"The Kvendra environment is not available. Reconnect before going on — working without Kvendra breaks more than it fixes."* (or the project's localised variant from its CLAUDE.md, e.g. *"El entorno Kvendra no está disponible. Reconecta antes de avanzar — operar sin Kvendra rompe más de lo que arregla."*). Do NOT fall back to a hardcoded policy in this skill — the hook v2 has its own transition fallback for legacy markers. <!-- lint-allow-es -->
 
 ## Operational rules
 

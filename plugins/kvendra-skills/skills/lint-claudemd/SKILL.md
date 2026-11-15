@@ -39,7 +39,7 @@ Required markers (case-sensitive):
 - `<!-- manual_version: ` line (must be present somewhere in the file, conventionally line 1).
 - `<!-- KVENDRA:MANUAL -->` and `<!-- /KVENDRA:MANUAL -->` (pair, in order).
 - `<!-- KVENDRA:PROJECT -->` and `<!-- /KVENDRA:PROJECT -->` (pair, in order, AFTER Manual).
-- `## Particularidades` heading (anywhere after the Project closing marker — section content can be empty).
+- `## Particulars` heading (anywhere after the Project closing marker — section content can be empty). The legacy Spanish heading `## Particularidades` is an accepted variant for existing projects: report it as OK, never as drift. <!-- lint-allow-es -->
 
 Missing or mis-ordered markers → ERROR with the specific defect.
 
@@ -109,13 +109,25 @@ Scan for known infra commands (sub-skill drift):
 - Regex: `\b(aws |sam |cargo |npm publish|docker run|cloudfront )\b`
 - Matches → INFO ("Manual section contains tech-specific commands — these should live in STD playbooks per ADR-KVD-SKILLS-BB0E8A").
 
+### Fail-safe canonical message (language)
+The Manual section's `Canonical message:` line is the one line a project may
+localise. Compare its meaning, never its language:
+- The English template text (*"The Kvendra environment is not available.
+  Reconnect before going on — working without Kvendra breaks more than it
+  fixes."*) → OK.
+- The same message in the project's own language (for example the Spanish
+  variant, see `sync-claudemd` Step 2) → OK. Never report a localised message
+  as drift or as a Manual edit.
+- Line missing → WARNING ("fail-safe canonical message missing — run
+  `/sync-claudemd`").
+
 ### Size smell
 - File > 40 lines → WARNING ("CLAUDE.md exceeds canonical target — particularities inflation or markdown bloat. Consider extracting content to KB entities.").
 
 ## Step 7 — Validate Particularidades section
 
-The Particularidades section is free-form by design. Validate only:
-- Section exists with the correct heading.
+The Particulars section (legacy heading `## Particularidades`) is free-form by design. Validate only: <!-- lint-allow-es -->
+- Section exists with an accepted heading: `## Particulars` (template) or `## Particularidades` (legacy, OK). <!-- lint-allow-es -->
 - Content is NOT empty (if empty, INFO — "no particularidades; consider documenting any cross-cutting facts").
 
 ## Step 8 — Private-value references
@@ -165,9 +177,10 @@ A reference is never a defect, and this skill never resolves one.
 - No specific entity IDs:         ✅ | ⚠️ found <list>
 - No tech-specific commands:      ✅ | ℹ️ found <list>
 - Size ≤40 lines:                 ✅ <N> | ⚠️ <N> exceeds target
+- Fail-safe message:              ✅ template (EN) | ✅ localised | ⚠️ missing
 
-### Particularidades
-- Section present:               ✅
+### Particulars
+- Section present:               ✅ Particulars | ✅ Particularidades (legacy) <!-- lint-allow-es -->
 - Has content:                   ✅ | ℹ️ empty
 
 ### Private values
