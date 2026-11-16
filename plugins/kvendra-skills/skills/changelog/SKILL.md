@@ -1,6 +1,6 @@
 ---
 name: changelog
-description: Change query tool — shows what changed, who, when and why, reading entity_history and entity_changelog from the Kvendra KB
+description: Change query tool — shows what changed, who, when and why, reading entity history (entity_get with include_history) and REL membership from the Kvendra KB
 user_invocable: true
 args: "[filters: project, component, date, release, author, entity]"
 ---
@@ -8,8 +8,10 @@ args: "[filters: project, component, date, release, author, entity]"
 # Changelog — Cross-entity change query
 
 You query and present the changes recorded in the Kvendra KB, filtering
-across multiple criteria. The server maintains `entity_history` (audit per
-entity) and `entity_changelog` (per-REL) automatically. Here you present them.
+across multiple criteria. The server keeps the audit history of every entity
+automatically; `entity_get` returns it only when you pass `include_history: true`
+(IF-KVD-ENTERPRISE-060D2B v1.45). A release's changelog is its membership: the
+items with `part_of` → the REL. Here you present them.
 
 ## Filters
 
@@ -121,17 +123,23 @@ Examples:
 
 ### Source 1: entity_history (per entity)
 
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id, include_related: false })` returns `history` (last 5).
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id, include_history: true, history_limit: 20 })` returns `history` (newest first; default 20, max 50).
+Without `include_history: true` the response has no `history` field (lean default
+since IF v1.45); `actors` still maps every author to a display name.
 
 If filtering by a specific entity, this is enough. If filtering by component
 or type: first
 `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type, project_id, component_id, order_by: "updated_at_desc" })`
 and then `entity_get` per entity.
 
-### Source 2: entity_changelog (per REL)
+### Source 2: release membership (per REL)
 
-For each REL in the filter, `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-..." })` — the
-server returns the associated changelog in the bundle.
+The engine keeps no separate per-REL changelog table. For each REL in the filter,
+`mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-...", include_history: true })`:
+- `relations_inbound` with `type: "part_of"` → the ISSUEs/REQs included in the release;
+- `history` → the REL's own changes (created, work attached, shipped).
+
+For the items' own changes, read each one as in Source 1.
 
 ### Source 3: Recent TXNs
 

@@ -9,8 +9,8 @@ writes_entity_types: [REL, IF, ISSUE, REQ, ROAD]
 # Release Manager — Kvendra release lifecycle
 
 You manage the lifecycle of releases (REL): creation, attaching
-ISSUEs/components, regression gates, automatic changelog (populated by the
-server when an active REL exists), and closure.
+ISSUEs/components, regression gates, changelog (the items with `part_of` → the
+REL, plus the REL's own history), and closure.
 
 ## Action
 
@@ -214,8 +214,11 @@ A REL that already exists without its ROAD link gets it with
 2. List included ISSUEs: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`.
 3. Verify regression gates: for each component with an ISSUE in the REL,
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
-4. Show the changelog (returned automatically by `entity_get` — the server
-   populates `entity_changelog` whenever there is an active REL).
+4. Show the changelog: the items with `part_of` → the REL (`relations_inbound`
+   of the step-1 read) and the REL's own changes — read them with
+   `entity_get({ entity_id:"REL-<PROJ>-<VER>", include_history: true })` (history is
+   left out by default since IF-KVD-ENTERPRISE-060D2B v1.45). The engine keeps no
+   separate `entity_changelog`.
 5. Show blockers: ISSUEs with `relations_outbound: blocks → REL-<PROJ>-<VER>`.
 
 ### ADD — Add ISSUE/REQ/component to a release
@@ -243,8 +246,8 @@ Arguments: `add <ISSUE-or-REQ-id>[,<id>...] --rel <REL-id> [--auto]`.
    back as a proposal: report it as pending approval, not linked.
 4. If the REL is still `planning`, move it to `in-progress` (work is now
    attached): `entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, status:"in-progress", tags_add:["status:in-progress"], tags_remove:["status:planning"], change_summary:"Work attached", metadata:{ updated_by:"skill:release-manager" } })`.
-5. The server automatically records the entry in `entity_changelog`
-   associated to the REL.
+5. The `part_of` relation is the changelog entry: the REL's `relations_inbound`
+   lists it from now on, and the item's history records the change.
 
 ### GATE-CHECK — Verify regression gates
 
@@ -289,8 +292,8 @@ Process:
    })
    ```
    REL allows a direct status change via update because it is NOT inside a
-   TXN. `frozen: true` freezes the changelog (the server honors `frozen` on
-   `entity_changelog` to block later edits). The date is today's date (UTC).
+   TXN. `frozen: true` marks the changelog as closed: ADD refuses a `released`
+   REL, so no item is attached after ship. The date is today's date (UTC).
 2. For each included ISSUE with status `done`/`closed`: verify it has a
    regression-case TEST.
 3. Update ROAD if any item was completed: `entity_update` on the ROAD with `expected_version` and top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one). In `--auto` mode never change a ROAD status: report the candidate instead.
@@ -481,7 +484,7 @@ in any project will trigger it automatically.
      blindly. Suggest manual reconciliation.
 8. **Append CHANGELOG entry to the REL**: `entity_update` the REL with a
    `change_summary` line: `"IF-MANIFEST refreshed to broker version <X.Y.Z> (<P> primitives, <O> ops)"`.
-   The server records this in `entity_changelog`.
+   The REL's history records this update (`entity_get` with `include_history: true`).
 9. **Idempotence**: re-running on the same broker version is a no-op
    at the wire level — `entity_update` only changes
    `metadata.synced_at` (and re-embeds because content+JSON payload
