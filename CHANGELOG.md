@@ -4,6 +4,29 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.33.2] — 2026-11-16 — /changelog opts into entity_get history
+
+> No hook changes and no new skills. Needed now: since engine
+> IF-KVD-ENTERPRISE-060D2B v1.45 (REL-KVD-ENTERPRISE-0.67.79), `entity_get`
+> leaves `history` out unless the caller passes `include_history: true`.
+
+### Fixed
+- **`changelog`**: reads per-entity history with
+  `entity_get({ include_history: true, history_limit: 20 })` (newest first;
+  default 20, max 50). Without the flag the response has no `history`, so
+  `/changelog` showed no changes on the new engine (ISSUE-KVD-82B0AD).
+- **`changelog` / `release-manager`**: a release's changelog is its
+  membership — the items with `part_of` → the REL (`relations_inbound`) — plus
+  the REL's own history. The stale claims about a server-side
+  `entity_changelog` table are gone (the engine never kept one).
+
+### Notes
+- MCP clients validate input against the tool schema, which declares
+  `include_history` only from v1.45. This release needs the engine at v1.45 or
+  later (live since 2026-11-16).
+- Open sessions load 1.33.2 only after `/plugin update` (or the org sync) and
+  `/exit` + `claude --resume`.
+
 ## [1.33.1] — 2026-11-15 — English CLAUDE.md template; trial wording
 
 ### Fixed
