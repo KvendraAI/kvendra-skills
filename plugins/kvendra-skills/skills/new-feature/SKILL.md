@@ -314,8 +314,8 @@ and logged to the AUTONOMY_LOG before launching the planner.
 
 ## PHASE 1 — Spec design
 
-Launch `planner` with ENRICHED_REQUIREMENT + `txn_id` (+ the CONTEXT_PACK
-when enabled).
+Launch `planner` with ENRICHED_REQUIREMENT (naming the draft REQ id when
+PHASE 0 created one) + `txn_id` (+ the CONTEXT_PACK when enabled).
 
 planner consults:
 - ROAD → flags conflicts.
@@ -326,7 +326,7 @@ planner consults:
 
 Capture **SPEC** (includes verifications, ISSUEs to create, required
 TESTs, and the `frontend_deploy_independent` flag from its "Execution
-constraints" section).
+constraints" section) and its **KB sources** list.
 
 **Gate mode `dual`**: **PAUSE**: Show spec, risks and blockers first. State that a yes starts
 implementation, and that it is reversible until PHASE 2 edits code (any
@@ -362,7 +362,7 @@ AUTONOMY GATE — auto-approved | auto-resolved: N signals | HARD FLOOR pause: <
 
 Only if the SPEC requires backend work.
 
-Launch `implementer` with the Backend section of the SPEC + `txn_id`.
+Launch `implementer` with the Backend section of the SPEC + its **KB sources** list (verbatim) + `txn_id`.
 
 Capture **IMPL_BACKEND**.
 
@@ -393,7 +393,7 @@ kept locally but no KB drafts survive.
 (Skip if already launched in parallel with PHASE 3 — consume its captured
 output instead.)
 
-Launch `implementer` with the Frontend section of the SPEC + `txn_id`.
+Launch `implementer` with the Frontend section of the SPEC + its **KB sources** list (verbatim) + `txn_id`.
 Capture **IMPL_FRONTEND**.
 
 ### 4b — Tests

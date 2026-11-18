@@ -263,6 +263,18 @@ that touches `plugins/kvendra-skills/skills/**/SKILL.md`:
    `{{lvr:…}}` references (a real key instead of `<key>`) are rejected too:
    an agent would copy them into the KB.
 
+4. **Canonical-block checks** — a block that several skills share is
+   copied verbatim between an opening and a closing HTML-comment marker,
+   and every copy must be **byte-identical**. The `kvendra:kb-read v1`
+   block («Reading KB results»: read at most 3 picked search results per
+   loading step with `task_context`, or the `entity_get` fallback decided
+   by the tool schema, and cite them as `entity_id@version`) is required
+   in `kvendra`, `requirements-analyst`, `planner`, `analyzer` and
+   `implementer`; it sits right after `## Kvendra rules (summary)`. The
+   `kvendra:evidence-attachments v1` block is required in `tester`,
+   `validator` and `regression`. To change a block, change every carrier
+   in the same PR.
+
 All checks must pass for the PR to be merged.
 
 ## Versioning
