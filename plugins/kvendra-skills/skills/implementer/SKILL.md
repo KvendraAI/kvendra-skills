@@ -141,7 +141,7 @@ pointing to the required broker primitive.
 
 6. **Component ADRs** (if architecture is affected):
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
-   → active decisions that MUST NOT be contradicted; then apply **Reading KB results** (skip ADRs already read in item 1).
+   → active decisions that MUST NOT be contradicted; then apply **Reading KB results** (skip only ADRs already read in full in item 1; an excerpt under `linked` is not a read).
 
 ## Step 2 — Pre-implementation verification
 

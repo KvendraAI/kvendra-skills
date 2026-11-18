@@ -179,7 +179,7 @@ complete format.
 The implementer loads its context with `task_context({ txn_id })`, which follows the draft REQ's outbound `respects`, `consumes`, `implements` and `derives_from` links. Link what the design rests on: `respects` → each ADR and STD it follows; `consumes` → each IF it uses or changes; `derives_from` → each PAT or ISSUE it builds on. Link only entities you read and cite in **KB sources**; never a draft of another TXN or a pending proposal.
 
 Only when your arguments name the draft REQ of this TXN:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:<REQ>, include_drafts:true, txn_id, fields:["title","status"] })` → keep `version`.
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:<REQ>, include_drafts:true, txn_id, fields:["title","status","txn_id"] })` → keep `version`. If the returned `txn_id` is not yours, skip this step: never write a draft of another TXN.
 2. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:<REQ>, expected_version:<version>, relations_add:[{ type:"respects", target:"ADR-<PROJ>-<id>" }, …], change_summary:"planner: KB sources of the SPEC (<txn_id>)", metadata:{ updated_by:"skill:planner" } })`. Do not pass `txn_id`: the draft is yours and the update applies to it directly. The server does not duplicate an existing relation.
 3. On a 409, follow **Guarded update (CAS)**. On any other error (403, 404, 400) do not retry: report `REQ relations: not recorded (<code>)`. **KB sources** in the SPEC is then the only channel.
 No draft REQ (for example a bug pipeline) → skip this step.
