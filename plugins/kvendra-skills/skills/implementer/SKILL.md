@@ -101,7 +101,7 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
 
 Read with the first option that applies:
-1. `task_context` is among your tools (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context` is listed, also when it is a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
 2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
 3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
 
@@ -119,7 +119,7 @@ pointing to the required broker primitive.
 ## Step 1 — Load Kvendra context
 
 1. **Task context first, before touching code:**
-   - `task_context` among your tools and a `txn_id` received → `task_context({ txn_id, budget_chars: 8000 })`: this TXN's drafts (normally the REQ) with the ADR, STD, IF and PAT they link, each with an excerpt.
+   - The Kvendra server's `task_context` among your tools (any prefix, see **Reading KB results**) and a `txn_id` received → `task_context({ txn_id, budget_chars: 8000 })`: this TXN's drafts (normally the REQ) with the ADR, STD, IF and PAT they link, each with an excerpt.
    - Otherwise, or when it returns no targets → read the ids under **KB sources** in your arguments with the **Reading KB results** chain from option 2 on, at most 5, ADR/STD/IF first.
    - Neither available → write `Context: none` in the SUMMARY and go on.
 

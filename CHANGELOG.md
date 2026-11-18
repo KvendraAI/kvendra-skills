@@ -42,6 +42,10 @@ Kvendra KB with the same content plus traceability links.
   (`entity_get` with `fields`) works on earlier engines.
 - Open sessions load 1.34.0 only after `/plugin update` (or the org sync) and
   `/exit` + `claude --resume`.
+- The rule accepts the Kvendra server's `task_context` under any tool prefix: when
+  Claude Code also has the claude.ai Kvendra connector, it serves that connector and
+  drops the plugin's own server, so the tools are named `mcp__claude_ai_Kvendra__*`
+  (measured in headless sessions during the acceptance runs).
 - CONTEXT_PACK does not change.
 
 ## [1.33.2] — 2026-11-16 — /changelog opts into entity_get history
