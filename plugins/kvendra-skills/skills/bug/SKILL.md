@@ -313,11 +313,11 @@ launches are a protocol violation, not an optimization choice.
 Exception: `parallelize.analyzer_per_bug: false` in the project's
 pipeline-autonomy policy forces serial execution (debug aid).
 
-Consolidate the outputs into **BUG_ANALYSIS**.
+Consolidate the outputs into **BUG_ANALYSIS**, with one merged **KB sources** list (union of every analyzer's list, duplicates removed, highest version kept).
 
 ## PHASE 4 — Fix
 
-Launch `implementer` with BUG_ANALYSIS + `txn_id`. The skill verifies
+Launch `implementer` with BUG_ANALYSIS (including its **KB sources** list) + `txn_id`. The skill verifies
 naming against IF and GLO. Capture **FIX_SUMMARY**.
 
 ## PHASE 5 — Validation loop

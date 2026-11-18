@@ -95,6 +95,19 @@ Identify `component_id` when the bug affects a specific component.
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:kb-read v1 -->
+## Reading KB results (canonical block — edit it in every carrier or in none)
+
+A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
+
+Read with the first option that applies:
+1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
+3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
+
+Decide by your tool list and the tool schema, never by an engine version. A failed read never aborts the step: mark the entity as unread and go on. Cite every entity you read as `entity_id@version`, with the `version` the read returned.
+<!-- /kvendra:kb-read -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -119,6 +132,8 @@ pointing to the required broker primitive.
 
 5. **UX — if the bug has a UI component:**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<UI area>, entity_type:"UX", project_id:<PROJ> })`
+
+6. **Read what you picked** — apply **Reading KB results** to the searches of items 1, 2 and 5: at most 3 reads in total. The STD of item 4 is already a full read.
 
 ## Step 2 — Analysis
 
@@ -160,6 +175,9 @@ Precise explanation of the technical problem.
 - PAT-<PROJ>-<NN> (if applicable)
 - ISSUE-<PROJ>-<COMP>-<NN> (if already-tracked bug)
 - STD-<PROJ>-<NN> (anti-pattern violated)
+
+**KB sources:**
+- <ENTITY-ID>@<version> — <why it matters> (every entity you read, the STD included)
 ```
 
 ### PRIORITY ORDER
@@ -168,4 +186,4 @@ dependencies between fixes).
 
 ---
 Return the analysis to the orchestrator. Do NOT suggest calling other skills
-— the orchestrator decides whether to invoke `implementer`.
+— the orchestrator decides whether to invoke `implementer`. The orchestrator hands **KB sources** to the implementer.

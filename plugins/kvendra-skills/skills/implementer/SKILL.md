@@ -95,6 +95,19 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:kb-read v1 -->
+## Reading KB results (canonical block — edit it in every carrier or in none)
+
+A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
+
+Read with the first option that applies:
+1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
+3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
+
+Decide by your tool list and the tool schema, never by an engine version. A failed read never aborts the step: mark the entity as unread and go on. Cite every entity you read as `entity_id@version`, with the `version` the read returned.
+<!-- /kvendra:kb-read -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -105,25 +118,30 @@ pointing to the required broker primitive.
 
 ## Step 1 — Load Kvendra context
 
-1. **Component definition:**
+1. **Task context first, before touching code:**
+   - The Kvendra server's `task_context` among your tools (any prefix, see **Reading KB results**) and a `txn_id` received → `task_context({ txn_id, budget_chars: 8000 })`: this TXN's drafts (normally the REQ) with the ADR, STD, IF and PAT they link, each with an excerpt.
+   - Otherwise, or when it returns no targets → read the ids under **KB sources** in your arguments with the **Reading KB results** chain from option 2 on, at most 5, ADR/STD/IF first.
+   - Neither available → write `Context: none` in the SUMMARY and go on.
+
+2. **Component definition:**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
    → tech_stack, standards, fulfills, interfaces_defined/consumed, deploy.
 
-2. **Technical playbook (referenced from CMP.standards):**
+3. **Technical playbook (referenced from CMP.standards):**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
    → mandatory patterns, anti-patterns, handler pattern, testing.
 
-3. **Component interfaces:**
+4. **Component interfaces:**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
    → contracts with canonical field names, types, direction.
 
-4. **Domain glossary:**
+5. **Domain glossary:**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
    → canonical naming (camelCase, snake_case, never_use).
 
-5. **Component ADRs** (if architecture is affected):
+6. **Component ADRs** (if architecture is affected):
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
-   → active decisions that MUST NOT be contradicted.
+   → active decisions that MUST NOT be contradicted; then apply **Reading KB results** (skip only ADRs already read in full in item 1; an excerpt under `linked` is not a read).
 
 ## Step 2 — Pre-implementation verification
 
@@ -134,7 +152,7 @@ Before writing code:
 2. **IFs**: new fields must follow IF + GLO naming.
 3. **STD playbook**: handler pattern, error handling, logging, imports — all
    per the STD.
-4. **ADR**: do not contradict active decisions.
+4. **ADR**: do not contradict active decisions nor the constraints read in Step 1 item 1.
 
 ## Step 3 — Implementation
 
@@ -199,6 +217,7 @@ For each change applied:
 - Blocked: N (with reason)
 - Modified files: list
 - Naming validated against: GLO-<PROJ>-001, IF-<PROJ>-<COMP>-*
+- Context read: task_context(txn_id) | KB sources fallback | none — <entity_id@version, …>
 
 ### NOTES FOR THE UPDATER
 - Affected KB entities: modified IFs, updated CMP, etc.

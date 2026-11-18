@@ -27,6 +27,7 @@ Identify `project_id` and the affected `component_id`(s) from the `CLAUDE.md`.
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Decision key for gated classes (ADR / IF)** — when you create OR update an `ADR` (lands `accepted`) or an `IF` (lands `active`), set `metadata.decision = {key, value}`: a stable dotted `key` naming the decision (ADR: `<domain>.<topic>`, e.g. `licensing.web`; IF: `interface.<wire-name>`, e.g. `interface.kb-engine-wire`) and the committed `value` (ADR: the position taken; IF: the wire version). Under `KB_DECISION_GATE_REQUIRED` the engine rejects a gated create/activate that lacks it (`decision_required`), and a same-`key`/different-`value` clash with an active peer is a `decision_conflict` (reconcile or pick a distinct key). `GLO`/`REQ` are NOT gated — never force a decision on them.
+- **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
@@ -94,6 +95,19 @@ Identify `project_id` and the affected `component_id`(s) from the `CLAUDE.md`.
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:kb-read v1 -->
+## Reading KB results (canonical block — edit it in every carrier or in none)
+
+A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
+
+Read with the first option that applies:
+1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
+3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
+
+Decide by your tool list and the tool schema, never by an engine version. A failed read never aborts the step: mark the entity as unread and go on. Cite every entity you read as `entity_id@version`, with the `version` the read returned.
+<!-- /kvendra:kb-read -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -122,6 +136,8 @@ pointing to the required broker primitive.
 5. **Costs:**
    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROJ> })`
    → Estimate impact. Present analysis BEFORE committing architecture.
+
+6. **Read what you picked** — apply **Reading KB results** to the REQ and ADR searches (items 1 and 3): at most 3 reads. The STD read of Step 2 is already a full read.
 
 ## Step 2 — Technical context
 
@@ -158,6 +174,16 @@ Use patterns from the STD playbook. Do not invent new patterns if one already
 exists. Naming always canonical from GLO. New or modified IFs: specify the
 complete format.
 
+## Step 6 — Record the sources on the draft REQ
+
+The implementer loads its context with `task_context({ txn_id })`, which follows the draft REQ's outbound `respects`, `consumes`, `implements` and `derives_from` links. Link what the design rests on: `respects` → each ADR and STD it follows; `consumes` → each IF it uses or changes; `derives_from` → each PAT or ISSUE it builds on. Link only entities you read and cite in **KB sources**; never a draft of another TXN or a pending proposal.
+
+Only when your arguments name the draft REQ of this TXN:
+1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:<REQ>, include_drafts:true, txn_id, fields:["title","status","txn_id"] })` → keep `version`. If the returned `txn_id` is not yours, skip this step: never write a draft of another TXN.
+2. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:<REQ>, expected_version:<version>, relations_add:[{ type:"respects", target:"ADR-<PROJ>-<id>" }, …], change_summary:"planner: KB sources of the SPEC (<txn_id>)", metadata:{ updated_by:"skill:planner" } })`. Do not pass `txn_id`: the draft is yours and the update applies to it directly. The server does not duplicate an existing relation.
+3. On a 409, follow **Guarded update (CAS)**. On any other error (403, 404, 400) do not retry: report `REQ relations: not recorded (<code>)`. **KB sources** in the SPEC is then the only channel.
+No draft REQ (for example a bug pipeline) → skip this step.
+
 ## Required output
 
 ```
@@ -168,6 +194,7 @@ complete format.
 - ADR compliance: OK / requires new ADR (detail)
 - Existing REQ: REQ-<PROJ>-<NN> / new (proposal)
 - Estimated cost: <monthly impact>
+- REQ relations: recorded on REQ-<PROJ>-<id>@<new version> / not recorded (<reason>) / no draft REQ
 
 ### Functional summary
 [2-3 lines]
@@ -218,6 +245,10 @@ complete format.
 - [ ] [observable behavior]
 - [ ] [naming verified against GLO]
 - [ ] [IF updated and documented]
+
+### KB sources
+One line per entity the design rests on, as read (the orchestrator passes this list verbatim to the implementer):
+- <ENTITY-ID>@<version> — <why it matters, one clause>
 
 ### ISSUEs to create — one per implementation-plan step
 One ISSUE per step of the implementation plan, not a single one. Each carries:

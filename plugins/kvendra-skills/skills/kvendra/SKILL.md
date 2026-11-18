@@ -109,6 +109,19 @@ If the topic is cross-project, work without a component.
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:kb-read v1 -->
+## Reading KB results (canonical block — edit it in every carrier or in none)
+
+A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
+
+Read with the first option that applies:
+1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
+3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
+
+Decide by your tool list and the tool schema, never by an engine version. A failed read never aborts the step: mark the entity as unread and go on. Cite every entity you read as `entity_id@version`, with the `version` the read returned.
+<!-- /kvendra:kb-read -->
+
 <!-- kvendra:communication v3 -->
 ## Communication with the human (canonical block — edit it in every carrier or in none)
 
@@ -174,6 +187,7 @@ Load progressively by relevance:
     `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROJ> })`
 11. **GLO:**
     `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
+12. **Read what you picked** — apply **Reading KB results** to the searches of items 3–8: at most 3 reads for the whole step.
 
 ## Step 2 — Investigate
 
@@ -194,7 +208,7 @@ Write the findings in the mode of their message type, classified by rule 2 of th
 Cover:
 - **Conclusion** — the recommendation in one or two sentences.
 - **Risks and blockers** — only if there are any; they come before the status (rule 3).
-- **Why** — 2–4 non-overlapping supporting points, each citing inline the KB ids it rests on: ROAD, ADR, ISSUE, PAT, SLA, cost.
+- **Why** — 2–4 non-overlapping supporting points, each citing inline the KB ids it rests on: ROAD, ADR, ISSUE, PAT, SLA, cost; cite what you read as entity_id@version.
 - **Options** (if applicable) — for each option: a short description, its pros and cons, its ROAD impact (compatible, or conflicts with ROAD-<id>) and its COST impact (for example +$X/mo, or neutral).
 - **Recommended next step** — one concrete action.
 - **Title** — a descriptive title only when the message is long enough to carry headings (about 15 lines or more).
@@ -323,7 +337,7 @@ Before closing, assess whether anything is worth persisting:
 
 - **Do not assume the action** — always ask the user what they want.
 - **Investigate before opining** — read KB and code before recommending.
-- **Reference the KB** — each claim backed by data (ADR, PAT, IF, REQ).
+- **Reference the KB** — each claim backed by data (ADR, PAT, IF, REQ) — what you read, not what a snippet suggested.
 - **Flag ROAD conflicts** — if the conclusion contradicts the roadmap, say so explicitly.
 - **Surface cost impact** — quantify against COST.
 - **Be honest about uncertainty**.

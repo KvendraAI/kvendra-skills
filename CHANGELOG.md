@@ -4,6 +4,50 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.34.0] — 2026-11-18 — Skills read what they find; the implementer sees the planner's sources
+
+> No hook changes and no new skills.
+
+### Added
+- **«Reading KB results»** canonical block (`<!-- kvendra:kb-read v1 -->`) in
+  `kvendra`, `requirements-analyst`, `planner`, `analyzer` and `implementer`:
+  a search snippet is a pointer, not a source. Each loading step picks at most
+  3 results and reads them — `task_context` when the tool is listed, otherwise
+  `entity_get` with `fields` (and `include_relations: false` only when the
+  schema declares it), retrying once without a parameter the engine rejects —
+  and cites them as `entity_id@version` (REQ-KVD-SKILLS-134EAA,
+  ISSUE-KVD-SKILLS-B3EC62).
+- **KB sources**: the `planner` SPEC and the `analyzer` output end with the
+  list of entities the design or the diagnosis rests on, as read.
+- **`planner` Step 6**: records those sources as `respects` / `consumes` /
+  `derives_from` relations on the draft REQ of the TXN (guarded update, no
+  `txn_id`), so `task_context({ txn_id })` returns them to the implementer.
+  `planner` now carries the «Guarded update (CAS)» rule.
+- **Lint gate** «KB-read canonical block check» in `lint-skill-md`: the block
+  must be present in the five skills and byte-identical in every carrier.
+
+### Changed
+- **`implementer` Step 1**: starts with `task_context({ txn_id })`; without
+  it, reads up to 5 ids from **KB sources** (ADR, STD and IF first); with
+  neither, reports `Context: none`. The SUMMARY lists what it read.
+- **`new-feature`**: PHASE 1 names the draft REQ to the planner and captures
+  the SPEC's **KB sources**; PHASE 2 and 4a pass that list verbatim to the
+  implementer.
+- **`bug`**: PHASE 3 merges every analyzer's **KB sources** into
+  BUG_ANALYSIS; PHASE 4 passes it to the implementer.
+
+### Notes
+- `task_context` and `entity_get({ include_relations })` need the engine at
+  IF-KVD-ENTERPRISE-060D2B v1.46. Without them the schema-driven fallback
+  (`entity_get` with `fields`) works on earlier engines.
+- Open sessions load 1.34.0 only after `/plugin update` (or the org sync) and
+  `/exit` + `claude --resume`.
+- The rule accepts the Kvendra server's `task_context` under any tool prefix: when
+  Claude Code also has the claude.ai Kvendra connector, it serves that connector and
+  drops the plugin's own server, so the tools are named `mcp__claude_ai_Kvendra__*`
+  (measured in headless sessions during the acceptance runs).
+- CONTEXT_PACK does not change.
+
 ## [1.33.2] — 2026-11-16 — /changelog opts into entity_get history
 
 > No hook changes and no new skills. Needed now: since engine
