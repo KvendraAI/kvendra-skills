@@ -37,6 +37,12 @@ $ARGUMENTS
 
 Identify `project_id` from the `CLAUDE.md` of the current directory.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -46,12 +52,12 @@ Identify `project_id` from the `CLAUDE.md` of the current directory.
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -384,7 +390,7 @@ Each chapter is a `DOC` entity with:
 4. Find the existing book of the component:
 
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+   entity_query({
      entity_type: "DOC",
      project_id: "{PROJ}",
      component_id: "{COMP}",
@@ -531,7 +537,7 @@ until it is activated (read them back with `include_drafts: true`).
 Create a chapter (one call per chapter):
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "DOC",
   project_id: "{PROJ}",
   component_id: "{COMP}",
@@ -561,7 +567,7 @@ Update an existing chapter — matched by `(component, book, chapter)` — with
 the **Guarded update (CAS)** rule:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+entity_update({
   entity_id: "<chapter DOC id>",
   expected_version: <version from the entity_get you just did>,
   title: "{Book title} — {NN}. {Chapter title}",
@@ -694,7 +700,7 @@ The scope is: entities whose `component_id` is in the selection, plus the
 CMP entities themselves, plus the explicit `--include` ids. Nothing else.
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   project_id: "{PROJ}",
   component_id: "{COMP}",
   limit: 100,
@@ -850,7 +856,7 @@ Present, before writing anything to the KB:
 Find the existing card (unless `--manual` was given):
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "DOC",
   project_id: "{PROJ}",
   tags_all: ["publication-manual"]
@@ -875,7 +881,7 @@ Legacy manuals from kvendra-skills 1.17.0:
 Create (project-wide: OMIT `component_id`):
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "DOC",
   project_id: "{PROJ}",
   title: "Publication card: {PROJ} ({COMP list})",
@@ -900,7 +906,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 Update (apply the **Guarded update (CAS)** rule):
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+entity_update({
   entity_id: "<card DOC id>",
   expected_version: <version from the entity_get you just did>,
   content: <the confirmed card>,
@@ -1005,9 +1011,9 @@ documentation differently:
 Sweep with `entity_search` / `entity_query` for the topic, e.g.:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"PAT", project_id:<PROJ> })
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"IF", project_id:<PROJ> })
+entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })
+entity_search({ query:<topic>, entity_type:"PAT", project_id:<PROJ> })
+entity_search({ query:<topic>, entity_type:"IF", project_id:<PROJ> })
 ```
 
 Then read the most relevant entities in full. **Large entities** (some `IF`/`ADR`
@@ -1028,12 +1034,12 @@ the skeleton, the code is the detail.
 This step is **critical**. Build a brief from the project's DOC entries:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "DOC",
   project_id: <PROJ>,
   limit: 100
 })
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
+entity_search({
   query: <topic>,
   entity_type: "DOC",
   limit: 20
@@ -1112,7 +1118,7 @@ If the KB defines a template for the chosen genre, it overrides/extends the
 built-in blueprint:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "STD",
   project_id: <PROJ>,
   tags_all: ["scope:std-tpl", "doc-genre", "genre:<genre>"]
@@ -1181,7 +1187,7 @@ manually or skip this section.
 ### Load environment
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "ENV",
   project_id: <PROJ>,
   tags_all: ["env:dev"]
@@ -1267,7 +1273,7 @@ Before writing each section, consult the CONSISTENCY BRIEF:
 ### Per-section check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
+entity_search({
   query: <section topic>,
   entity_type: "DOC",
   project_id: <PROJ>,

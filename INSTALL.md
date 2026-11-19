@@ -34,6 +34,12 @@ The `install` command:
   same-name servers by scope precedence, and a Plugin server is
   eclipsed silently by any Local server with the same name. Tools
   appear under the `mcp__plugin_kvendra-skills_kvendra-cloud__*` prefix.
+  If you connect Kvendra another way, the prefix changes: a claude.ai
+  connector shows up as `mcp__claude_ai_<connector name>__*` (Claude Code
+  then hides the plugin server as a duplicate), and
+  `claude mcp add <name> https://api.kvendra.cloud/mcp` as `mcp__<name>__*`.
+  The skills work with any of them: they call the engine tools by their
+  bare name, and the plugin hooks match any prefix.
 
 ## 3. First MCP request triggers OAuth
 

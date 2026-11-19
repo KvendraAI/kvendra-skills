@@ -28,6 +28,12 @@ indexing; otherwise index every `.md` under `<project root>/docs/`. The
 library super-index (Step 5) is ALWAYS regenerated from the full `docs/`
 tree regardless of scope.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -37,9 +43,9 @@ tree regardless of scope.
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
@@ -51,7 +57,7 @@ tree regardless of scope.
   a hard 400 on `entity_query`); if the scope is not obvious from the work at
   hand, ask the user — `component_id` cannot be changed after creation, and an
   entity created without it never appears in the component's tabs.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -155,7 +161,7 @@ For each `.md`:
 Before creating, look up by path:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({
+entity_search({
   query: "<file path>",
   entity_type: "DOC",
   project_id: <PROJ>,
@@ -174,8 +180,8 @@ Do this ONCE, before the first create. Relation targets must be ids the KB
 returned to you, never ids you assembled from `CLAUDE.md`, from a path
 segment or from a book slug:
 
-    mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id: "PRJ-<PROJ>" })
-    mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type: "CMP", project_id: "<PROJ>" })
+    entity_get({ entity_id: "PRJ-<PROJ>" })
+    entity_query({ entity_type: "CMP", project_id: "<PROJ>" })
 
 - If `entity_get` on the PRJ returns `not_found`: STOP and report that the
   project is not onboarded (run `/onboard-project` first). Do NOT index docs
@@ -206,7 +212,7 @@ component (e.g. `docs/api-ref/` of a single service) carries that component's
 code; a project-wide book (e.g. `docs/project-overview/`) omits the key.
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "DOC",
   project_id: <PROJ>,
   component_id: <bare component code if the book documents one component; OMIT the key if project-wide>,

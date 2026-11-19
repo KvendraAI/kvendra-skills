@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # lvr-scan-tool-input.sh — kvendra-skills PreToolUse hook for KB writes
-# (`entity_create` / `entity_update` of the kvendra-cloud MCP).
+# (`entity_create` / `entity_update` of the Kvendra server, any client prefix).
 #
 # REQ-KVD-11F906 RF-CLI-8 (c), DOC-KVD-E49C6E D8(c). Joins every string leaf
 # of `tool_input` and pipes it to `kvendra vars scan --stdin --json`. If the
@@ -31,10 +31,16 @@ fi
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lvr-scan-lib.sh"
 
 TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)"
+# Any client prefix (plugin, claude.ai connector, `claude mcp add <name>`): match the tool
+# suffix, then confirm the input has the Kvendra engine's required fields, so a homonymous
+# tool of another MCP server is left alone. A Kvendra call without them is rejected by the
+# engine (400) and writes nothing.
 case "$TOOL_NAME" in
-  mcp__*kvendra-cloud__entity_create|mcp__*kvendra-cloud__entity_update) : ;;
+  mcp__*__entity_create) shape='(.tool_input.entity_type | type) == "string" and (.tool_input.title | type) == "string"' ;;
+  mcp__*__entity_update) shape='(.tool_input.entity_id | type) == "string" and (.tool_input.change_summary | type) == "string"' ;;
   *) exit 0 ;;
 esac
+printf '%s' "$INPUT" | jq -e "$shape" >/dev/null 2>&1 || exit 0
 
 TEXT="$(printf '%s' "$INPUT" | jq -r '[.tool_input | recurse | strings] | join("\n")' 2>/dev/null || true)"
 [[ -z "$TEXT" ]] && exit 0

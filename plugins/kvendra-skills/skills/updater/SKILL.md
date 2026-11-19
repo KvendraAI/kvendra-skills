@@ -21,6 +21,12 @@ $ARGUMENTS
 
 Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -31,13 +37,13 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 - **Decision key for gated classes (ADR / IF)** — when you create OR update an `ADR` (lands `accepted`) or an `IF` (lands `active`), set `metadata.decision = {key, value}`: a stable dotted `key` naming the decision (ADR: `<domain>.<topic>`, e.g. `licensing.web`; IF: `interface.<wire-name>`, e.g. `interface.kb-engine-wire`) and the committed `value` (ADR: the position taken; IF: the wire version). Under `KB_DECISION_GATE_REQUIRED` the engine rejects a gated create/activate that lacks it (`decision_required`), and a same-`key`/different-`value` clash with an active peer is a `decision_conflict` (reconcile or pick a distinct key). `GLO`/`REQ` are NOT gated — never force a decision on them.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
 - **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
   The top-level `status` is the source of truth (REL: `planning`,
   `in-progress`, `released`, `closed`); a `status:*` tag, if present, carries
   exactly the same value.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
@@ -49,7 +55,7 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
   a hard 400 on `entity_query`); if the scope is not obvious from the work at
   hand, ask the user — `component_id` cannot be changed after creation, and an
   entity created without it never appears in the component's tabs.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -136,7 +142,7 @@ From the received summary, extract:
 ## Step 2 — Verify coherence
 
 For every entity mentioned:
-1. **Exists**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`. If NOT_FOUND → report.
+1. **Exists**: `entity_get({ entity_id })`. If NOT_FOUND → report.
 2. **Relation targets exist** (same check).
 3. **Naming**: new fields follow GLO (see `interface-validator`).
 
@@ -160,7 +166,7 @@ for the report.
 For each identified relation, `entity_update` with `relations_add`:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+entity_update({
   entity_id: "<source>",
   relations_add: [{ type: "implements", target: "<target>" }],
   change_summary: "Added implements → <target> (TXN-...)",
@@ -174,12 +180,12 @@ already exists, it is not duplicated.
 ### 3b — Active-REL changelog
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })
+entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })
 # legacy RELs without a canonical top-level status: tags_any:["status:planning","status:in-progress"]
 ```
 
 For each relevant change, read the REL, append an entry to its changelog
-section via `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ content, change_summary, ... })`.
+section via `entity_update({ content, change_summary, ... })`.
 
 (Note: the server also populates the `entity_changelog` table automatically
 for every update while an active REL exists — updating the `content` body
@@ -196,13 +202,13 @@ If a new REQ was implemented:
 
 If regression-case TESTs were created:
 - Find the REG for the component:
-  `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:<COMP> })`
+  `entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:<COMP> })`
 - Append the TEST IDs to the suite via `entity_update` (content + `relations_add: { type:"part_of", target:"REG-..." }` from the TEST).
 
 ### 3e — PAT (lessons learned)
 
 If a bug yields a generalisable lesson:
-- `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", project_id:<PROJ>, component_id:<COMP from the originating ISSUE, or omit if the lesson generalises>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], metadata:{ updated_by:"skill:updater" } })`.
+- `entity_create({ entity_type:"PAT", project_id:<PROJ>, component_id:<COMP from the originating ISSUE, or omit if the lesson generalises>, title:"PAT-<PROJ>-<SEQ>: <lesson>", content, relations:[{type:"derives_from", target:"ISSUE-..."}], metadata:{ updated_by:"skill:updater" } })`.
 
 ### 3f — Evidence attachments
 

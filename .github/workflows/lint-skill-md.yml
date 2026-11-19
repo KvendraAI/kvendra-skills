@@ -559,3 +559,30 @@ jobs:
           done
           [[ $fail -eq 0 ]] || exit 1
           echo "KB-read check passed."
+
+      - name: KB-server canonical block + bare engine tool names check
+        id: kb_server
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ISSUE-KVD-SKILLS-E21D4A: the Kvendra server's tool prefix depends on
+          # how it was installed (plugin, claude.ai connector, `claude mcp add`).
+          # Every skill carries the "Kvendra server" block, identical in all of
+          # them, and outside it writes engine tools by their bare name.
+          open='<!-- kvendra:kb-server v1 -->'
+          close='<!-- /kvendra:kb-server -->'
+          tool='(entity_[a-z_]+|txn_[a-z_]+|whoami|help|task_context|config_get|private_value_resolve|k_note_[a-z_]+|file_[a-z_]+|check_notifications|send_message|message_[a-z_]+|export|planning|workspace_list|approve_proposal|reject_proposal|proposals_list|raise_dispute|resolve_dispute)'
+          tmp=$(mktemp -d); fail=0; ref=""
+          for f in plugins/kvendra-skills/skills/*/SKILL.md; do
+            grep -qxF "$open" "$f" || { echo "::error file=$f::missing canonical Kvendra server block"; fail=1; continue; }
+            out="$tmp/$(basename "$(dirname "$f")").blk"
+            awk -v o="$open" -v c="$close" '$0==o{on=1} on{print} $0==c{on=0}' "$f" > "$out"
+            grep -qxF "$close" "$out" || { echo "::error file=$f::block not closed"; fail=1; continue; }
+            if [[ -z "$ref" ]]; then ref="$out"; elif ! cmp -s "$ref" "$out"; then
+              echo "::error file=$f::Kvendra server block differs from $(basename "$ref" .blk):"; diff "$ref" "$out" || true; fail=1; fi
+            if awk -v o="$open" -v c="$close" '$0==o{on=1} !on{print FNR": "$0} $0==c{on=0}' "$f" \
+               | grep -E "mcp__plugin_kvendra-skills_kvendra-cloud__|mcp__[A-Za-z0-9_.-]*__${tool}\b"; then
+              echo "::error file=$f::engine tool written with a client prefix; use the bare name (see the Kvendra server block)"; fail=1; fi
+          done
+          [[ $fail -eq 0 ]] || exit 1
+          echo "KB-server check passed."

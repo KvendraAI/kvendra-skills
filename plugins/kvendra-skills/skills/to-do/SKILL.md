@@ -18,6 +18,12 @@ $ARGUMENTS
 
 Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -27,16 +33,16 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
 - **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
   ISSUE lifecycle: `open`, `in-progress`, `blocked`, `done`, `closed`, `wontfix`
   (no `status` → `open`). The top-level `status` is the source of truth; a
   `status:*` tag, if present, carries exactly the same value.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -153,7 +159,7 @@ pointing to the required broker primitive.
 6. Call:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
   component_id: "<COMP>",   // optional
@@ -172,7 +178,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 ### UPDATE — Update an ISSUE
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+entity_update({
   entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",
   content: <optional>,
   status: "in-progress",                // if changing state (top-level = source of truth)
@@ -194,20 +200,20 @@ never retry the same payload.
 
 ### CLOSE — Close an ISSUE
 
-1. Read ISSUE: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id })`.
+1. Read ISSUE: `entity_get({ entity_id })`.
 2. Change status per type:
    - bug: `closed`
    - task: `done`
    - incident: `done` (postmortem completed)
 3. If bug: verify there is a regression-case TEST that covers it
-   (`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TEST", tags_all:["type:regression-case", "ISSUE-..."] })`).
+   (`entity_query({ entity_type:"TEST", tags_all:["type:regression-case", "ISSUE-..."] })`).
 4. `entity_update` with the top-level `status`, the `status:*` tag (if any)
    aligned to the same value, and `change_summary`.
 
 ### LIST — List ISSUEs
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
   component_id: "<if filtering>",

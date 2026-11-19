@@ -6,6 +6,12 @@ user_invocable: true
 
 # Env Check — Verify and repair the Kvendra environment
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -16,11 +22,15 @@ pointing to the required broker primitive.
 
 ## Checks (in order)
 
-### 1. MCP `kvendra-cloud` (KB) connected
+### 1. Kvendra server (KB) connected
 
 ```bash
-claude mcp list 2>&1 | grep -E '^kvendra-cloud:|plugin.*kvendra-cloud'
+claude mcp list 2>&1 | grep -E 'api\.kvendra\.cloud/mcp'
 ```
+
+Match by URL, not by name: the entry may be the plugin server
+(`plugin:kvendra-skills:kvendra-cloud`), a claude.ai connector (`claude.ai <Name>`)
+or a server added with `claude mcp add`.
 
 Expected states:
 - `✓ Connected` → OK.
@@ -29,10 +39,9 @@ Expected states:
   not signed in yet (see check 10) — it is not necessarily a defect.
 - `✗ Failed to connect` → verify https://api.kvendra.cloud is reachable + check token TTL.
 
-### 2. The 33 KB tools from `kvendra-cloud` available
+### 2. The 33 KB tools of the Kvendra server available
 
-Look in the registered tool list for the prefix
-`mcp__plugin_kvendra-skills_kvendra-cloud__*`. Expected tools (33):
+Find the Kvendra server's tools (see **Kvendra server**). Expected tools (33):
 
 `entity_create, entity_update, entity_get, entity_query, entity_search,
 entity_archive, entity_related, txn_create, txn_activate, txn_cancel,
@@ -60,7 +69,7 @@ predates wire 1.34 (K-notes): reconnect with `/mcp`; report it as a WARN
 (only `/k-notes` is affected).
 
 Also confirm the private-values help topic is served:
-`mcp__plugin_kvendra-skills_kvendra-cloud__help({ topic:"private-values" })`
+`help({ topic:"private-values" })`
 must return the topic (syntax, escaping, markers, `private_value_resolve`),
 not an unknown-topic error. Report it on row 2 (`33/33 + help OK`).
 
@@ -70,7 +79,7 @@ MCP is not authenticated. Resolve with `/mcp` from Claude Code.
 ### 3. Real KB read test
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"PRJ", limit: 5 })
+entity_query({ entity_type:"PRJ", limit: 5 })
 ```
 
 - Works → show the count of visible projects.
@@ -130,7 +139,7 @@ tier: <free|pro|team|enterprise>
 
 If all OK, validate that the PRJ exists in the KB:
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<value>" })
+entity_get({ entity_id:"PRJ-<value>" })
 ```
 
 If the PRJ is **not found**, run check 10 before concluding anything. The
@@ -170,7 +179,7 @@ echo "protected: ${PROT:-NONE}"; echo "legacy: ${LEGACY:-NONE}"
   causes, so distinguish them before reporting. Read the project's
   broker-policy STD:
   ```
-  mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+  entity_query({
     entity_type:"STD", project_id:"<PROJECT>",
     tags_all:["scope:broker-policy"], status:"active", limit:1 })
   ```
@@ -224,7 +233,7 @@ typed at sign-in (`PAT-KVD-SKILLS-CEDB12`). Always report what the session
 is really connected to:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__whoami({})
+whoami({})
 ```
 
 Then compare the variable with the URL the **installed** plugin declares:
@@ -290,7 +299,7 @@ prints a value.
 
 1. Declarations (CFG with `metadata.kind:"local_var"`, no value):
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+   entity_query({
      entity_type:"CFG", project_id:"<PROJECT>",
      tags_all:["cfg-kind:local_var"], limit:100 })
    ```
@@ -361,7 +370,7 @@ EOF
 
 | # | Component | Status | Detail |
 |---|-----------|--------|--------|
-| 1 | MCP kvendra-cloud (KB) | OK / NEEDS_AUTH / FAIL | <state> |
+| 1 | Kvendra server (KB) | OK / NEEDS_AUTH / FAIL | <state> |
 | 2 | 33 KB tools + private-values help | OK / N/33 / WARN (no private-values topic) / N/A | <missing list> |
 | 3 | KB read test | OK / FAIL | <N projects / error> |
 | 4 | MCP kvendra (broker) | OK / FAIL | <cause> |
