@@ -195,6 +195,7 @@ for pfx in mcp__claude_ai_Kvendra__ mcp__claude_ai_Kvendra_KB__ mcp__kvendra-kb_
 done
 run_case "other-mcp-update-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__notion__entity_update", tool_input:{page_id:"abc", properties:{text:$c}}}')" scan nocall
 run_case "other-mcp-create-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__crm__entity_create", tool_input:{kind:"contact", body:$c}}')" scan nocall
+run_case "plugin-create-no-title-deny" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__plugin_kvendra-skills_kvendra-cloud__entity_create", tool_input:{entity_type:"PAT", content:$c}}')" scan deny
 run_case "kvendra-create-no-title-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__claude_ai_Kvendra__entity_create", tool_input:{entity_type:"PAT", content:$c}}')" scan nocall
 run_case "broker-tool-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__kvendra__kvendra_git", tool_input:{args:[$c]}}')" scan nocall
 run_case "suffix-lookalike-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__x__entity_update_bulk", tool_input:{entity_id:"PAT-KVD-1", change_summary:$c}}')" scan nocall

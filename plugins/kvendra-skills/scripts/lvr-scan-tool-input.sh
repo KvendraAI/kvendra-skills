@@ -35,7 +35,10 @@ TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || t
 # suffix, then confirm the input has the Kvendra engine's required fields, so a homonymous
 # tool of another MCP server is left alone. A Kvendra call without them is rejected by the
 # engine (400) and writes nothing.
+# The plugin's own server is Kvendra by construction: scan it without the shape check, so
+# even an invalid call never leaves the machine with a local value in it.
 case "$TOOL_NAME" in
+  mcp__plugin_kvendra-skills_kvendra-cloud__entity_create|mcp__plugin_kvendra-skills_kvendra-cloud__entity_update) shape='true' ;;
   mcp__*__entity_create) shape='(.tool_input.entity_type | type) == "string" and (.tool_input.title | type) == "string"' ;;
   mcp__*__entity_update) shape='(.tool_input.entity_id | type) == "string" and (.tool_input.change_summary | type) == "string"' ;;
   *) exit 0 ;;

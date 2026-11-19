@@ -6,7 +6,7 @@ Kvendra KB with the same content plus traceability links.
 
 ## [1.35.0] — 2026-11-19 — Skills work with any Kvendra server prefix
 
-> One hook changes (`lvr-scan-tool-input.sh`). No new skills.
+> One hook changes (`hooks.json` matcher and `lvr-scan-tool-input.sh`). No new skills.
 
 ### Added
 - **«Kvendra server»** canonical block (`<!-- kvendra:kb-server v1 -->`) in
@@ -31,7 +31,7 @@ Kvendra KB with the same content plus traceability links.
   `entity_query(...)`). Broker primitives (`mcp__kvendra__kvendra_*`) are
   unchanged.
 - **«Reading KB results»** (`kvendra:kb-read v1`, five carriers): option 1 no
-  longer lists prefixes; it defers to the «Kvendra server» block.
+  longer names a tool prefix.
 - **`env-check`**: check 1 finds the Kvendra server in `claude mcp list` by
   its URL (`api.kvendra.cloud/mcp`), not by the name `kvendra-cloud`, so a
   claude.ai connector or a `claude mcp add` entry is recognised; check 2 and
@@ -42,7 +42,15 @@ Kvendra KB with the same content plus traceability links.
   checks describe the block and the bare-name rule. **INSTALL**: explains the
   prefix of each way to connect.
 
+- **Two Kvendra servers at once**: with a directory's `KVENDRA_WS` the plugin server
+  and a claude.ai connector point at different URLs and both stay. The «Kvendra
+  server» block says to use the plugin server (it carries that workspace), to ask the
+  user when there is no plugin server, and never to mix two servers in one task;
+  `env-check` reports it as a WARNING.
+
 ### Fixed
+- The plugin server's own `entity_create` / `entity_update` are scanned without the
+  input-shape check, as in 1.34.0, so an invalid call never leaves with a local value.
 - **Local-values hook did not fire with the claude.ai connector**: the
   PreToolUse matcher was `mcp__.*kvendra-cloud__(entity_create|entity_update)`
   and the script filtered the same way, so a KB write named
