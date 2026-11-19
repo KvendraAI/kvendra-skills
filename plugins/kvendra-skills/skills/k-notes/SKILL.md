@@ -13,11 +13,8 @@ the notes they already sent with the team's replies. The note leaves the
 user's tenant: you draft it WITH the user, show them exactly what will be
 sent, and send nothing without their explicit confirmation.
 
-The two tools are served by the hosted `kvendra-cloud` server (Pro and
-above):
-
-- `mcp__plugin_kvendra-skills_kvendra-cloud__k_note_submit`
-- `mcp__plugin_kvendra-skills_kvendra-cloud__k_note_list`
+The two tools are `k_note_submit` and `k_note_list` on the Kvendra server
+(Pro and above).
 
 ## Input
 
@@ -32,15 +29,21 @@ Identify `project_id` from the `CLAUDE.md` only if the user later accepts the
 optional KB copy (Step 4). Drafting, sending and listing notes need no
 project and no KB read: do not load KB context for them.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write: `updated_by: "skill:<this-skill>"`.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`.
+- If an error returns `error.help.topic`, call `help({topic})`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -202,7 +205,7 @@ Send this note? (yes / edit / cancel)
 ### Send
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__k_note_submit({
+k_note_submit({
   kind, title, body,
   component_hint,     // only if present
   plugin_version      // only if present
@@ -253,7 +256,7 @@ does not, say the copy needs a project and skip it), create ONE entity with the
 same text the user approved, nothing else added:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
   // component_id omitted: the note is about Kvendra, not a component of this project
@@ -272,7 +275,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 ## Step 5 — List the user's notes
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__k_note_list({
+k_note_list({
   status,   // optional filter, only if the user asks for one
   limit,    // optional
   cursor    // only to fetch the next page

@@ -24,6 +24,12 @@ $ARGUMENTS
 Identify `project_id` and `component_id` from the `CLAUDE.md` (if present).
 If the topic is cross-project, work without a component.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -34,9 +40,9 @@ If the topic is cross-project, work without a component.
 - **Decision key for gated classes (ADR / IF)** — when you create OR update an `ADR` (lands `accepted`) or an `IF` (lands `active`), set `metadata.decision = {key, value}`: a stable dotted `key` naming the decision (ADR: `<domain>.<topic>`, e.g. `licensing.web`; IF: `interface.<wire-name>`, e.g. `interface.kb-engine-wire`) and the committed `value` (ADR: the position taken; IF: the wire version). Under `KB_DECISION_GATE_REQUIRED` the engine rejects a gated create/activate that lacks it (`decision_required`), and a same-`key`/different-`value` clash with an active peer is a `decision_conflict` (reconcile or pick a distinct key). `GLO`/`REQ` are NOT gated — never force a decision on them.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
@@ -48,7 +54,7 @@ If the topic is cross-project, work without a component.
   a hard 400 on `entity_query`); if the scope is not obvious from the work at
   hand, ask the user — `component_id` cannot be changed after creation, and an
   entity created without it never appears in the component's tabs.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -115,7 +121,7 @@ If the topic is cross-project, work without a component.
 A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
 
 Read with the first option that applies:
-1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+1. `task_context` is among your tools (or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
 2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
 3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
 
@@ -166,27 +172,27 @@ pointing to the required broker primitive.
 
 Load progressively by relevance:
 
-1. **PRJ**: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"PRJ-<PROJ>" })`
+1. **PRJ**: `entity_get({ entity_id:"PRJ-<PROJ>" })`
 2. **ROAD (strategic vision):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ROAD", project_id:<PROJ> })`
+   `entity_query({ entity_type:"ROAD", project_id:<PROJ> })`
 3. **Related REQs:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"REQ", project_id:<PROJ> })`
+   `entity_search({ query:<topic>, entity_type:"REQ", project_id:<PROJ> })`
 4. **ADRs (active decisions):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
+   `entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
 5. **Affected CMPs:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"CMP", project_id:<PROJ> })`
+   `entity_search({ query:<topic>, entity_type:"CMP", project_id:<PROJ> })`
 6. **IFs (if topic affects communication):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"IF", project_id:<PROJ> })`
+   `entity_search({ query:<topic>, entity_type:"IF", project_id:<PROJ> })`
 7. **PATs (precedents):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"PAT", project_id:<PROJ> })`
+   `entity_search({ query:<topic>, entity_type:"PAT", project_id:<PROJ> })`
 8. **Existing ISSUEs (prior work):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<topic>, entity_type:"ISSUE", project_id:<PROJ> })`
+   `entity_search({ query:<topic>, entity_type:"ISSUE", project_id:<PROJ> })`
 9. **SLAs (if performance-relevant):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"SLA", project_id:<PROJ> })`
+   `entity_query({ entity_type:"SLA", project_id:<PROJ> })`
 10. **COST (if economic impact):**
-    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"COST", project_id:<PROJ> })`
+    `entity_query({ entity_type:"COST", project_id:<PROJ> })`
 11. **GLO:**
-    `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
+    `entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
 12. **Read what you picked** — apply **Reading KB results** to the searches of items 3–8: at most 3 reads for the whole step.
 
 ## Step 2 — Investigate
@@ -270,7 +276,7 @@ Skill(skill="kvendra-skills:requirements-analyst", args="<requirement>")
 ### ROAD item:
 Create the ROAD entry directly in the KB:
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "ROAD",
   project_id: <PROJ>,
   component_id: <bare component code if this roadmap item belongs to one component; OMIT if cross-component>,
@@ -284,7 +290,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 
 ### Save as PAT:
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "PAT",
   project_id: <PROJ>,
   component_id: <bare component code if the lesson is component-specific; OMIT if it generalises across the project>,
@@ -313,15 +319,15 @@ or 1 (ISSUE).
    without at least ONE of these three actions, in this preference order:
 
    a. **Changelog in the active REL** (if one exists):
-      Find REL: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })` (legacy RELs without a canonical top-level status: `tags_any:["status:planning","status:in-progress"]`).
-      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", metadata:{ updated_by:"skill:kvendra" } })`.
+      Find REL: `entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })` (legacy RELs without a canonical top-level status: `tags_any:["status:planning","status:in-progress"]`).
+      `entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", metadata:{ updated_by:"skill:kvendra" } })`.
       The server populates `entity_changelog` automatically.
 
    b. **Retrospective ISSUE** (`type: task, status: done`):
       `Skill(skill="kvendra-skills:to-do", args="create <description> --type=task --status=done")`
 
    c. **PAT** if a useful lesson surfaced:
-      `mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"PAT", ... })` (see pattern above).
+      `entity_create({ entity_type:"PAT", ... })` (see pattern above).
 
 4. **Confirm to the user** what was persisted (show created/modified IDs).
    Without this step, the flow is considered incomplete.

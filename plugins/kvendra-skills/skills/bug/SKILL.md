@@ -27,7 +27,7 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 Discover the project's pipeline-autonomy policy with ONE tag query:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "STD",
   project_id: <PROJ>,
   tags_all: ["scope:pipeline-autonomy"],
@@ -94,6 +94,12 @@ line of `entity_id@version` pairs. Introduce it with this exact sentence:
 skip your context-loading queries when the pack covers them; re-query only
 what is missing or suspect — the pack is an optimization, not a cage."
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
@@ -103,12 +109,12 @@ what is missing or suspect — the pack is an optimization, not a cage."
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -172,7 +178,7 @@ what is missing or suspect — the pack is an optimization, not a cage."
 ### Interrupted check
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
+txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
 ```
 
 If an in-progress TXN exists:
@@ -186,7 +192,7 @@ If an in-progress TXN exists:
 ### Open the TXN
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
+txn_create({
   type: "bug",
   project_id: "<PROJ>",
   component_id: "<COMP>",
@@ -283,7 +289,7 @@ For each PHASE:
 5. Report progress to the user.
 
 If a phase fails:
-- `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel({ txn_id, reason })`.
+- `txn_cancel({ txn_id, reason })`.
 - Drafts → cancelled automatically.
 - Notify the user.
 
@@ -342,7 +348,7 @@ THIS orchestrator.)
 ### 5b — Create one ISSUE per confirmed bug (drafts in the TXN)
 
 For each confirmed bug:
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ..., status, txn_id })`. The server assigns the auto id.
+`entity_create({ entity_type:"ISSUE", ..., status, txn_id })`. The server assigns the auto id.
 Top-level `status` (kept at `txn_activate`, engine H3): `"done"` for a bug in
 VALIDATED_BUGS (fixed and validated — the ISSUE records work already done);
 `"blocked"` for a bug in BLOCKED_BUGS. `closed` is for administrative closes only.
@@ -361,7 +367,7 @@ updater applies:
 ### Activate TXN
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id })
+txn_activate({ txn_id })
 ```
 
 Drafts → terminal automatically. The server populates `entity_changelog`
@@ -381,7 +387,7 @@ as pending instead.
 
 Right after `txn_activate` (also after a `txn_cancel`: the pointer then says why the pipeline stopped). Only when this session has a name (CLAUDE.md, Protocol step 4);
 otherwise skip. One query and one write per closed task, never per turn:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
+1. `entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
    Two results, or one whose `updated_by` is not your own `whoami` actor → do not write: tell the user the pointer is duplicated or not yours, and stop this step (in a Team workspace any member can tag a DOC).
    None yet → create it once, outside any TXN: `entity_create({ entity_type:"DOC", project_id:<PROJ>, title:"Resume pointer — session <name>", content:"Resume pointer of session <name> (REQ-KVD-B61E92).", tags:["session:<name>"], metadata:{ resume_pointer:<pointer>, updated_by:"skill:bug" } })`. No `component_id`: the pointer is project-wide.
 2. Otherwise `entity_update({ entity_id, expected_version:<version from step 1>, metadata:{ resume_pointer:<pointer>, updated_by:"skill:bug" }, change_summary:"resume pointer: <TXN or REL id> closed" })`. On a 409, follow the **Guarded update (CAS)** rule; if it still conflicts, report it and go on.
@@ -395,7 +401,7 @@ minus TXN creation time. Query the pipeline SLAs once (target: the
 bug-pipeline SLA):
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+entity_query({
   entity_type: "SLA",
   project_id: <PROJ>,
   tags_all: ["scope:pipeline"]
@@ -416,7 +422,7 @@ Still 0 results, or query error → skip silently.
 ## PHASE 7 — Create pending tasks (conditional)
 
 If there are blocked bugs (3 failed iterations) or pending work:
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({ entity_type:"ISSUE", ... })` with top-level `status:"open"` or `status:"blocked"` (a `status:*` tag, if added, carries the same value). NOTE: these ISSUEs are
+`entity_create({ entity_type:"ISSUE", ... })` with top-level `status:"open"` or `status:"blocked"` (a `status:*` tag, if added, carries the same value). NOTE: these ISSUEs are
 created outside the TXN because the pipeline TXN was already activated.
 Creating them NOW means they are born live (not drafts) with that status.
 
@@ -431,7 +437,7 @@ skip anything listed in `proposed[]`.
 
 1. **Find the open REL** of the component:
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+   entity_query({
      entity_type: "REL",
      project_id: <PROJ>,
      component_id: "<COMP>",

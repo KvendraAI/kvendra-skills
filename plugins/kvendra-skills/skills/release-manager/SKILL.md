@@ -20,6 +20,12 @@ $ARGUMENTS
 
 Identify `project_id` from the `CLAUDE.md`.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -29,17 +35,17 @@ Identify `project_id` from the `CLAUDE.md`.
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
 - **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
   REL lifecycle: `planning`, `in-progress`, `released`, `closed` (no `status` →
   `planning`); ROAD: `proposed`, `active`, `done`, `superseded`. The top-level
   `status` is the source of truth; a `status:*` tag, if present, carries
   exactly the same value.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -176,7 +182,7 @@ Arguments: `create [<VER>] [--type major|minor|patch|hotfix] [--component <COMP>
    return it instead of creating a second one.
 1. Determine the version (SemVer): read latest RELs (of the component, when
    `--component` is given) to compute next:
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REL", project_id:<PROJ>, component_id?:"<COMP>", order_by:"updated_at_desc", limit:5 })`.
+   `entity_query({ entity_type:"REL", project_id:<PROJ>, component_id?:"<COMP>", order_by:"updated_at_desc", limit:5 })`.
    When `<VER>` is omitted, bump the highest version found by `--type`
    (default `patch`); with no previous REL, start at `0.1.0`.
 2. Type: major | minor | patch | hotfix.
@@ -187,7 +193,7 @@ Arguments: `create [<VER>] [--type major|minor|patch|hotfix] [--component <COMP>
 6. Validate the id against the regex. If OK, create:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "REL",
   project_id: "<PROJ>",
   component_id: "<COMP, when --component or component hotfix>",
@@ -210,10 +216,10 @@ A REL that already exists without its ROAD link gets it with
 
 ### STATUS — View the state of a release
 
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-<PROJ>-<VER>" })`.
-2. List included ISSUEs: `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`.
+1. `entity_get({ entity_id:"REL-<PROJ>-<VER>" })`.
+2. List included ISSUEs: `entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`.
 3. Verify regression gates: for each component with an ISSUE in the REL,
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
+   `entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
 4. Show the changelog: the items with `part_of` → the REL (`relations_inbound`
    of the step-1 read) and the REL's own changes — read them with
    `entity_get({ entity_id:"REL-<PROJ>-<VER>", include_history: true })` (history is
@@ -233,7 +239,7 @@ Arguments: `add <ISSUE-or-REQ-id>[,<id>...] --rel <REL-id> [--auto]`.
    (idempotent).
 3. Add the `part_of` relation from the item to the REL:
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+   entity_update({
      entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",   // or REQ-<PROJ>-<NN>
      expected_version: <version from step 2>,
      relations_add: [{ type:"part_of", target:"REL-<PROJ>-<VER>" }],
@@ -252,7 +258,7 @@ Arguments: `add <ISSUE-or-REQ-id>[,<id>...] --rel <REL-id> [--auto]`.
 ### GATE-CHECK — Verify regression gates
 
 For each included component:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
+1. `entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
 2. Verify the last run (in `metadata.execution_history` or read the latest
    associated RUN via `entity_related`).
 3. Per-component result: PASS / BLOCKED (list bugs) / PENDING / NONE (no REG
@@ -281,7 +287,7 @@ Process:
 1. Ship, freeze and stamp the REL in ONE guarded write (read it first and pass
    its `version`):
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({
+   entity_update({
      entity_id: "REL-<PROJ>-<VER>",
      expected_version: <version>,
      status: "released",
@@ -302,7 +308,7 @@ Process:
 
 Right after CREATE and CLOSE (not in `--auto` mode: the calling skill updates its own pointer). Only when this session has a name (CLAUDE.md, Protocol step 4);
 otherwise skip. One query and one write per closed task, never per turn:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
+1. `entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
    Two results, or one whose `updated_by` is not your own `whoami` actor → do not write: tell the user the pointer is duplicated or not yours, and stop this step (in a Team workspace any member can tag a DOC).
    None yet → create it once, outside any TXN: `entity_create({ entity_type:"DOC", project_id:<PROJ>, title:"Resume pointer — session <name>", content:"Resume pointer of session <name> (REQ-KVD-B61E92).", tags:["session:<name>"], metadata:{ resume_pointer:<pointer>, updated_by:"skill:release-manager" } })`. No `component_id`: the pointer is project-wide.
 2. Otherwise `entity_update({ entity_id, expected_version:<version from step 1>, metadata:{ resume_pointer:<pointer>, updated_by:"skill:release-manager" }, change_summary:"resume pointer: <TXN or REL id> closed" })`. On a 409, follow the **Guarded update (CAS)** rule; if it still conflicts, report it and go on.
@@ -312,7 +318,7 @@ otherwise skip. One query and one write per closed task, never per turn:
 ### RETIRE — Close the release line (status `closed`)
 
 When a released line is over (superseded by a later version, end of support):
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, status:"closed", tags_add:["status:closed"], tags_remove:["status:released"], change_summary:"Release line closed: <reason>", metadata:{ updated_by:"skill:release-manager" } })`.
+`entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, status:"closed", tags_add:["status:closed"], tags_remove:["status:released"], change_summary:"Release line closed: <reason>", metadata:{ updated_by:"skill:release-manager" } })`.
 Only a `released` REL is retired; nothing else changes (changelog already frozen).
 
 **Private values in REL text.** The changelog and description copy titles
@@ -449,7 +455,7 @@ in any project will trigger it automatically.
    field without failing.
 6. **Look up existing IF-MANIFEST** for this project:
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+   entity_query({
      entity_type: "IF",
      project_id: "<PROJ>",
      tags_all: ["playbook-style:if-manifest","cmp:CLI"]

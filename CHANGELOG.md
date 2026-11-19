@@ -4,6 +4,74 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [1.35.0] — 2026-11-19 — Skills work with any Kvendra server prefix
+
+> One hook changes (`hooks.json` matcher and `lvr-scan-tool-input.sh`). No new skills.
+
+### Added
+- **«Kvendra server»** canonical block (`<!-- kvendra:kb-server v1 -->`) in
+  all 28 skills: engine calls are written by their bare name
+  (`entity_get(...)`) and the client adds its own prefix. The Kvendra server
+  is the MCP server that exposes `whoami`, `help` and `entity_get`, whatever
+  its name (plugin `mcp__plugin_kvendra-skills_kvendra-cloud__*`, claude.ai
+  connector `mcp__claude_ai_<connector>__*`, `claude mcp add`
+  `mcp__<name>__*`, or no prefix). The local broker `kvendra` is not it
+  (ISSUE-KVD-SKILLS-E21D4A).
+- **Lint gate** «KB-server canonical block + bare engine tool names check» in
+  `lint-skill-md`: the block must be in every skill and byte-identical, and
+  outside it no `SKILL.md` may write an engine tool with a client prefix.
+- **Hook fixtures** for the local-values scan with the plugin, claude.ai
+  connector and `claude mcp add` prefixes, homonymous tools of other MCP
+  servers, the broker, an `…_bulk` look-alike, and the `hooks.json` matcher
+  itself (57 → 75 cases).
+
+### Changed
+- **All skills**: 229 engine calls lose the plugin prefix
+  (`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query(...)` →
+  `entity_query(...)`). Broker primitives (`mcp__kvendra__kvendra_*`) are
+  unchanged.
+- **«Reading KB results»** (`kvendra:kb-read v1`, five carriers): option 1 no
+  longer names a tool prefix.
+- **`env-check`**: check 1 finds the Kvendra server in `claude mcp list` by
+  its URL (`api.kvendra.cloud/mcp`), not by the name `kvendra-cloud`, so a
+  claude.ai connector or a `claude mcp add` entry is recognised; check 2 and
+  row 1 of the output name the Kvendra server instead of `kvendra-cloud`.
+- **`k-notes`**: names `k_note_submit` / `k_note_list` on the Kvendra server
+  without a prefix.
+- **CONTRIBUTING**: the skill template carries the block and bare names; CI
+  checks describe the block and the bare-name rule. **INSTALL**: explains the
+  prefix of each way to connect.
+
+- **Two Kvendra servers at once**: with a directory's `KVENDRA_WS` the plugin server
+  and a claude.ai connector point at different URLs and both stay. The «Kvendra
+  server» block says to use the plugin server (it carries that workspace), to ask the
+  user when there is no plugin server, and never to mix two servers in one task;
+  `env-check` reports it as a WARNING.
+
+### Fixed
+- The plugin server's own `entity_create` / `entity_update` are scanned without the
+  input-shape check, as in 1.34.0, so an invalid call never leaves with a local value.
+- **Local-values hook did not fire with the claude.ai connector**: the
+  PreToolUse matcher was `mcp__.*kvendra-cloud__(entity_create|entity_update)`
+  and the script filtered the same way, so a KB write named
+  `mcp__claude_ai_<connector>__entity_create` (or `mcp__<name>__…` after
+  `claude mcp add`) was never scanned, silently. The matcher is now
+  `^mcp__.+__(entity_create|entity_update)$` (anchored, so `…_bulk` does not
+  match), and the script confirms the input has the engine's required fields
+  (`entity_type` + `title` for create, `entity_id` + `change_summary` for
+  update) before scanning, so a homonymous tool of another MCP server is
+  left alone.
+
+### Notes
+- With the plugin server nothing changes for the user: the hook still fires
+  under the plugin prefix, and now under any other.
+- A Kvendra call without the required fields is rejected by the engine (400)
+  and writes nothing, so the shape check cannot let a write through unscanned.
+- `kvendra-companion` still counts KB calls only under the plugin prefix; it
+  is out of scope here and tracked separately.
+- Open sessions load 1.35.0 only after `/plugin update` (or the org sync) and
+  `/exit` + `claude --resume`.
+
 ## [1.34.0] — 2026-11-18 — Skills read what they find; the implementer sees the planner's sources
 
 > No hook changes and no new skills.

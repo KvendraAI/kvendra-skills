@@ -11,6 +11,12 @@ Regenerates the `CLAUDE.md` of the current project (or a specified one) from the
 
 This skill closes the lifecycle of the CLAUDE.md ultra-minimum model (per REQ-KVD-SKILLS-50F9E4) and the broker-policy materialisation lifecycle (per REQ-KVD-SKILLS-48062A) — `onboard-project` generates the initial CLAUDE.md + `.kvendra-protected`; `sync-claudemd` keeps both aligned with the evolving canonical sources; `lint-claudemd` verifies conformance.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## External-execution policy
 
 This skill respects the project's broker policy declared in

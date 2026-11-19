@@ -11,7 +11,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*kvendra-cloud__(entity_create|entity_update)",
+        "matcher": "^mcp__.+__(entity_create|entity_update)$",
         "hooks": [
           {
             "type": "command",

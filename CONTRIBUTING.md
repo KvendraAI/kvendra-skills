@@ -43,15 +43,21 @@ $ARGUMENTS
 Identify `project_id` and `component_id` from the `CLAUDE.md` (where
 applicable).
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write: `updated_by: "skill:<this-skill>"`.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`.
+- If an error returns `error.help.topic`, call `help({topic})`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -272,8 +278,21 @@ that touches `plugins/kvendra-skills/skills/**/SKILL.md`:
    in `kvendra`, `requirements-analyst`, `planner`, `analyzer` and
    `implementer`; it sits right after `## Kvendra rules (summary)`. The
    `kvendra:evidence-attachments v1` block is required in `tester`,
-   `validator` and `regression`. To change a block, change every carrier
+   `validator` and `regression`. The `kvendra:kb-server v1` block («Kvendra
+   server»: engine calls use the bare tool name and the client adds its own
+   prefix) is required in every skill; it sits right before
+   `## Kvendra rules (summary)`, or before `## External-execution policy`
+   in a skill without that section. To change a block, change every carrier
    in the same PR.
+
+5. **Bare engine tool names** — outside the `kvendra:kb-server v1` block,
+   a `SKILL.md` must not write an engine tool with a client prefix: neither
+   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get(...)` nor any
+   `mcp__<server>__entity_get(...)`. Write `entity_get(...)`. The name of
+   the Kvendra server depends on how it was installed (plugin, claude.ai
+   connector, `claude mcp add`), so a prefixed call breaks in the other
+   setups. The broker primitives (`mcp__kvendra__kvendra_git`…) are not
+   engine tools and are not affected.
 
 All checks must pass for the PR to be merged.
 

@@ -30,6 +30,12 @@ run.
 2. Verify the MCP for the project's tier responds. If `kvendra-cloud` (or Platform local for tier:free) is unreachable: STOP and surface the canonical fail-safe message per `PAT-KVD-2CBB6D` L3. NO Bash fallback for the deploy itself.
 3. Verify the broker `kvendra` is connected (`mcp__kvendra__*` tools listed). If not: STOP — the deploy requires broker primitives for AWS/git/shell ops. Tell the user to reconnect.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -167,7 +173,7 @@ is recorded as `release_note` for the Output and the deploy continues.
 
 1. Find the open REL of the component:
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({
+   entity_query({
      entity_type: "REL",
      project_id: "<PROJECT>",
      component_id: "<COMP>",
@@ -239,7 +245,7 @@ Read the `## Variables` table from the playbook content. Each row has `{NAME}` p
 or a step may hold a reference `{{cfg:<key>}}` (account id, profile id,
 path…). Collect every reference that is not escaped (a leading backslash marks
 a mention — leave it alone), call
-`mcp__plugin_kvendra-skills_kvendra-cloud__private_value_resolve({ keys:[...], project_id:<PROJ> })`
+`private_value_resolve({ keys:[...], project_id:<PROJ> })`
 once for the whole playbook, and substitute the returned `value`s in memory.
 Any key in `state:"undefined"` → STOP before Step 5 and report the key (never
 guess a value). Resolved values live only in the arguments you pass to the
@@ -301,7 +307,7 @@ changes the deploy result.
    the warning line `WARNING: Deploy without REL — <reason>`, and the skill
    records it as a live ISSUE (outside any TXN):
    ```
-   mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+   entity_create({
      entity_type: "ISSUE",
      project_id: "<PROJECT>",
      component_id: "<COMP>",

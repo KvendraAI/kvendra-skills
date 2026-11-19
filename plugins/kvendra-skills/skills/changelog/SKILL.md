@@ -21,6 +21,12 @@ $ARGUMENTS
 
 Identify `project_id` from the `CLAUDE.md`.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -29,12 +35,12 @@ Identify `project_id` from the `CLAUDE.md`.
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -123,19 +129,19 @@ Examples:
 
 ### Source 1: entity_history (per entity)
 
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id, include_history: true, history_limit: 20 })` returns `history` (newest first; default 20, max 50).
+`entity_get({ entity_id, include_history: true, history_limit: 20 })` returns `history` (newest first; default 20, max 50).
 Without `include_history: true` the response has no `history` field (lean default
 since IF v1.45); `actors` still maps every author to a display name.
 
 If filtering by a specific entity, this is enough. If filtering by component
 or type: first
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type, project_id, component_id, order_by: "updated_at_desc" })`
+`entity_query({ entity_type, project_id, component_id, order_by: "updated_at_desc" })`
 and then `entity_get` per entity.
 
 ### Source 2: release membership (per REL)
 
 The engine keeps no separate per-REL changelog table. For each REL in the filter,
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"REL-...", include_history: true })`:
+`entity_get({ entity_id:"REL-...", include_history: true })`:
 - `relations_inbound` with `type: "part_of"` → the ISSUEs/REQs included in the release;
 - `history` → the REL's own changes (created, work attached, shipped).
 
@@ -143,7 +149,7 @@ For the items' own changes, read each one as in Source 1.
 
 ### Source 3: Recent TXNs
 
-`mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"TXN", project_id:<PROJ>, order_by:"updated_at_desc", limit:10 })`
+`entity_query({ entity_type:"TXN", project_id:<PROJ>, order_by:"updated_at_desc", limit:10 })`
 
 → completed / cancelled steps, pipelines, durations.
 

@@ -21,6 +21,12 @@ $ARGUMENTS
 Identify `project_id` from the `CLAUDE.md` of the current directory.
 Identify `component_id` when the bug affects a specific component.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -29,12 +35,12 @@ Identify `component_id` when the bug affects a specific component.
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -101,7 +107,7 @@ Identify `component_id` when the bug affects a specific component.
 A search result is a pointer, not a source: its `snippet` is one passage of at most 400 characters, and the decisive constraint is often somewhere else. After the searches of a loading step, pick at most **3 results in total for the step** (across all its searches, most relevant first) and read each one before you reason about it. Never conclude from a snippet alone.
 
 Read with the first option that applies:
-1. The Kvendra server's `task_context` is among your tools, whatever its prefix (`mcp__plugin_kvendra-skills_kvendra-cloud__task_context`, `mcp__claude_ai_Kvendra__task_context` when Claude Code serves the claude.ai Kvendra connector instead of the plugin server, or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
+1. `task_context` is among your tools (or a deferred tool you can load): `task_context({ entity_id, budget_chars: 4000 })`, one `entity_id` per call.
 2. Otherwise: `entity_get({ entity_id, fields: ["title", "status", "content"] })`. Add `include_relations: false` only when that parameter appears in the `entity_get` input schema you were given.
 3. If the engine answers a 400 validation error that names `include_relations` or `fields` (for example `include_relations: must be a boolean`), retry once without that parameter.
 
@@ -119,19 +125,19 @@ pointing to the required broker primitive.
 ## Step 1 — Load Kvendra context
 
 1. **Related active ISSUEs (avoid confusing with known bugs):**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<bug area>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
+   `entity_search({ query:<bug area>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
 
 2. **PAT — applicable bug patterns / anti-patterns:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<bug description>, entity_type:"PAT", project_id:<PROJ> })`
+   `entity_search({ query:<bug description>, entity_type:"PAT", project_id:<PROJ> })`
 
 3. **CMP — component paths:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
+   `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
 
 4. **STD — active technical playbook** (referenced from CMP.standards):
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
+   `entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
 
 5. **UX — if the bug has a UI component:**
-   `mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<UI area>, entity_type:"UX", project_id:<PROJ> })`
+   `entity_search({ query:<UI area>, entity_type:"UX", project_id:<PROJ> })`
 
 6. **Read what you picked** — apply **Reading KB results** to the searches of items 1, 2 and 5: at most 3 reads in total. The STD of item 4 is already a full read.
 

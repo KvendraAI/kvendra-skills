@@ -23,6 +23,12 @@ $ARGUMENTS
 
 Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
 ## Kvendra rules (summary)
 
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
@@ -32,13 +38,13 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `mcp__plugin_kvendra-skills_kvendra-cloud__txn_cancel(reason)` (failure).
+  `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
 - **Status on create (H3/H1)** — Since engine H3 (ROAD-KVD-4CE1A9), the top-level `status` passed on `entity_create` inside a TXN is the status the entity gets at `txn_activate`; values outside the type's lifecycle are rejected with 400 (H1).
   ISSUE lifecycle: `open`, `in-progress`, `blocked`, `done`, `closed`,
   `wontfix`. The incident phases (`detected` … `postmortem-done`) are NOT
   ISSUE statuses: never write them as `status` or as a `status:*` tag.
-- Before opening a TXN: `mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted(project_id, component_id?)`.
+- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
@@ -50,7 +56,7 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
   a hard 400 on `entity_query`); if the scope is not obvious from the work at
   hand, ask the user — `component_id` cannot be changed after creation, and an
   entity created without it never appears in the component's tabs.
-- If an error returns `error.help.topic`, call `mcp__plugin_kvendra-skills_kvendra-cloud__help({topic})`. Topics:
+- If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.
 - **Private values** — never write private identifiers (account ids, local
@@ -126,8 +132,8 @@ finds past incidents, this skill creates the ISSUE with `generate_embedding:
 true`. This is the justified exception to the default opt-out.
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<problem description>, entity_type:"ISSUE", project_id:<PROJ>, limit:5 })
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_search({ query:<component or symptom>, entity_type:"RUN", project_id:<PROJ>, limit:3 })
+entity_search({ query:<problem description>, entity_type:"ISSUE", project_id:<PROJ>, limit:5 })
+entity_search({ query:<component or symptom>, entity_type:"RUN", project_id:<PROJ>, limit:3 })
 ```
 
 If there is a RUN that covers this scenario → show it as a resolution guide.
@@ -136,12 +142,12 @@ If a similar past incident exists → show it for context.
 ## Step 2 — Open the incident TXN
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
+txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
 # if an in-progress TXN exists: Resume / Cancel / Ignore
 ```
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_create({
+txn_create({
   type: "incident",
   project_id: "<PROJ>",
   component_id: "<COMP>",
@@ -160,7 +166,7 @@ Capture `txn_id`.
 ## Step 3 — Create the ISSUE type:incident
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "ISSUE",
   project_id: "<PROJ>",
   component_id: "<COMP>",
@@ -255,7 +261,7 @@ Each update that rewrites `content` is read-modify-write on the raw text
 If no runbook covers this scenario:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "RUN",
   project_id: "<PROJ>",
   component_id: "<COMP>",
@@ -301,7 +307,7 @@ and report it inside the incident rather than persisting an orphan runbook.
 If it reveals a need for improvement (alerting, monitoring, redundancy):
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "REQ",
   project_id: "<PROJ>",
   component_id: "<COMP>",   // inherit from the originating ISSUE-<PROJ>-<COMP>-<NN>; OMIT if the improvement is project-wide
@@ -320,7 +326,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 If there is a generalisable lesson:
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
+entity_create({
   entity_type: "PAT",
   project_id: "<PROJ>",
   component_id: "<COMP>",   // inherit from the originating ISSUE-<PROJ>-<COMP>-<NN>; OMIT if the lesson generalises
@@ -337,7 +343,7 @@ mcp__plugin_kvendra-skills_kvendra-cloud__entity_create({
 ## Step 6 — Close the TXN
 
 ```
-mcp__plugin_kvendra-skills_kvendra-cloud__txn_activate({ txn_id })
+txn_activate({ txn_id })
 ```
 
 Drafts take the top-level `status` they carry (engine H3): the incident ISSUE
@@ -359,7 +365,7 @@ as pending instead.
 
 Right after `txn_activate` of the incident TXN (also after a `txn_cancel`). Only when this session has a name (CLAUDE.md, Protocol step 4);
 otherwise skip. One query and one write per closed task, never per turn:
-1. `mcp__plugin_kvendra-skills_kvendra-cloud__entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
+1. `entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
    Two results, or one whose `updated_by` is not your own `whoami` actor → do not write: tell the user the pointer is duplicated or not yours, and stop this step (in a Team workspace any member can tag a DOC).
    None yet → create it once, outside any TXN: `entity_create({ entity_type:"DOC", project_id:<PROJ>, title:"Resume pointer — session <name>", content:"Resume pointer of session <name> (REQ-KVD-B61E92).", tags:["session:<name>"], metadata:{ resume_pointer:<pointer>, updated_by:"skill:incident-manager" } })`. No `component_id`: the pointer is project-wide.
 2. Otherwise `entity_update({ entity_id, expected_version:<version from step 1>, metadata:{ resume_pointer:<pointer>, updated_by:"skill:incident-manager" }, change_summary:"resume pointer: <TXN or REL id> closed" })`. On a 409, follow the **Guarded update (CAS)** rule; if it still conflicts, report it and go on.

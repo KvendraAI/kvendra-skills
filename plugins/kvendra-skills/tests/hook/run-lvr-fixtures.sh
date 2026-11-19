@@ -127,11 +127,20 @@ run_case() {
   fi
 }
 
-pre_kb() { # <tool> <content>
-  jq -nc --arg t "mcp__plugin_kvendra-skills_kvendra-cloud__$1" --arg c "$2" --arg cwd "$FAKE_HOME/work" \
-    '{hook_event_name:"PreToolUse", tool_name:$t, cwd:$cwd,
-      tool_input:{entity_type:"PAT", project_id:"KVD", title:"Deploy note", content:$c,
-                  metadata:{updated_by:"skill:implementer", nested:{paths:[$c]}}}}'
+pre_kb() { # <tool> <content> [prefix]  — input shaped as the Kvendra engine expects
+  local t="${3:-mcp__plugin_kvendra-skills_kvendra-cloud__}$1"
+  case "$1" in
+    entity_update)
+      jq -nc --arg t "$t" --arg c "$2" --arg cwd "$FAKE_HOME/work" \
+        '{hook_event_name:"PreToolUse", tool_name:$t, cwd:$cwd,
+          tool_input:{entity_id:"PAT-KVD-1A2B3C", change_summary:"Deploy note", expected_version:3, content:$c,
+                      metadata:{updated_by:"skill:implementer", nested:{paths:[$c]}}}}' ;;
+    *)
+      jq -nc --arg t "$t" --arg c "$2" --arg cwd "$FAKE_HOME/work" \
+        '{hook_event_name:"PreToolUse", tool_name:$t, cwd:$cwd,
+          tool_input:{entity_type:"PAT", project_id:"KVD", title:"Deploy note", content:$c,
+                      metadata:{updated_by:"skill:implementer", nested:{paths:[$c]}}}}' ;;
+  esac
 }
 sub_msg() { # <message> <stop_hook_active>
   jq -nc --arg m "$1" --argjson a "$2" '{hook_event_name:"SubagentStop", stop_hook_active:$a, last_assistant_message:$m}'
@@ -178,6 +187,26 @@ run_case "kb-unreadable-hits-deny"     lvr-scan-tool-input.sh "$(pre_kb entity_c
 run_case "kb-other-tool-nocall"        lvr-scan-tool-input.sh "$(jq -nc '{tool_name:"mcp__plugin_kvendra-skills_kvendra-cloud__entity_get", tool_input:{entity_id:"PAT-KVD-1"}}')" scan nocall
 run_case "kb-deny-reason-has-ref"      lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK")"  scan    deny
 grep -qF "{{lvr:$SENTINEL_KEY}}" "$WORK/out" || { echo "FAIL  kb-deny-reason-has-ref (no {{lvr:key}} in reason)"; FAIL=$((FAIL+1)); FAILED+=("kb-deny-reason-has-ref:ref"); }
+
+echo "== lvr-scan-tool-input.sh: any client prefix, Kvendra-shaped input only =="
+for pfx in mcp__claude_ai_Kvendra__ mcp__claude_ai_Kvendra_KB__ mcp__kvendra-kb__; do
+  run_case "kb-create-hit-deny-$pfx" lvr-scan-tool-input.sh "$(pre_kb entity_create "$LEAK" "$pfx")" scan deny
+  run_case "kb-update-hit-deny-$pfx" lvr-scan-tool-input.sh "$(pre_kb entity_update "$LEAK" "$pfx")" scan deny
+done
+run_case "other-mcp-update-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__notion__entity_update", tool_input:{page_id:"abc", properties:{text:$c}}}')" scan nocall
+run_case "other-mcp-create-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__crm__entity_create", tool_input:{kind:"contact", body:$c}}')" scan nocall
+run_case "plugin-create-no-title-deny" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__plugin_kvendra-skills_kvendra-cloud__entity_create", tool_input:{entity_type:"PAT", content:$c}}')" scan deny
+run_case "kvendra-create-no-title-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__claude_ai_Kvendra__entity_create", tool_input:{entity_type:"PAT", content:$c}}')" scan nocall
+run_case "broker-tool-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__kvendra__kvendra_git", tool_input:{args:[$c]}}')" scan nocall
+run_case "suffix-lookalike-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__x__entity_update_bulk", tool_input:{entity_id:"PAT-KVD-1", change_summary:$c}}')" scan nocall
+echo "== hooks.json matcher =="
+M="$(jq -r '.hooks.PreToolUse[] | select(.hooks[0].command | contains("lvr-scan-tool-input")) | .matcher' "$SCRIPT_DIR/../../hooks/hooks.json")"
+for n in mcp__plugin_kvendra-skills_kvendra-cloud__entity_create mcp__claude_ai_Kvendra__entity_update mcp__kvendra-kb__entity_create; do
+  if printf '%s' "$n" | grep -qE "$M"; then echo "PASS  matcher-hits-$n"; PASS=$((PASS+1)); else echo "FAIL  matcher-hits-$n"; FAIL=$((FAIL+1)); FAILED+=("matcher-hits-$n"); fi
+done
+for n in mcp__claude_ai_Kvendra__entity_get mcp__kvendra__kvendra_git mcp__x__entity_update_bulk entity_update; do
+  if printf '%s' "$n" | grep -qE "$M"; then echo "FAIL  matcher-misses-$n"; FAIL=$((FAIL+1)); FAILED+=("matcher-misses-$n"); else echo "PASS  matcher-misses-$n"; PASS=$((PASS+1)); fi
+done
 
 echo "== lvr-scan-subagent.sh (SubagentStop) =="
 run_case "sub-msg-hit-block"           lvr-scan-subagent.sh "$(sub_msg "$LEAK" false)" scan   block
