@@ -28,7 +28,7 @@ installable through the native `/plugin` command.
 | `plugins/kvendra-skills/skills/<name>/SKILL.md` | 28 skills: orchestrators (`new-feature`, `bug`, `incident-manager`, `release-manager`, `regression`), subagents (`planner`, `implementer`, `validator`, `tester`, `updater`, `analyzer`, …), doc + reporting (`manual-writer`, `doc-indexer`, `changelog`, `to-do`, `to-do-summary`, `user-help`), consultancy (`kvendra`, `requirements-analyst`, `interface-validator`), CLAUDE.md lifecycle (`onboard-project`, `sync-claudemd`, `lint-claudemd`), environment (`env-check`, `version`, `deploy`) and feedback to the Kvendra team (`k-notes`). |
 | `plugins/kvendra-skills/.claude-plugin/plugin.json` | Plugin manifest (`name`, `description`, `version`, author, repo). |
 | `.claude-plugin/marketplace.json` | Marketplace listing at the repo root — so a user can do `/plugin marketplace add KvendraAI/kvendra-skills` and pick up the plugin via its `./plugins/kvendra-skills` source path. |
-| `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra-cloud` HTTP MCP server (`https://api.kvendra.cloud/mcp`). `/plugin install` adds it to the user's `~/.claude.json` automatically. The server is named `kvendra-cloud` (not `kvendra`) so it does not collide with users who already have the local `kvendra` CLI MCP server registered — Claude Code resolves same-name servers by scope precedence and a Plugin server is eclipsed silently by any Local server with the same name. |
+| `plugins/kvendra-skills/.mcp.json` | Declares the `kvendra-cloud` HTTP MCP server (`https://api.kvendra.cloud/mcp`) and its one header, `X-Kvendra-Client: kvendra-skills/2.0.0` (the plugin's major version, so the engine knows the client). `/plugin install` adds it to the user's `~/.claude.json` automatically. The server is named `kvendra-cloud` (not `kvendra`) so it does not collide with users who already have the local `kvendra` CLI MCP server registered — Claude Code resolves same-name servers by scope precedence and a Plugin server is eclipsed silently by any Local server with the same name. |
 | `INSTALL.md` | Install guide: hosted (Kvendra Cloud) and a pointer to the self-hosted docs. |
 | `plugins/kvendra-companion/` | Optional second plugin: a read-only Claude Code mod that shows a band above the prompt (project, open TXNs, entities, open ISSUEs, Files usage, the `kvendra-skills` version, Claude Code consumption). See its [README](./plugins/kvendra-companion/README.md). |
 
@@ -53,6 +53,11 @@ in [plugins/kvendra-companion/README.md](./plugins/kvendra-companion/README.md).
 See [INSTALL.md](./INSTALL.md) for the full flow, including how the
 OAuth/PKCE sign-in against `auth.kvendra.cloud` works.
 
+**Upgrading from 1.x.** kvendra-skills 2.0.0 runs on the Kvendra tool
+`work` and needs it on the server, and after the update you sign in once
+more. See [Upgrading to 2.0.0](./INSTALL.md#upgrading-to-200) and the
+[CHANGELOG](./CHANGELOG.md).
+
 - **Hosted (Kvendra Cloud)** — step-by-step guide:
   <https://app.kvendra.cloud/docs/>
 - **Self-hosted** (run your own engine) — quickstart:
@@ -66,7 +71,7 @@ Claude Code (local)              api.kvendra.cloud/mcp (Lambda)
     │  POST /mcp                       │
     │  Authorization: Bearer …         │
     ├─────────────────────────────────►│  → routes JSON-RPC `tools/call`
-    │                                  │    to the 26 KB engine handlers
+    │                                  │    to the KB engine handlers
     │  401 + WWW-Authenticate          │  → which talk to Aurora
     │◄─────────────────────────────────┤    (tenant_<id> schema)
     │
@@ -89,7 +94,7 @@ work with just this plugin + a Pro account.
 
 ## Tools exposed
 
-All 26 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
+All are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 
 | Tool | Purpose |
 |---|---|
@@ -103,7 +108,8 @@ All 26 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 | `txn_create` / `txn_activate` / `txn_cancel` / `txn_check_interrupted` | Transactional grouping for drafts. |
 | `whoami` | Identity + tier + role + auth_mode. |
 | `config_get` | Per-user / per-project config. |
-| `help` | Static protocol topics (`bootstrap`, `naming`, `txn`, `errors`, …). |
+| `help` | Static protocol topics (`bootstrap`, `naming`, `txn`, `errors`, `work`, …). |
+| `work` | The work cycle, one op per call: `what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`. kvendra-skills 2.0.0 needs it. |
 | `export` | Export your KB as a `tar.gz` archive (async job). |
 | `check_notifications` | Pull changes other writers made to entities you reserved, plus your dispute inbox. |
 | `raise_dispute` / `resolve_dispute` | Record and resolve a disagreement over an entity. |
@@ -114,7 +120,7 @@ All 26 are wire-public (see `IF-KVD-ENTERPRISE-004` in the Kvendra KB):
 | `k_note_submit` / `k_note_list` | Send a note (suggestion, question, bug, praise) to the Kvendra team / list your own notes and the replies (Pro+, used by `/k-notes`). |
 | `private_value_resolve` | Resolve up to 50 private-value keys (`cfg:resolve`). Entity reads never resolve: KB text keeps `{{cfg:<key>}}` references. |
 
-A self-hosted engine (Kvendra Platform) exposes the first 14 of these.
+A self-hosted engine (Kvendra Platform) exposes a subset of these; without `work` it needs kvendra-skills 1.35.x.
 
 ## License
 

@@ -1,0 +1,19 @@
+{
+  "entity_id": "ISSUE-KVD-SKILLS-000011",
+  "entity_type": "ISSUE",
+  "project_id": "KVD",
+  "component_id": "SKILLS",
+  "status": "done",
+  "tags": [
+    "pipeline:ready",
+    "priority:medium",
+    "road:ROAD-KVD-SKILLS-000001"
+  ],
+  "metadata": {},
+  "relations": [
+    {
+      "type": "part_of",
+      "target": "REQ-KVD-SKILLS-000001"
+    }
+  ]
+}

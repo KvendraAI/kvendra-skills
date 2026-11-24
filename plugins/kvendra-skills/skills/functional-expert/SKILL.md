@@ -119,8 +119,11 @@ pointing to the required broker primitive.
    `entity_search({ query:<area to test>, entity_type:"IF", project_id:<PROJ> })`
    `entity_search({ query:<area to test>, entity_type:"REQ", project_id:<PROJ> })`
 
-4. **Active ISSUEs related (known bugs):**
-   `entity_search({ query:<area to test>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
+4. **Active ISSUEs related (known bugs):** the status is top-level, not a tag:
+   `entity_query({ entity_type:"ISSUE", project_id:<PROJ>, status:["open","in-progress","blocked"] })`
+   plus a semantic search over the area, without a status tag filter:
+   `entity_search({ query:<area to test>, entity_type:"ISSUE", project_id:<PROJ> })`
+   (keep the results whose status is open, in-progress or blocked).
 
 5. **UX patterns (if it has UI):**
    `entity_search({ query:<UI area>, entity_type:"UX", project_id:<PROJ> })`

@@ -470,7 +470,10 @@ jobs:
           #     (ISSUE-KVD-SKILLS-6D1A39). An allowlist therefore has a
           #     zero false-positive rate here. Adding a header to this list is a
           #     deliberate act that shows up in review -- which is the point.
-          allowed_headers=" Authorization X-Id-Token "
+          # X-Kvendra-Client: implemented in kvendra-skills 2.0.0 by
+          # plugins/kvendra-skills/.mcp.json (headers of kvendra-cloud), which the
+          # engine reads to tell the plugin version (ISSUE-KVD-SKILLS-7B27AC).
+          allowed_headers=" Authorization X-Id-Token X-Kvendra-Client "
           bad_headers=""
           while IFS= read -r h; do
             [[ -z "$h" ]] && continue
@@ -490,8 +493,9 @@ jobs:
             for h in $bad_headers; do echo "  $h"; done
             echo ""
             echo "Migration guidance:"
-            echo "  - The MCP client sends no custom headers. If a skill needs to identify"
-            echo "    itself, use metadata.updated_by (a skill convention) and started_by on"
+            echo "  - The MCP client sends one custom header, X-Kvendra-Client (the plugin"
+            echo "    version, from .mcp.json); skills never send their own. If a skill needs"
+            echo "    to identify itself, use metadata.updated_by (a skill convention) and started_by on"
             echo "    txn_create (a declared, persisted field). A top-level updated_by is in"
             echo "    no tool schema and is dropped without an error."
             echo "  - If the header is genuinely implemented now, add it to allowed_headers"
@@ -571,7 +575,7 @@ jobs:
           # them, and outside it writes engine tools by their bare name.
           open='<!-- kvendra:kb-server v1 -->'
           close='<!-- /kvendra:kb-server -->'
-          tool='(entity_[a-z_]+|txn_[a-z_]+|whoami|help|task_context|config_get|private_value_resolve|k_note_[a-z_]+|file_[a-z_]+|check_notifications|send_message|message_[a-z_]+|export|planning|workspace_list|approve_proposal|reject_proposal|proposals_list|raise_dispute|resolve_dispute)'
+          tool='(entity_[a-z_]+|txn_[a-z_]+|whoami|help|task_context|config_get|private_value_resolve|k_note_[a-z_]+|file_[a-z_]+|check_notifications|send_message|message_[a-z_]+|export|planning|workspace_list|approve_proposal|reject_proposal|proposals_list|raise_dispute|resolve_dispute|work)'
           tmp=$(mktemp -d); fail=0; ref=""
           for f in plugins/kvendra-skills/skills/*/SKILL.md; do
             grep -qxF "$open" "$f" || { echo "::error file=$f::missing canonical Kvendra server block"; fail=1; continue; }

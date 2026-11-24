@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - 'plugins/kvendra-skills/.mcp.json'
+      - 'plugins/kvendra-skills/.claude-plugin/plugin.json'
+      - '.claude-plugin/marketplace.json'
       - '.github/workflows/lint-mcp-json.yml'
   push:
     branches: [main]
     paths:
       - 'plugins/kvendra-skills/.mcp.json'
+      - 'plugins/kvendra-skills/.claude-plugin/plugin.json'
+      - '.claude-plugin/marketplace.json'
 
 jobs:
   mcp-json-url:
@@ -66,3 +70,54 @@ jobs:
 
           [[ $fail -eq 0 ]] || exit 1
           echo "mcp-json-url check passed: $actual"
+
+      - name: client header matches the plugin version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # kvendra-skills 2.0.0 (ISSUE-KVD-SKILLS-7B27AC): the plugin server sends
+          # X-Kvendra-Client so the engine can tell the plugin version. The engine
+          # parses it as name/x.y.z (lower case, at most 64 characters, no comma).
+          #
+          # The value is "kvendra-skills/" + MAJOR(plugin.json) + ".0.0", fixed for a
+          # whole major line, on purpose: Claude Code keys the stored OAuth credential
+          # by sha256({type,url,headers}), so a header that changed with every
+          # release would make every user re-authenticate on every update. Bump it
+          # only with a new major version, and say so in the CHANGELOG.
+          f=plugins/kvendra-skills/.mcp.json
+          pj=plugins/kvendra-skills/.claude-plugin/plugin.json
+          mk=.claude-plugin/marketplace.json
+
+          hdr=$(jq -r '.mcpServers["kvendra-cloud"].headers["X-Kvendra-Client"] // empty' "$f")
+          keys=$(jq -r '.mcpServers["kvendra-cloud"].headers // {} | keys | join(",")' "$f")
+          pv=$(jq -r '.version // empty' "$pj")
+          mv=$(jq -r '.plugins[] | select(.name=="kvendra-skills") | .version' "$mk")
+
+          fail=0
+          if [[ ! "$pv" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error file=$pj::version '$pv' is not x.y.z."
+            fail=1
+          fi
+          if [[ "$pv" != "$mv" ]]; then
+            echo "::error file=$mk::kvendra-skills version '$mv' differs from plugin.json '$pv'."
+            fail=1
+          fi
+          if [[ "$keys" != "X-Kvendra-Client" ]]; then
+            echo "::error file=$f::headers of kvendra-cloud are '$keys'; expected only X-Kvendra-Client."
+            echo "  Every header is part of the OAuth credential key: adding one re-authenticates every user."
+            fail=1
+          fi
+          if [[ ! "$hdr" =~ ^[a-z0-9-]+/[0-9]+\.[0-9]+\.[0-9]+$ ]] || (( ${#hdr} > 64 )) || [[ "$hdr" == *,* ]]; then
+            echo "::error file=$f::X-Kvendra-Client '$hdr' is not name/x.y.z (lower case, at most 64 characters, no comma)."
+            fail=1
+          fi
+          expected_hdr="kvendra-skills/${pv%%.*}.0.0"
+          if [[ "$hdr" != "$expected_hdr" ]]; then
+            echo "::error file=$f::X-Kvendra-Client is '$hdr', expected '$expected_hdr' (plugin $pv)."
+            echo "  The header carries the major version only, so a minor or patch update keeps the stored credential."
+            fail=1
+          fi
+
+          [[ $fail -eq 0 ]] || exit 1
+          echo "client header check passed: $hdr (plugin $pv, marketplace $mv)"

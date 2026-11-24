@@ -263,11 +263,14 @@ entity_create({
   title: "K-note: <title>",
   content: <markdown: kind, title, body, component_hint and plugin_version as sent,
             note_id, created_at>,
-  tags: ["type:task", "source:k-note", "k-note-kind:<kind>"],
-  metadata: { k_note_id: "<note_id>", k_note_kind: "<kind>", updated_by: "skill:k-notes" },
+  status: "open",
+  tags: ["source:k-note", "k-note-kind:<kind>"],
+  metadata: { kind: "note", k_note_id: "<note_id>", k_note_kind: "<kind>", updated_by: "skill:k-notes" },
 })
 ```
 
+- The copy is a note (`metadata.kind:"note"`), not a task: it waits in the
+  notes of the work cycle, and the user can promote it to a task later.
 - A single entity needs no TXN. Report the entity id the server returns.
 - The copy stays inside the user's own tenant; it is never sent anywhere.
 - If the user declines, do nothing.

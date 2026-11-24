@@ -1,8 +1,25 @@
 {
-  "entity_id": "ISSUE-KVD-SKILLS-000006",
+  "entity_id": "ISSUE-KVD-SKILLS-000012",
   "entity_type": "ISSUE",
+  "project_id": "KVD",
+  "component_id": "SKILLS",
   "status": "open",
-  "tags": ["type:task", "pipeline:ready", "priority:critical"],
-  "metadata": { "pipeline": { "depends_on": ["ROAD-KVD-SKILLS-000001"] } },
-  "relations": [{ "type": "part_of", "target": "ROAD-KVD-SKILLS-000001" }]
+  "tags": [
+    "pipeline:ready",
+    "priority:critical",
+    "road:ROAD-KVD-SKILLS-000001"
+  ],
+  "metadata": {
+    "pipeline": {
+      "depends_on": [
+        "ROAD-KVD-SKILLS-000001"
+      ]
+    }
+  },
+  "relations": [
+    {
+      "type": "part_of",
+      "target": "REQ-KVD-SKILLS-000001"
+    }
+  ]
 }

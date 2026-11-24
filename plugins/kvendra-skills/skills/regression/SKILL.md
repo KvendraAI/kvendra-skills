@@ -1,6 +1,6 @@
 ---
 name: regression
-description: Regression suite runner — executes REG suites from the Kvendra KB, persists results as RUN entries, compares against SLAs and auto-generates ISSUE entities
+description: Regression suite runner — executes REG suites from the Kvendra KB, persists results as RUN entries, compares against SLAs and opens fix tasks for blocking failures
 user_invocable: true
 args: "[component or REG suite to run]"
 ---
@@ -9,8 +9,8 @@ args: "[component or REG suite to run]"
 
 You run regression suites (REG) defined in the Kvendra KB. You respect order
 and dependencies between tests, persist results as RUN entries, compare
-against SLA targets, and auto-generate ISSUE `type:bug` if any blocking
-test fails.
+against SLA targets, and open a fix task through the work cycle for each
+blocking test that fails.
 
 ## Component or suite
 
@@ -33,6 +33,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   credential and **silently ignores a top-level `updated_by`**
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
+- **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
 - Orchestrator → `txn_create` before creating entities, close with
   `txn_activate` (success) or `txn_cancel(reason)` (failure).
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
@@ -100,6 +101,18 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -125,7 +138,7 @@ pointing to the required broker primitive.
    `entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<COMP>" })`
 
 5. **Active REL (to associate results):**
-   `entity_query({ entity_type:"REL", project_id:<PROJ>, status:"planning" })`
+   `entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"], order_by:"updated_at_desc", limit:5 })`
    (legacy RELs without a canonical top-level status: `tags_all:["status:planning"]`)
 
 6. **Relation targets (ids, not guesses):**
@@ -242,7 +255,7 @@ entity_create({
     test_results: [
       { test_id, result, duration_ms, validations: [...] }
     ],
-    rel_id: "REL-<PROJ>-<VER>",          // mirror of the part_of edge; if active
+    rel_id: "REL-<PROJ>-<VER>",          // mirror of the affects edge; if active
     attachments: [ ... ],                 // Evidence attachments entries, if any
     updated_by: "skill:regression"
   },
@@ -250,7 +263,7 @@ entity_create({
   relations: [
     { type: "fulfills", target: "<REG id from Step 1.1>" },   // ALWAYS
     { type: "affects",  target: "<CMP id from Step 1.6>" },   // ALWAYS
-    { type: "part_of",  target: "<REL id from Step 1.5>" }    // only when a REL is active
+    { type: "affects",  target: "<REL id from Step 1.5>" }    // only when a REL is active (never part_of)
   ],
   txn_id: "<txn_id>",   // only when an orchestrator passed one; omit for a standalone run
 })
@@ -259,12 +272,14 @@ entity_create({
 ### Relations — required, not optional
 
 The RUN's traceability IS the relation set: `fulfills` to the suite that was
-executed, `affects` to the component under test, and `part_of` to the active
-REL when there is one. `metadata.reg_id` / `metadata.rel_id` are kept only as
+executed, `affects` to the component under test, and `affects` to the active
+REL when there is one. Never `part_of` the REL: the engine counts every item
+`part_of` a REL as a member of the release, and a RUN is evidence, not work
+(an open member makes the release warn `OPEN_TASKS`, and fail once the gates
+are enforced). `metadata.reg_id` / `metadata.rel_id` are kept only as
 a human-readable mirror — they are strings nothing can traverse, so a RUN that
 carries them and no relations is an orphan: it will not appear in
-`entity_related` for its REG, its CMP or its REL, and the release gate that
-reads the graph will not see this result at all.
+`entity_related` for its REG, its CMP or its REL.
 
 **Relation-target failure — never degrade.** If a relation target does not
 exist the engine rejects the whole call and creates NOTHING (the entity row
@@ -279,32 +294,48 @@ retry with `relations` removed or shortened, and do NOT fall back to recording
 the reference in `metadata` only. If the target genuinely does not exist, STOP
 and report the suite result as unpersisted rather than persisting an orphan.
 
-## Step 6 — Auto-generate an ISSUE if a blocking test failed
+## Step 6 — Open a fix task for each failed blocking test
 
-For each blocking test that failed:
+For each blocking test that failed, open the fix through the work cycle. The
+task carries its expected behaviour and its check; nobody works on it yet, so
+it is parked right away.
 
-```
-entity_create({
-  entity_type: "ISSUE",
-  project_id: "<PROJ>",
-  component_id: "<COMP>",
-  title: "ISSUE-<PROJ>-<COMP>-<auto>: Regression in <test_name>",
-  content: <description with steps-to-reproduce from the TEST>,
-  metadata: {
-    type: "bug",
-    severity: "major",
-    priority: "high",
-    found_in: "REG-<PROJ>-<COMP>-<SEQ>",
-    test_id: "TEST-<PROJ>-<COMP>-<SEQ>",
-    updated_by: "skill:regression"
-  },
-  tags: ["type:bug", "priority:high", "found-in:regression"],
-  relations: [
-    { type:"blocks", target:"REL-<PROJ>-<VER>" },     // if REL is active
-    { type:"affects", target:"CMP-<PROJ>-<COMP>" }
-  ],
-})
-```
+1. `work({ op:"start_work", project_id:"<PROJ>", type:"fix", description:"Regression in <test_name> (<REG id>)" })`
+   → keep `work.id`. A `SIMILAR_EXISTS` warning whose candidate is an open
+   fix for the same test means the regression is already tracked: discard the
+   new task with
+   `work({ op:"finish", work_id:"<new id>", outcome:"wontfix", reason:"Duplicate of <candidate id>, same regression already tracked" })`
+   and go to step 4 with the candidate's id.
+2. `work({ op:"fill", work_id:"<id>", fields:{ expected:"<test_name> passes as in its last green run", check:"<REG id> / <test command>" } })`.
+3. `work({ op:"pause", work_id:"<id>", reason:"Found by regression, not started yet" })`:
+   the task goes back to `open`; whoever fixes it continues it with
+   `start_work` and `reuse`.
+4. Link it to the release and the component and record where it was found.
+   Read it first (`entity_get({ entity_id:"<id>" })`) and pass its `version`:
+   ```
+   entity_update({
+     entity_id: "<id>",
+     expected_version: <version>,
+     relations_add: [
+       { type:"blocks",  target:"<REL id from Step 1.5>" },   // only when a REL is active
+       { type:"affects", target:"<CMP id from Step 1.6>" }
+     ],
+     tags_add: ["priority:high", "found-in:regression"],
+     metadata: {
+       severity: "major",
+       found_in: "<REG id from Step 1.1>",
+       test_id: "<TEST id>",
+       run_id: "<RUN id from Step 5>",
+       updated_by: "skill:regression"
+     },
+     change_summary: "Found by regression <REG id> in <RUN id>",
+   })
+   ```
+   This write adds relations, tags and metadata only; it never changes the
+   status of the task.
+
+An error of `work` wrote nothing: fix the input it names and retry once, then
+report the fix as not opened (the RUN of Step 5 already records the failure).
 
 ## Step 7 — Output
 
@@ -335,12 +366,13 @@ Release: REL-<PROJ>-<VER> (if active)
 ### Persisted RUN
 - RUN-<PROJ>-<COMP>-<NNN> (overall_result: <result>)
 
-### Auto-generated bugs
-- ISSUE-<PROJ>-<COMP>-<NNN> (type: bug): Regression in TEST-...-020
+### Fix tasks opened (open, parked)
+- ISSUE-<PROJ>-<NNN> (fix): Regression in TEST-...-020 (REG-<PROJ>-<COMP>-<SEQ>)
   - Severity: major
   - Blocks: REL-<PROJ>-<VER>
+  - Not opened: <test> — <error code and next_step> (only on a work error)
 
 ### Release impact
-- REL-<PROJ>-<VER>: BLOCKED by ISSUE-<PROJ>-<COMP>-<NNN>
+- REL-<PROJ>-<VER>: BLOCKED by ISSUE-<PROJ>-<NNN>
   (or: gate OK — all blocking tests passed)
 ```

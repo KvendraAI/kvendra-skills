@@ -36,49 +36,60 @@ More than one matching line (for example the plugin server with `?ws=<workspace>
 claude.ai connector on the default account) is not an error, but report it as a WARNING:
 the skills use the plugin server, and both must be connected to the account you expect.
 
+Only a claude.ai connector line, with no `plugin:kvendra-skills:kvendra-cloud` line while
+the plugin is installed → WARNING (plugin server hidden): Claude Code hides the plugin
+server when a claude.ai connector points at the same URL (typical in `claude -p`). The
+skills then use the connector: the plugin's client header `X-Kvendra-Client` is not
+sent, and `work` still works.
+
 Expected states:
 - `✓ Connected` → OK.
 - `! Needs authentication` → run `/mcp` from Claude Code and complete the OAuth flow.
   With several Kvendra accounts this may just be a secondary account that has
-  not signed in yet (see check 10) — it is not necessarily a defect.
+  not signed in yet (see check 10) — it is not necessarily a defect. On the
+  plugin server right after updating to kvendra-skills 2.0.0 it is expected
+  once: run `/mcp` → kvendra-cloud → Authenticate (the new client header
+  changes the stored credential).
 - `✗ Failed to connect` → verify https://api.kvendra.cloud is reachable + check token TTL.
 
-### 2. The 33 KB tools of the Kvendra server available
+### 2. Essential tools of the Kvendra server, with `work`
 
-Find the Kvendra server's tools (see **Kvendra server**). Expected tools (33):
+Find the Kvendra server's tools (see **Kvendra server**). kvendra-skills 2.0.0
+needs these:
 
-`entity_create, entity_update, entity_get, entity_query, entity_search,
-entity_archive, entity_related, txn_create, txn_activate, txn_cancel,
-txn_check_interrupted, whoami, config_get, help, export,
-check_notifications, raise_dispute, resolve_dispute, approve_proposal,
-reject_proposal, proposals_list, send_message, message_ack, message_status,
-message_block, file_upload_init, file_complete, file_get_url, file_list,
-file_delete, private_value_resolve, k_note_submit, k_note_list`
+`whoami, help, entity_get, entity_query, entity_create, entity_update,
+txn_create, txn_activate, txn_cancel, txn_check_interrupted, work`
 
-A self-hosted Kvendra Platform server exposes only the first 14. Seeing 20
-(no `file_*`) on hosted means the MCP session predates the server update:
-reconnect with `/mcp`. Seeing 25 without `private_value_resolve` on hosted
-means the same (the session predates wire 1.26): reconnect with `/mcp`.
-Seeing 26 without `proposals_list` on hosted means the session predates wire
-1.30 (governance create proposals): reconnect with `/mcp`; report it as a WARN
-(proposals can still be decided with `approve_proposal` / `reject_proposal`).
-Seeing 27 without the four message tools (`send_message`, `message_ack`,
-`message_status`, `message_block`) on hosted means the session predates wire
-1.33 (coordination messages): reconnect with `/mcp`; report it as a WARN
-(conflicts still surface, but there is no channel to the other actor).
-Without that tool, skills that need a private value to operate (deploy,
-implementer) cannot resolve it — report it as a WARN.
-Seeing 31 without `k_note_submit` / `k_note_list` on hosted means the session
-predates wire 1.34 (K-notes): reconnect with `/mcp`; report it as a WARN
-(only `/k-notes` is affected).
+- All present, and `help({ topic:"work" })` returns the topic (the ops of
+  `work` and their arguments), not an unknown-topic error → **OK**.
+- `work` missing → **FAIL**. Report: "kvendra-skills 2.0.0 needs the Kvendra
+  tool `work`, and this session does not list it. Restart Claude Code, or run
+  /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`,
+  keep kvendra-skills 1.35.x." A session opened before the server gained
+  `work` keeps its old tool list until it reconnects. A Kvendra server
+  without `work` (for example an older self-hosted Kvendra Platform) stays on
+  kvendra-skills 1.35.x: there is no 1.x fallback in 2.0.0.
+- Another essential tool missing → **FAIL** with the list: reconnect with
+  `/mcp`.
 
-Also confirm the private-values help topic is served:
-`help({ topic:"private-values" })`
-must return the topic (syntax, escaping, markers, `private_value_resolve`),
-not an unknown-topic error. Report it on row 2 (`33/33 + help OK`).
+The other tools are used by some skills only. A missing one on hosted means
+the MCP session predates the server update: report it as a **WARN** naming
+what it affects, and reconnect with `/mcp`.
+- `private_value_resolve` — skills that need a private value to operate
+  (deploy, implementer). Also confirm `help({ topic:"private-values" })` is
+  served (syntax, escaping, markers, `private_value_resolve`).
+- `file_upload_init`, `file_complete`, `file_get_url`, `file_list`,
+  `file_delete` — evidence attachments (hosted Pro and above only).
+- `proposals_list`, `approve_proposal`, `reject_proposal` — governance
+  proposals.
+- `check_notifications`, `send_message`, `message_ack`, `message_status`,
+  `message_block` — coordination messages.
+- `k_note_submit`, `k_note_list` — only `/k-notes`.
+- `task_context` — the implementer falls back to `entity_get`.
 
-If you see `authenticate` / `complete_authentication` instead of the 33: the
-MCP is not authenticated. Resolve with `/mcp` from Claude Code.
+If you see `authenticate` / `complete_authentication` instead of the tools:
+the MCP is not authenticated. Resolve with `/mcp` from Claude Code (right
+after updating to 2.0.0 this is expected once, see check 1).
 
 ### 3. Real KB read test
 
@@ -374,8 +385,8 @@ EOF
 
 | # | Component | Status | Detail |
 |---|-----------|--------|--------|
-| 1 | Kvendra server (KB) | OK / NEEDS_AUTH / FAIL | <state> |
-| 2 | 33 KB tools + private-values help | OK / N/33 / WARN (no private-values topic) / N/A | <missing list> |
+| 1 | Kvendra server (KB) | OK / NEEDS_AUTH / FAIL / WARN (plugin server hidden) | <state> |
+| 2 | Essential KB tools + `work` | OK / FAIL (no work) / FAIL (<missing>) / WARN (<optional tools missing, or no private-values topic>) | <missing list> |
 | 3 | KB read test | OK / FAIL | <N projects / error> |
 | 4 | MCP kvendra (broker) | OK / FAIL | <cause> |
 | 5 | 7 broker primitives | OK / N/7 / N/A | <missing list> |

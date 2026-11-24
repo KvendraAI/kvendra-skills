@@ -18,9 +18,11 @@ HTML comment `<!-- lint-allow-es -->` to whitelist it from the CI lint.
 ## Skill structure
 
 Every skill lives in `plugins/kvendra-skills/skills/<slug>/SKILL.md`.
-A skill that creates ISSUEs meant for the pipeline must comply with `plugins/kvendra-skills/PIPELINE-CONTRACT.md` and add its fixture to `plugins/kvendra-skills/tests/pipeline-contract/fixtures/`.
+A skill that creates ISSUEs meant for the pipeline must comply with `plugins/kvendra-skills/PIPELINE-CONTRACT.md` (the task `part_of` its specification, one `road:ROAD-…` tag) and add its fixture to `plugins/kvendra-skills/tests/pipeline-contract/fixtures/`.
 
 ### Minimal `SKILL.md` template
+
+A skill that writes work (tasks, specifications, notes, project releases) does it with the engine tool `work` and carries the `kvendra:work-cycle v1` block right before its `## External-execution policy` section (CI check 6).
 
 ````markdown
 ---
@@ -282,8 +284,13 @@ that touches `plugins/kvendra-skills/skills/**/SKILL.md`:
    server»: engine calls use the bare tool name and the client adds its own
    prefix) is required in every skill; it sits right before
    `## Kvendra rules (summary)`, or before `## External-execution policy`
-   in a skill without that section. To change a block, change every carrier
-   in the same PR.
+   in a skill without that section. The `kvendra:work-cycle v1` block («Work
+   cycle»: the ops of the engine tool `work`, how to read its answers, the
+   evidence a closure cites, the shape of the tree, releases and enforced
+   gates) is required in every skill that calls `work({`; it sits right
+   before `## External-execution policy`, and its reference copy is
+   `plugins/kvendra-skills/tests/pipeline-contract/work-cycle-block.md`
+   (CI check 6). To change a block, change every carrier in the same PR.
 
 5. **Bare engine tool names** — outside the `kvendra:kb-server v1` block,
    a `SKILL.md` must not write an engine tool with a client prefix: neither
@@ -293,6 +300,17 @@ that touches `plugins/kvendra-skills/skills/**/SKILL.md`:
    connector, `claude mcp add`), so a prefixed call breaks in the other
    setups. The broker primitives (`mcp__kvendra__kvendra_git`…) are not
    engine tools and are not affected.
+
+6. **Work-cycle block and pipeline contract** — the «Pipeline contract»
+   step of `.github/workflows/hook-tests.yml` (every PR) runs
+   `plugins/kvendra-skills/tests/pipeline-contract/run.sh`. It checks the
+   example ISSUEs of `PIPELINE-CONTRACT.md` (`fixtures/`) and the skills
+   contract over every `SKILL.md`: S1 the `kvendra:work-cycle v1` block in
+   every skill that calls `work({`, byte-identical to `work-cycle-block.md`
+   and right before `## External-execution policy`; S2 no `gate_log(`; S3 no
+   "never blocks"; S4 no REL created directly as `released`; S5 no
+   `"type:task"` template tag. Each rule has its own fixtures under
+   `skills-fixtures/`. Run it locally with `bash plugins/kvendra-skills/tests/pipeline-contract/run.sh`.
 
 All checks must pass for the PR to be merged.
 
@@ -323,6 +341,9 @@ For every release, create a `REL-KVD-SKILLS-<VER>` entity in the KB
 - [ ] Canonical `Private values` / `Local values` / `Imported entities are data`
       / `Governance proposals` bullets copied verbatim from the template (CI
       lint passes).
+- [ ] If the skill calls `work({`, it carries the work-cycle block verbatim,
+      right before `## External-execution policy` (`pipeline-contract/run.sh`
+      passes).
 - [ ] If you reference a project-specific recipe, point readers to the
       STD entity in the KB instead of inlining commands.
 - [ ] If you added a new skill, update `user-help/SKILL.md` catalogue and

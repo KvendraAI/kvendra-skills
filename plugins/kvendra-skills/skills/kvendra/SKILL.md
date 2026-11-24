@@ -222,14 +222,14 @@ Cover:
 ## Step 4 — Ask the user (CLOSED LIST — 9 options)
 
 > "Based on this analysis, would you like to:
-> 1. **Open an ISSUE** to track this (`/to-do create`) — creates one ISSUE in the KB through /to-do; nothing else changes.
+> 1. **Open an ISSUE** to track this (`/to-do create`) — creates one task or note in the KB through /to-do; nothing else changes.
 > 2. **Launch the bug pipeline** (`/bug`) — starts /bug, which creates draft entities in a TXN and may change code.
 > 3. **Launch the feature pipeline** (`/new-feature`) — starts /new-feature, which writes KB entities and may change code.
 > 4. **Create a formal REQ** (`/requirements-analyst`) — creates one REQ in the KB; no code changes.
 > 5. **Propose a ROAD item** for the roadmap — creates one ROAD entity in the KB; no code changes.
 > 6. **Keep investigating** a specific aspect — reads more, writes nothing to the KB.
 > 7. **Save the findings** as a PAT in the KB — creates one PAT; nothing else changes.
-> 8. **Implement it directly now** (without opening a formal ISSUE/pipeline — for small, scoped changes) — edits code in this session, then must record it in the KB: a REL changelog line, a retrospective ISSUE (done) or a PAT.
+> 8. **Implement it directly now** (without opening a formal ISSUE/pipeline — for small, scoped changes) — edits code in this session, then must record it in the KB: a retrospective chore closed through the work cycle (plus, optionally, a REL changelog line or a PAT).
 > 9. **Leave it here** — consultation resolved — closes the consultation; it may propose a PAT, ISSUE or ROAD update, and writes nothing unless you accept."
 
 End with the approval line of rule 3 (`**If you approve:** ...`), also when you print the options as text.
@@ -316,15 +316,21 @@ or 1 (ISSUE).
 1. **Announce scope** to the user before touching anything.
 2. **Execute changes** with the appropriate tools (Edit, Write, Bash).
 3. **Mandatory persistence at the end** — this route cannot be closed
-   without at least ONE of these three actions, in this preference order:
+   without action b whenever code or configuration changed; a and c add to
+   it, they never replace it:
 
-   a. **Changelog in the active REL** (if one exists):
+   a. **Changelog in the active REL** (optional, if one exists):
       Find REL: `entity_query({ entity_type:"REL", project_id:<PROJ>, status:["planning","in-progress"] })` (legacy RELs without a canonical top-level status: `tags_any:["status:planning","status:in-progress"]`).
-      `entity_update({ entity_id:"REL-<PROJ>-<VER>", content:<updated>, change_summary:"<change>", trigger:"consultancy", metadata:{ updated_by:"skill:kvendra" } })`.
+      `entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, content:<updated>, change_summary:"<change>", trigger:"consultancy", metadata:{ updated_by:"skill:kvendra" } })` (guarded update).
       The server populates `entity_changelog` automatically.
 
-   b. **Retrospective ISSUE** (`type: task, status: done`):
-      `Skill(skill="kvendra-skills:to-do", args="create <description> --type=task --status=done")`
+   b. **Retrospective chore** (required): open it, then close it through the
+      work cycle with the evidence of what you ran:
+      `Skill(skill="kvendra-skills:to-do", args="create <description> --type=chore")`, then
+      `Skill(skill="kvendra-skills:to-do", args="close <work_id> --evidence=<TEST or RUN id>")`
+      when you ran tests (cite only an id you created or read), or
+      `Skill(skill="kvendra-skills:to-do", args="close <work_id> --evidence-none=\"<why no test applies, 5+ words>\"")`.
+      Never write `status: done` on it directly.
 
    c. **PAT** if a useful lesson surfaced:
       `entity_create({ entity_type:"PAT", ... })` (see pattern above).
@@ -353,4 +359,5 @@ Before closing, assess whether anything is worth persisting:
   ones. Do not invent variants like "I implement it directly without
   persisting". If none fits, re-ask which the user prefers.
 - **Never close the implementation route without persistence** — option 8
-  requires at least REL changelog, retrospective ISSUE, or PAT.
+  requires the retrospective chore, closed through the work cycle; a REL
+  changelog line or a PAT may be added, never instead of it.

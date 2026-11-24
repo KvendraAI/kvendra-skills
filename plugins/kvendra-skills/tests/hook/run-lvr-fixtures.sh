@@ -3,7 +3,7 @@
 # run-lvr-fixtures.sh — TEST-KVD-SKILLS-NEW-1 (AC-LVR-11, RF-SK-4).
 #
 # Exercises the RF-CLI-8 harness hooks of kvendra-skills:
-#   - scripts/lvr-scan-tool-input.sh  (PreToolUse entity_create/entity_update)
+#   - scripts/lvr-scan-tool-input.sh  (PreToolUse entity_create/entity_update/work)
 #   - scripts/lvr-scan-subagent.sh    (SubagentStop)
 #   - scripts/deny-vault-paths.sh     (PreToolUse file tools)
 #
@@ -199,12 +199,33 @@ run_case "plugin-create-no-title-deny" lvr-scan-tool-input.sh "$(jq -nc --arg c 
 run_case "kvendra-create-no-title-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__claude_ai_Kvendra__entity_create", tool_input:{entity_type:"PAT", content:$c}}')" scan nocall
 run_case "broker-tool-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__kvendra__kvendra_git", tool_input:{args:[$c]}}')" scan nocall
 run_case "suffix-lookalike-nocall" lvr-scan-tool-input.sh "$(jq -nc --arg c "$LEAK" '{hook_event_name:"PreToolUse", tool_name:"mcp__x__entity_update_bulk", tool_input:{entity_id:"PAT-KVD-1", change_summary:$c}}')" scan nocall
+
+echo "== lvr-scan-tool-input.sh: the work tool (2.0.0) =="
+work_in() { # <tool name> <json tool_input>
+  jq -nc --arg t "$1" --argjson i "$2" --arg cwd "$FAKE_HOME/work" '{hook_event_name:"PreToolUse", tool_name:$t, cwd:$cwd, tool_input:$i}'
+}
+W_START="$(jq -nc --arg c "$LEAK" '{op:"start_work", project_id:"KVD", type:"chore", description:$c}')"
+W_CAPTURE="$(jq -nc --arg c "$LEAK" '{op:"capture", project_id:"KVD", text:$c}')"
+W_FILL="$(jq -nc --arg c "$LEAK" '{op:"fill", work_id:"ISSUE-KVD-1", fields:{criteria:[$c], expected:"ok", check:$c}}')"
+W_CLEAN="$(jq -nc --arg c "$CLEAN" '{op:"capture", project_id:"KVD", text:$c}')"
+run_case "work-plugin-start-hit-deny"   lvr-scan-tool-input.sh "$(work_in mcp__plugin_kvendra-skills_kvendra-cloud__work "$W_START")" scan deny
+run_case "work-plugin-fill-nested-deny" lvr-scan-tool-input.sh "$(work_in mcp__plugin_kvendra-skills_kvendra-cloud__work "$W_FILL")" scan deny
+run_case "work-claudeai-capture-deny"   lvr-scan-tool-input.sh "$(work_in mcp__claude_ai_Kvendra__work "$W_CAPTURE")" scan deny
+run_case "work-claudeai-capture-clean"  lvr-scan-tool-input.sh "$(work_in mcp__claude_ai_Kvendra__work "$W_CLEAN")" scan silent
+run_case "work-plugin-nobinary-quiet"   lvr-scan-tool-input.sh "$(work_in mcp__plugin_kvendra-skills_kvendra-cloud__work "$W_START")" absent quiet
+run_case "work-other-unknown-op-nocall" lvr-scan-tool-input.sh "$(work_in mcp__x__work "$(jq -nc --arg c "$LEAK" '{op:"deploy_all", text:$c}')")" scan nocall
+run_case "work-other-no-op-nocall"      lvr-scan-tool-input.sh "$(work_in mcp__x__work "$(jq -nc --arg c "$LEAK" '{project_id:"KVD", text:$c}')")" scan nocall
+run_case "work-other-op-not-string-nocall" lvr-scan-tool-input.sh "$(work_in mcp__x__work "$(jq -nc --arg c "$LEAK" '{op:["capture"], text:$c}')")" scan nocall
+run_case "work-lookalike-homework-nocall" lvr-scan-tool-input.sh "$(work_in mcp__x__homework "$W_CAPTURE")" scan nocall
+run_case "work-lookalike-items-nocall"  lvr-scan-tool-input.sh "$(work_in mcp__x__work_items "$W_CAPTURE")" scan nocall
 echo "== hooks.json matcher =="
 M="$(jq -r '.hooks.PreToolUse[] | select(.hooks[0].command | contains("lvr-scan-tool-input")) | .matcher' "$SCRIPT_DIR/../../hooks/hooks.json")"
-for n in mcp__plugin_kvendra-skills_kvendra-cloud__entity_create mcp__claude_ai_Kvendra__entity_update mcp__kvendra-kb__entity_create; do
+for n in mcp__plugin_kvendra-skills_kvendra-cloud__entity_create mcp__claude_ai_Kvendra__entity_update mcp__kvendra-kb__entity_create \
+         mcp__claude_ai_Kvendra__work mcp__plugin_kvendra-skills_kvendra-cloud__work; do
   if printf '%s' "$n" | grep -qE "$M"; then echo "PASS  matcher-hits-$n"; PASS=$((PASS+1)); else echo "FAIL  matcher-hits-$n"; FAIL=$((FAIL+1)); FAILED+=("matcher-hits-$n"); fi
 done
-for n in mcp__claude_ai_Kvendra__entity_get mcp__kvendra__kvendra_git mcp__x__entity_update_bulk entity_update; do
+for n in mcp__claude_ai_Kvendra__entity_get mcp__kvendra__kvendra_git mcp__x__entity_update_bulk entity_update \
+         mcp__x__homework mcp__x__work_items work; do
   if printf '%s' "$n" | grep -qE "$M"; then echo "FAIL  matcher-misses-$n"; FAIL=$((FAIL+1)); FAILED+=("matcher-misses-$n"); else echo "PASS  matcher-misses-$n"; PASS=$((PASS+1)); fi
 done
 
