@@ -1,14 +1,15 @@
 ---
 name: to-do-summary
-description: ISSUE summary — shows the state of Kvendra KB work items with filters by status, component, type and priority
+description: ISSUE summary — shows the state of Kvendra KB work items (from the work cycle view) with filters by status, component, type and priority
 user_invocable: true
 args: "[optional filters: component, type, status, priority]"
 ---
 
 # To-Do Summary — Kvendra KB ISSUE overview
 
-You show a summary of work items (ISSUE) in the Kvendra KB filtered by
-component, type, status and priority.
+You show a summary of work items (ISSUE: tasks and notes) in the Kvendra
+KB, read from the work cycle view, filtered by component, type, status and
+priority.
 
 ## Filters
 
@@ -23,6 +24,10 @@ Identify `project_id` from the `CLAUDE.md`.
 
 Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
 <!-- /kvendra:kb-server -->
+
+**Tool `work`.** Check that the Kvendra server lists the tool `work`; if it
+does not, follow the rule **No `work`, no run** of the **Work cycle** block
+below. This skill only reads: it never writes, and never changes a status.
 
 ## Kvendra rules (summary)
 
@@ -98,6 +103,18 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -106,17 +123,26 @@ See `help({topic:"broker-policy"})` for the schema and resolution
 order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
 pointing to the required broker primitive.
 
-## Step 1 — Query ISSUEs
+## Step 1 — Read the open work
 
-Apply filters from the arguments:
+1. **Main view** (no status filter, or only live statuses):
+   `work({ op:"what_now", project_id:<PROJ> })`. Its sections are the view:
+   in progress, open (not started, with `pause_reason`), blocked, notes,
+   ready to close (specifications whose tasks are all closed), releases in
+   planning and reviews (specifications with a pending decision review).
+   Each item carries its `type` (feature, fix, chore) and `path_text`;
+   `counts` has the real totals (a section lists at most 20 items) and
+   `truncated` says what was cut: report it. Filter by `type` on the items.
+   It only reads.
+2. **Other statuses or filters** (closed work, a component, a priority):
 
 ```
 entity_query({
   entity_type: "ISSUE",
   project_id: <PROJ>,
   component_id: <optional>,
-  status: ["open", "in-progress", "blocked"],   // or array per filter (ISSUE lifecycle: open, in-progress, blocked, done, closed, wontfix)
-  tags_all: ["type:<type>", "priority:<level>"], // optional
+  status: ["done", "closed", "wontfix"],   // the statuses asked for (ISSUE lifecycle: open, in-progress, blocked, done, closed, wontfix)
+  tags_all: ["priority:<level>"],           // optional
   archived: false,
   drafts: false,
   order_by: "updated_at_desc",
@@ -124,39 +150,34 @@ entity_query({
 })
 ```
 
+   A note is an ISSUE with `metadata.kind:"note"`; an incident carries the
+   `type:incident` tag. Read the detail of one item with
+   `task_context` or `entity_get` only when the user asks for it.
+
 ## Step 2 — Present results
 
 ```
-## ISSUEs — <project> <applied filters>
+ISSUEs — <project> <applied filters>
 Date: <date>
 
-### Summary
-- Total: N
-- Bugs: N (M critical, K high)
-- Tasks: N
-- Incidents: N
-- Release blockers: N
+Summary
+- In progress: N · Open: N · Blocked: N · Notes: N
+- Ready to close: N specifications · Reviews pending: N
+- Fixes: N · Features: N · Chores: N · Incidents: N
 
-### By status
-| Status | Count |
-|--------|-------|
-| open | N |
-| in-progress | N |
-| blocked | N |
+Detail
+| ID | Type | Prio. | Status | Path | Title | What it still needs |
+|----|------|-------|--------|------|-------|---------------------|
+| ISSUE-<PROJ>-<COMP>-001 | fix | high | in-progress | — | Timeout callback | expected, check |
+| ISSUE-<PROJ>-042 | feature | medium | open | ROAD › REQ-<PROJ>-007 | Export to CSV | paused: waiting for the API |
 
-### Detail
-| ID | Type | Prio. | Status | Comp. | Title | Release |
-|----|------|-------|--------|-------|-------|---------|
-| ISSUE-<PROJ>-<COMP>-001 | bug | high | fixing | <COMP> | Timeout callback | REL-<PROJ>-0.1.0 |
-| ISSUE-<PROJ>-042 | task | medium | new | — | Update docs | — |
-
-### Release blockers
-For each ISSUE with an active `blocks → REL-...` relation:
+Release blockers
 | ISSUE | Blocks | Reason |
 |-------|--------|--------|
-| ISSUE-<PROJ>-<COMP>-050 | REL-<PROJ>-0.1.0 | Regression in TEST-<PROJ>-<COMP>-020 |
+| ISSUE-<PROJ>-<COMP>-050 | REL-<PROJ>-0.1.0 | Regression in RUN-<PROJ>-<COMP>-020 |
 ```
 
-For each ISSUE in blockers, use
-`entity_get({ entity_id, include_related: false })`
-and read `relations_outbound` to detect `blocks`.
+"What it still needs" comes from the `missing` of each `what_now` item (or
+its `pause_reason`). For release blockers, read each open ISSUE with
+`entity_get({ entity_id, include_related: false })` and its
+`relations_outbound` to detect `blocks → REL-...`.

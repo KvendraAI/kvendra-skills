@@ -2,15 +2,18 @@
 name: release-manager
 description: Release manager — creates, manages and closes REL entities with automatic changelog, regression gates and Kvendra KB traceability
 user_invocable: true
-args: "[action: create|status|add|gate-check|close|retire] [arguments] [--component CODE] [--road ROAD-id] [--auto]"
+args: "[action: create|status|add|gate-check|close|publish|retire] [arguments] [--component CODE] [--road ROAD-id] [--auto]"
 writes_entity_types: [REL, IF, ISSUE, REQ, ROAD]
 ---
 
 # Release Manager — Kvendra release lifecycle
 
-You manage the lifecycle of releases (REL): creation, attaching
-ISSUEs/components, regression gates, changelog (the items with `part_of` → the
-REL, plus the REL's own history), and closure.
+You manage the lifecycle of releases (REL): creation, attaching tasks and
+specifications, regression gates, changelog (the items with `part_of` → the
+REL, plus the REL's own history), and closure. A component release
+(`REL-<PROJ>-<COMP>-<VER>`) is written here with `entity_create` and
+`entity_update`; a project release is published with `work` `release`
+(PUBLISH).
 
 ## Action
 
@@ -106,6 +109,18 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -137,14 +152,15 @@ The pipelines (`new-feature`, `bug`) and `deploy` call this skill for their
 release-tracking step with `--auto`, e.g.
 `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --road <ROAD-id> --type minor --auto")`.
 In `--auto` mode the skill never prompts: any confirmation it would ask the
-user for counts as a failed prerequisite. The action then does not proceed and
-returns `gate_missing: <gate>` plus the REL id and its status, so the caller
-reports it. The caller's own flow is never blocked by this skill.
+user for counts as a failed prerequisite. The action then does not proceed: a
+missing prerequisite returns `gate_missing` and the caller reports it as a
+blocker. Every `--auto` action ends with the `RELEASE RESULT` block (see
+**Output**); it is data for the caller, not chat.
 
-### Pre-release CI gate (required before CREATE and CLOSE)
+### Pre-release CI gate (required before CREATE, CLOSE and PUBLISH)
 
 A release must never be cut or closed off a red default branch. Before running
-CREATE or CLOSE, verify that the latest CI workflow run on the default branch
+CREATE, CLOSE or PUBLISH, verify that the latest CI workflow run on the default branch
 (e.g. `main`) finished successfully:
 
 ```sh
@@ -169,12 +185,17 @@ This gate complements the repository branch-protection required status check
 gate blocks the release action.
 
 In `--auto` mode, CREATE of a `planning` REL skips this gate (a planning REL
-cuts nothing; it only tracks work). CLOSE always runs it: red or inconclusive
-→ `gate_missing: ci`.
+cuts nothing; it only tracks work). CLOSE and PUBLISH always run it: red or
+inconclusive → `gate_missing: ci`.
 
 ### CREATE — Create a new release
 
 Arguments: `create [<VER>] [--type major|minor|patch|hotfix] [--component <COMP>] [--road <ROAD-id>] [--auto]`.
+
+A component release is the usual case. A project release (no `--component`)
+is normally published in one step with PUBLISH once its work is done. CREATE a
+project release only to track it ahead in `planning`, then ship it with ADD
+and CLOSE (PUBLISH would answer `RELEASE_EXISTS` for the same name).
 
 0. With `--component`, reuse before creating: if an open REL already exists for
    the component
@@ -188,8 +209,10 @@ Arguments: `create [<VER>] [--type major|minor|patch|hotfix] [--component <COMP>
 2. Type: major | minor | patch | hotfix.
 3. Component release (`--component` given, or component hotfix): `REL-<PROJ>-<COMP>-<VER>`.
 4. Project release: `REL-<PROJ>-<VER>`.
-5. Parent ROAD: with `--road`, verify it exists (`entity_get`); if it does
-   not, drop the relation and report it (do not fail the CREATE).
+5. Roadmap link: with `--road`, verify it exists (`entity_get`); if it does
+   not, drop the relation and report it (do not fail the CREATE). A REL has no
+   parent in the work tree: it points at its roadmap with `derives_from`,
+   never `part_of`.
 6. Validate the id against the regex. If OK, create:
 
 ```
@@ -205,20 +228,24 @@ entity_create({
   tags: ["status:planning", "type:<minor|major|patch|hotfix>"],
   relations: [
     { type:"part_of", target:"PRJ-<PROJ>" },
-    { type:"part_of", target:"<ROAD-id>" }  // only with --road
+    { type:"derives_from", target:"<ROAD-id>" }  // only with --road
   ],
   metadata: { updated_by: "skill:release-manager" }
 })
 ```
 
 A REL that already exists without its ROAD link gets it with
-`entity_update({ entity_id, expected_version, relations_add:[{ type:"part_of", target:"<ROAD-id>" }], change_summary:"Linked to <ROAD-id>", metadata:{ updated_by:"skill:release-manager" } })`.
+`entity_update({ entity_id, expected_version, relations_add:[{ type:"derives_from", target:"<ROAD-id>" }], change_summary:"Linked to <ROAD-id>", metadata:{ updated_by:"skill:release-manager" } })`.
 
 ### STATUS — View the state of a release
 
 1. `entity_get({ entity_id:"REL-<PROJ>-<VER>" })`.
-2. List included ISSUEs: `entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`.
-3. Verify regression gates: for each component with an ISSUE in the REL,
+2. List the members: the tasks (ISSUE) and specifications (REQ) with
+   `part_of` → the REL, from `relations_inbound` of the step-1 read (older
+   RELs also tagged their items:
+   `entity_query({ entity_type:"ISSUE", project_id:<PROJ>, tags_all:["REL-<PROJ>-<VER>"] })`).
+   For each member specification, show whether it is confirmed (`done`).
+3. Verify regression gates: for each component with a member in the REL,
    `entity_query({ entity_type:"REG", project_id:<PROJ>, component_id:"<COMP>" })`.
 4. Show the changelog: the items with `part_of` → the REL (`relations_inbound`
    of the step-1 read) and the REL's own changes — read them with
@@ -227,32 +254,50 @@ A REL that already exists without its ROAD link gets it with
    separate `entity_changelog`.
 5. Show blockers: ISSUEs with `relations_outbound: blocks → REL-<PROJ>-<VER>`.
 
-### ADD — Add ISSUE/REQ/component to a release
+### ADD — Add tasks and specifications to a release
 
 Arguments: `add <ISSUE-or-REQ-id>[,<id>...] --rel <REL-id> [--auto]`.
+
+Members are tasks (ISSUE) and specifications (REQ). A TEST or RUN is evidence,
+not a member, and a note (`metadata.kind:"note"`) is not work yet: refuse them
+and say why.
 
 1. Read the REL. Only a `planning` or `in-progress` REL accepts items; a
    `released`/`closed` one is refused (report it; in `--auto` mode return
    `gate_missing: rel-open`).
-2. Verify each ISSUE/REQ exists and is in an appropriate status (`entity_get`,
-   capture its `version`). Skip an item that already has `part_of` → this REL
-   (idempotent).
-3. Add the `part_of` relation from the item to the REL:
+2. Read each item (`entity_get`, capture its `version`). Skip an item that
+   already has `part_of` → this REL (idempotent).
+3. A specification that is not `done` is confirmed before it joins a
+   release. Read its tasks (the ISSUEs with `part_of` → it, in
+   `relations_inbound`; `what_now({ project_id })` also lists the
+   specifications ready to close in `ready_to_close`):
+   - every task `done`, `closed` or `wontfix` → confirm it:
+     `work({ op:"confirm", spec_id:"<REQ-id>", project_id:"<PROJ>" })`.
+     It writes even when it warns: report `NO_TASKS`, `OPEN_TASKS` and
+     `CRITERIA_UNCOVERED` with their `next_step`, tell the user every
+     waiver in `waivers`, and never call `confirm` again to clear a warning
+     (see **Work cycle**). Re-read the specification for its new `version`.
+   - a task still open → do not link the specification. Interactive: tell the
+     user and offer to link only its closed tasks. `--auto`: return
+     `gate_missing: specs-open` with the open task ids.
+4. Add the `part_of` relation from the item to the REL:
    ```
    entity_update({
      entity_id: "ISSUE-<PROJ>-<COMP>-<NN>",   // or REQ-<PROJ>-<NN>
-     expected_version: <version from step 2>,
+     expected_version: <version from step 2 or 3>,
      relations_add: [{ type:"part_of", target:"REL-<PROJ>-<VER>" }],
      tags_add: ["REL-<PROJ>-<VER>"],
      change_summary: "Added to REL-<PROJ>-<VER>",
      metadata: { updated_by: "skill:release-manager" }
    })
    ```
-   On a REQ written without authority (Team/Enterprise) the update can come
-   back as a proposal: report it as pending approval, not linked.
-4. If the REL is still `planning`, move it to `in-progress` (work is now
+   This write adds a relation only: it never changes the status of the task
+   or the specification. On a REQ written without authority (Team/Enterprise)
+   the update can come back as a proposal: report it as pending approval, not
+   linked.
+5. If the REL is still `planning`, move it to `in-progress` (work is now
    attached): `entity_update({ entity_id:"REL-<PROJ>-<VER>", expected_version, status:"in-progress", tags_add:["status:in-progress"], tags_remove:["status:planning"], change_summary:"Work attached", metadata:{ updated_by:"skill:release-manager" } })`.
-5. The `part_of` relation is the changelog entry: the REL's `relations_inbound`
+6. The `part_of` relation is the changelog entry: the REL's `relations_inbound`
    lists it from now on, and the item's history records the change.
 
 ### GATE-CHECK — Verify regression gates
@@ -273,15 +318,21 @@ release line is over), never set at ship time.
 
 Prerequisites:
 1. All regression gates PASS.
-2. All included ISSUEs `done` (or `closed`/`wontfix`).
-3. Pre-release CI gate green (see "Pre-release CI gate" above), unless
+2. At least one member: a task or a specification with `part_of` → the REL.
+   An empty REL is never shipped.
+3. All member tasks, and the tasks of member specifications, `done`,
+   `closed` or `wontfix`.
+4. All member specifications confirmed (`done`). Confirm the ready ones
+   first, as in ADD step 3.
+5. Pre-release CI gate green (see "Pre-release CI gate" above), unless
    `--force-ci-red` was explicitly requested and audited.
 
 Arguments: `close <REL-id> [--sha <commit>] [--force-ci-red] [--auto]`.
 
-Unmet prerequisite in `--auto` mode: do not ship. If the REL is `planning`,
-move it to `in-progress` (CAS, as in ADD step 4) and return
-`gate_missing: <regression|issues-open|ci>` with the details.
+Unmet prerequisite: do not ship. Interactive: report it and stop. `--auto`:
+return `gate_missing: <regression|empty|issues-open|specs-open|ci>` with the
+details; if the REL is `planning` and has members, first move it to
+`in-progress` (CAS, as in ADD step 5). An empty REL stays `planning`.
 
 Process:
 1. Ship, freeze and stamp the REL in ONE guarded write (read it first and pass
@@ -300,13 +351,65 @@ Process:
    REL allows a direct status change via update because it is NOT inside a
    TXN. `frozen: true` marks the changelog as closed: ADD refuses a `released`
    REL, so no item is attached after ship. The date is today's date (UTC).
-2. For each included ISSUE with status `done`/`closed`: verify it has a
-   regression-case TEST.
-3. Update ROAD if any item was completed: `entity_update` on the ROAD with `expected_version` and top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one). In `--auto` mode never change a ROAD status: report the candidate instead.
+   Read the answer: list every entry of its `warnings` (code and entity) in
+   the Output. If it fails with `GATE_REJECTED`, nothing was written: read its
+   `code`, `next_step` and `evidence_plan`, do what they name (record and
+   cite the RUN, confirm the specification) and retry, at most twice (see
+   **Work cycle**). Still rejected → the REL stays `in-progress` (move it
+   there if it was `planning`), the rejection is the first line of the
+   Output, and `--auto` returns `gate_rejected: <code> — <next_step>`.
+2. For each member task `done`/`closed`: verify it cites its TEST or RUN in
+   `metadata.evidence` (or per criterion in `metadata.criteria_evidence`).
+   Report a task without one as `EVIDENCE_REQUIRED on <id>`; never invent an
+   id.
+3. Update the ROAD the REL derives from only when all its specifications are
+   `done`: `entity_update` on the ROAD with `expected_version` and top-level `status:"done"` (and, if the ROAD carries a `status:*` tag, `tags_add:["status:done"]` + `tags_remove` of the previous one). In `--auto` mode never change a ROAD status: report the candidate instead.
+
+### PUBLISH — Publish a project release with `work`
+
+Arguments: `publish <x.y.z> --members <id>[,<id>...] [--reason "<5+ words>"] [--txn <TXN-id>] [--auto]`.
+
+A project release (`REL-<PROJ>-<x.y.z>`) of finished tasks and specifications,
+created, linked and published by one `work` call. A component release is
+CREATE + ADD + CLOSE instead.
+
+1. Pre-release CI gate (as for CLOSE).
+2. Members: 1 to 100 ids of tasks and specifications of the project. Confirm
+   each member specification first, as in ADD step 3 (open tasks → interactive:
+   tell the user; `--auto`: `gate_missing: specs-open`). A specification in
+   `what_now` `reviews` has a pending review: the release would warn
+   `REVIEW_PENDING` and a `reason` does not skip it. Ask the user how to
+   resolve it (`resolve_review`, see `help({topic:"work"})`); `--auto`:
+   `gate_missing: specs-open`.
+3. Publish:
+   ```
+   work({
+     op: "release",
+     project_id: "<PROJ>",
+     name: "<x.y.z>",
+     work_ids: ["<task or specification id>", ...],
+     reason: "<only when the user wrote it, or the caller passed --reason>",
+     txn_id: "<only with --txn: a TXN in progress of the project>"
+   })
+   ```
+   - `RELEASE_EXISTS` (an error: nothing written) → that version is taken.
+     Interactive: propose the next version. `--auto`: `gate_missing: error`
+     with the code.
+   - `partial` with `resume: true` → repeat the same call, unchanged.
+   - `warnings` (`EMPTY_RELEASE`, `OPEN_TASKS`, `REVIEW_PENDING`,
+     `SPEC_INCOMPLETE`, `CRITERIA_UNCOVERED`, `EVIDENCE_OTHER_PROJECT`) →
+     the release was written anyway: report each with its `next_step` and
+     never call `release` again to clear one. A `reason` skips only
+     `SPEC_INCOMPLETE` and `CRITERIA_UNCOVERED`; never write one yourself.
+   - `RELEASE_WITH_WAIVERS` → tell the user every waiver in `waivers`.
+   - `GATE_REJECTED` → as in CLOSE step 1.
+4. The status comes from the answer (`release`): `released` is expected. A
+   link error leaves the release in `planning` with its id taken: report it
+   as `gate_missing: error`.
 
 ### Update the session resume pointer (REQ-KVD-B61E92 RF-4)
 
-Right after CREATE and CLOSE (not in `--auto` mode: the calling skill updates its own pointer). Only when this session has a name (CLAUDE.md, Protocol step 4);
+Right after CREATE, CLOSE and PUBLISH (not in `--auto` mode: the calling skill updates its own pointer). Only when this session has a name (CLAUDE.md, Protocol step 4);
 otherwise skip. One query and one write per closed task, never per turn:
 1. `entity_query({ entity_type:"DOC", project_id:<PROJ>, tags_all:["session:<name>"], order_by:"updated_at_desc", limit:2 })`.
    Two results, or one whose `updated_by` is not your own `whoami` actor → do not write: tell the user the pointer is duplicated or not yours, and stop this step (in a Team workspace any member can tag a DOC).
@@ -391,11 +494,42 @@ Otherwise, exactly:
 ## Release shipped (released)
 - ID: REL-<PROJ>-<VER>
 - Ship date: <date>  (tag shipped:<date>, metadata.deployed_date)
-- ISSUEs closed: N
-- Regression TESTs verified: N
+- Members: N tasks, M specifications (all closed, specifications confirmed)
+- Evidence cited: N of M closed tasks
+- Warnings: [<code> on <entity id> — <next_step>]
+- Waivers: [<spec_id>/<criterion_id>: <reason>]
 - ROADs updated: [list]
 - Changelog: frozen
 ```
+
+### PUBLISH:
+```
+## Project release published
+- ID: REL-<PROJ>-<VER> (<status from the answer>)
+- Members: N (tasks and specifications)
+- Warnings: [<code> on <entity id> — <next_step>]
+- Waivers: [<spec_id>/<criterion_id>: <reason>]
+```
+
+### Every action in `--auto` mode
+
+The last thing the action prints, exactly in this format (data for the
+calling skill, not chat). `gate_missing` names the first unmet prerequisite;
+`gate_rejected` is the engine's `GATE_REJECTED` that two retries did not
+clear.
+
+<!-- kvendra:machine-output -->
+```
+RELEASE RESULT
+- rel_id: REL-... | none
+- status: released | in-progress | planning | none
+- members: [<task or spec ids>] | []
+- gate_missing: none | ci | regression | issues-open | specs-open | rel-open | empty | error
+- gate_rejected: none | <code> — <next_step>
+- warnings: [<code> on <entity id>] | []
+- waivers: [<spec_id>/<criterion_id>: <reason>] | []
+```
+<!-- /kvendra:machine-output -->
 
 ## CLI capabilities manifest sync (post-release hook)
 
@@ -432,9 +566,9 @@ in any project will trigger it automatically.
    `kvendra`.
 2. **Pre-check**: if the binary file does not exist or is not
    executable, log a structured warning and stop the hook (best-effort;
-   release CLOSE already succeeded). Suggested follow-up: open an
-   ISSUE with `type:task` so the owner can refresh the manifest
-   manually.
+   release CLOSE already succeeded). Record the follow-up as a note so
+   the owner can refresh the manifest manually:
+   `work({ op:"capture", project_id:"<PROJ>", text:"Refresh IF-<PROJ>-CLI-PRIMITIVES-MANIFEST by hand after <REL-id>: <reason>" })`.
 3. **Run `kvendra capabilities --pretty`** via Bash (read-only,
    auth-less, no vault, no network — per AC-CLI-3 of REQ-KVD-ECDAE9).
    Capture stdout. This op does NOT need a broker primitive — it is
@@ -506,7 +640,7 @@ in any project will trigger it automatically.
 | `capabilities` subcommand absent (binary older than REL-CLI-0.5.0) | Log warning + skip; expected during the chained-REL transition window. |
 | JSON parse error | Log warning with truncated stdout; skip; release CLOSE remains successful. |
 | `schema_version != 1` | Log warning; skip; needs major-REQ reconciliation. |
-| KB write error (`entity_create` / `entity_update`) | Log structured error + retry once; if still failing, skip; release CLOSE remains successful. Surface as suggested follow-up ISSUE. |
+| KB write error (`entity_create` / `entity_update`) | Log structured error + retry once; if still failing, skip; release CLOSE remains successful. Record the follow-up as a note (`capture`, as in step 2). |
 | Multiple IF-MANIFEST entities for the project | Log warning; skip (do not pick one blindly). |
 
 ### Trazabilidad

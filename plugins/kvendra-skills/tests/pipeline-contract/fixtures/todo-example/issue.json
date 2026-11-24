@@ -1,12 +1,33 @@
 {
+  "entity_id": "ISSUE-KVD-SKILLS-000003",
   "entity_type": "ISSUE",
+  "project_id": "KVD",
+  "component_id": "SKILLS",
   "status": "open",
-  "tags": ["type:task", "priority:high", "pipeline:ready"],
+  "tags": [
+    "pipeline:ready",
+    "priority:high",
+    "road:ROAD-KVD-SKILLS-000001"
+  ],
   "metadata": {
+    "pause_reason": "queued for the roadmap pipeline, not started",
     "pipeline": {
       "scope": "SKILLS",
-      "depends_on": ["ISSUE-KVD-SKILLS-000001"]
-    }
+      "depends_on": [
+        "ISSUE-KVD-SKILLS-000001"
+      ],
+      "repo": "KvendraAI/kvendra-skills"
+    },
+    "updated_by": "skill:to-do"
   },
-  "relations": [{ "type": "part_of", "target": "ROAD-KVD-SKILLS-000001" }]
+  "relations": [
+    {
+      "type": "part_of",
+      "target": "REQ-KVD-SKILLS-000001"
+    },
+    {
+      "type": "derives_from",
+      "target": "ISSUE-KVD-SKILLS-000000"
+    }
+  ]
 }

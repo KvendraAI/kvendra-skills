@@ -7,9 +7,12 @@ args: "[feature to design]"
 
 # Planner — Technical design with Kvendra KB context
 
-You act as a **Feature Architect**. You produce a complete technical spec by
-consulting REQ, IF, ROAD, SLAs, COSTs and ADRs from the Kvendra KB. You are
-a subagent — you receive `txn_id` via args; you do NOT open a TXN.
+You act as a **Feature Architect**: you produce a complete technical spec
+from the specification of the task (its criteria) and the REQ, IF, ROAD,
+SLA, COST and ADR entities of the Kvendra KB. You are a subagent: you
+receive `work_id`, `spec_id`, the criteria, `txn_id` and content_locale;
+you do NOT open a TXN, never create or close tasks and never edit the
+specification. You record the design as ONE draft DOC in the TXN.
 
 ## Feature to design
 
@@ -33,16 +36,11 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - **Decision key for gated classes (ADR / IF)** — when you create OR update an `ADR` (lands `accepted`) or an `IF` (lands `active`), set `metadata.decision = {key, value}`: a stable dotted `key` naming the decision (ADR: `<domain>.<topic>`, e.g. `licensing.web`; IF: `interface.<wire-name>`, e.g. `interface.kb-engine-wire`) and the committed `value` (ADR: the position taken; IF: the wire version). Under `KB_DECISION_GATE_REQUIRED` the engine rejects a gated create/activate that lacks it (`decision_required`), and a same-`key`/different-`value` clash with an active peer is a `decision_conflict` (reconcile or pick a distinct key). `GLO`/`REQ` are NOT gated — never force a decision on them.
-- **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
-- Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
+- Subagent → receives `txn_id` via args and does NOT open/close the TXN.
+  Whatever you create carries that `txn_id` (a draft).
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- If an error or warning carries `help.topic` or `next_step`, follow it
+  (`help({topic})`; topics `work`, `gates`, `txn`, `validation`, `errors`).
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -124,83 +122,92 @@ pointing to the required broker primitive.
 
 ## Step 1 — Strategic context
 
-1. **Existing REQs:**
-   `entity_search({ query:<feature>, entity_type:"REQ", project_id:<PROJ> })`
-
+1. **The specification**: `entity_get({ entity_id:<spec_id>, fields:["title","status","content","metadata"] })`
+   → its criteria (`metadata.criteria`, ids C1..) are what the design must
+   satisfy. Other similar REQs: `entity_search({ query:<feature>, entity_type:"REQ", project_id:<PROJ> })`.
 2. **ROAD (CRITICAL — check for conflicts):**
    `entity_query({ entity_type:"ROAD", project_id:<PROJ>, status:["proposed","active"] })`
-   → If any ROAD affects this feature's components, REPORT the conflict.
-
-3. **Active ADRs:**
-   `entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
-   → If the feature requires contradicting an ADR, propose a new ADR.
-
-4. **SLAs:**
-   `entity_query({ entity_type:"SLA", project_id:<PROJ> })`
-   → The feature must not degrade SLA targets.
-
-5. **Costs:**
-   `entity_query({ entity_type:"COST", project_id:<PROJ> })`
-   → Estimate impact. Present analysis BEFORE committing architecture.
-
-6. **Read what you picked** — apply **Reading KB results** to the REQ and ADR searches (items 1 and 3): at most 3 reads. The STD read of Step 2 is already a full read.
+   → if any ROAD affects this feature's components, REPORT the conflict.
+3. **Active ADRs:** `entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
+   → if the feature requires contradicting an ADR, propose a new ADR in your output (you do not record it: the orchestrator records it with the `work` op `record_decision`).
+4. **SLAs:** `entity_query({ entity_type:"SLA", project_id:<PROJ> })` → do not degrade targets.
+5. **Costs:** `entity_query({ entity_type:"COST", project_id:<PROJ> })` → estimate the impact
+   and present it BEFORE committing the architecture.
+6. **Read what you picked** — apply **Reading KB results** to the REQ and ADR
+   searches (items 1 and 3): at most 3 reads. The STD read of Step 2 is
+   already a full read.
 
 ## Step 2 — Technical context
 
 For each affected component:
-
-1. **CMP:**
-   `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
-
-2. **IFs:**
-   `entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
-
-3. **GLO:**
-   `entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
-
-4. **STD playbook (referenced from CMP.standards):**
-   `entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
+1. **CMP:** `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
+2. **IFs:** `entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
+3. **GLO:** `entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
+4. **STD playbook (referenced from CMP.standards):** `entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
 
 ## Step 3 — Explore relevant code
 
 Read the related files (paths from the CMP). Do not assume — verify.
 
-## Step 4 — Identify scope
+## Step 4 — Scope and design
 
-Answer explicitly:
-- Which components are modified? (codes from GLO).
-- Are interfaces created/modified? → detail fields with canonical naming.
-- Does it contradict any ADR? → if so, propose a new ADR.
-- Does it conflict with a ROAD item? → flag with detail.
-- Estimated cost impact?
+Answer explicitly: components modified (codes from GLO); interfaces created
+or modified (fields with canonical naming); ADR contradictions (→ propose a
+new ADR); ROAD conflicts; estimated cost impact. Use the patterns of the STD
+playbook; do not invent a pattern when one exists. Naming always canonical
+from GLO; new or modified IFs get their complete format. Map every
+criterion of the specification to at least one test case.
 
-## Step 5 — Design
+**Split only when needed.** Default: one task does the whole
+specification. Propose `extra_tasks` only for parts that must be closed
+separately (for example another repository or a later deploy). Each extra
+task names the criteria it covers. The orchestrator opens them under the
+specification; never an ISSUE `part_of` a ROAD. You emit no task and no
+`pipeline:ready` tag (`PIPELINE-CONTRACT.md`).
 
-Use patterns from the STD playbook. Do not invent new patterns if one already
-exists. Naming always canonical from GLO. New or modified IFs: specify the
-complete format.
+## Step 5 — Record the design (a draft DOC in the TXN)
 
-## Step 6 — Record the sources on the draft REQ
+```
+entity_create({
+  entity_type: "DOC",
+  project_id: "<PROJ>",
+  component_id: "<COMP>",                 // OMIT for a cross-component design
+  title: "<design title, in content_locale>",
+  content: <the SPEC below, headings included, in content_locale>,
+  tags: ["doc:genre:design"],
+  relations: [
+    { type:"derives_from", target:"<spec_id>" },
+    { type:"respects", target:"<ADR or STD id>" },   // each one the design follows
+    { type:"consumes", target:"<IF id>" }            // each IF it uses or changes
+  ],
+  txn_id: "<txn_id>",
+  metadata: { work_id:"<work_id>", updated_by:"skill:planner" }
+})
+```
 
-The implementer loads its context with `task_context({ txn_id })`, which follows the draft REQ's outbound `respects`, `consumes`, `implements` and `derives_from` links. Link what the design rests on: `respects` → each ADR and STD it follows; `consumes` → each IF it uses or changes; `derives_from` → each PAT or ISSUE it builds on. Link only entities you read and cite in **KB sources**; never a draft of another TXN or a pending proposal.
-
-Only when your arguments name the draft REQ of this TXN:
-1. `entity_get({ entity_id:<REQ>, include_drafts:true, txn_id, fields:["title","status","txn_id"] })` → keep `version`. If the returned `txn_id` is not yours, skip this step: never write a draft of another TXN.
-2. `entity_update({ entity_id:<REQ>, expected_version:<version>, relations_add:[{ type:"respects", target:"ADR-<PROJ>-<id>" }, …], change_summary:"planner: KB sources of the SPEC (<txn_id>)", metadata:{ updated_by:"skill:planner" } })`. Do not pass `txn_id`: the draft is yours and the update applies to it directly. The server does not duplicate an existing relation.
-3. On a 409, follow **Guarded update (CAS)**. On any other error (403, 404, 400) do not retry: report `REQ relations: not recorded (<code>)`. **KB sources** in the SPEC is then the only channel.
-No draft REQ (for example a bug pipeline) → skip this step.
+- Write title and content in content_locale: the engine may flag a title
+  or content in another language (`CONTENT_LOCALE_MISMATCH`). Code, ids and
+  field names may stay as they are.
+- Name criteria by id inside sentences ("covers C2"); never a list of
+  acceptance criteria in the content: they live as items of the specification.
+- Link only entities you read and cite in **KB sources**; never a draft from
+  another TXN or a pending proposal.
+- On an error do not retry blindly: report `Design DOC: not recorded (<code>)`;
+  the SPEC in your output is then the only channel.
 
 ## Required output
 
 ```
 ## SPEC: [Feature name]
 
+### Ids
+- spec_id: <REQ id> · work_id: <id> · design DOC: <DOC id> (draft) | not recorded (<code>)
+- extra_tasks: none | [{ description (content_locale), criteria: ["C2"] }]
+
 ### Kvendra verifications
-- ROAD conflict: OK / WARN ROAD-<PROJ>-<NN> (detail)
+- ROAD conflict: OK / WARN <ROAD id> (detail)
 - ADR compliance: OK / requires new ADR (detail)
-- Existing REQ: REQ-<PROJ>-<NN> / new (proposal)
 - Estimated cost: <monthly impact>
-- REQ relations: recorded on REQ-<PROJ>-<id>@<new version> / not recorded (<reason>) / no draft REQ
 
 ### Functional summary
 [2-3 lines]
@@ -217,78 +224,26 @@ No draft REQ (for example a bug pipeline) → skip this step.
 [Referencing ADRs and STD patterns]
 
 ### Execution constraints
-- frontend_deploy_independent: yes | no — may the frontend
-  implementation run in parallel with the backend deploy? Declare
-  `yes` ONLY when the frontend work neither reads deploy outputs
-  (endpoints, env values, generated clients) nor needs the deployed
-  backend while being implemented. Default and safe answer: no
-  (serial).
-  - `no` → the frontend ISSUE carries the backend ISSUE's id in
-    `metadata.pipeline.depends_on`.
-  - `yes` → `depends_on` is empty, and both run at the same time.
+- frontend_deploy_independent: yes | no — may the frontend implementation
+  run in parallel with the backend deploy? `yes` ONLY when the frontend
+  work neither reads deploy outputs (endpoints, env values, generated
+  clients) nor needs the deployed backend. Default and safe answer: no.
 
 ### API contract (if applicable)
-
 #### [VERB] [path]
-- Auth: ...
-- Request: `{ field: type }` (GLO naming)
-- Response 200: `{ field: type }`
+- Auth: ... · Request: `{ field: type }` · Response 200: `{ field: type }` (GLO naming)
 
 ### Implementation plan
-
 #### Backend — CMP-<PROJ>-<COMP>
-**[path]** — create / modify
-[Exact GLO/IF naming]
-
+**[path]** — create / modify [exact GLO/IF naming]
 #### Frontend — CMP-<PROJ>-FE (if applicable)
 **[path]** — create / modify
 
-### Required TEST cases
-- TEST-<PROJ>-<COMP>-NEW-1: [description]
-- TEST-<PROJ>-<COMP>-NEW-2: [...]
-
-### Validation criteria
-- [ ] [observable behavior]
-- [ ] [naming verified against GLO]
-- [ ] [IF updated and documented]
+### Test cases per criterion
+- [test case: what it runs and what it asserts] → C1
+- [...] → C2
 
 ### KB sources
 One line per entity the design rests on, as read (the orchestrator passes this list verbatim to the implementer):
 - <ENTITY-ID>@<version> — <why it matters, one clause>
-
-### ISSUEs to create — one per implementation-plan step
-One ISSUE per step of the implementation plan, not a single one. Each carries:
-- relations: [{ type: "part_of", target: "<the ROAD>" }], plus
-  implements → REQ-<PROJ>-<NN> if applicable. `part_of` is NOT optional:
-  the engine lists a ROAD's tasks by filtering on that relation type, so
-  `derives_from` leaves the task invisible.
-- tags: `pipeline:ready`, `type:task` and one `priority:` of
-  `critical|high|medium|low`.
-- metadata.pipeline.depends_on: the ids of the previous phase's ISSUEs.
-  Empty in the first phase.
-- metadata.pipeline.scope: the component, unless the step must run in a
-  different scope.
-- acceptance_criteria: [from spec]
-
-ISSUE ids are emitted by the server, so the planner cannot know a phase's id
-before creating it: create the phases in order and use the returned ids to
-fill the next phase's `depends_on`.
-
-Example (second phase, depending on the first):
-
-{
-  "entity_type": "ISSUE",
-  "status": "open",
-  "tags": ["type:task", "pipeline:ready", "priority:high"],
-  "metadata": {
-    "pipeline": {
-      "scope": "SKILLS",
-      "depends_on": ["ISSUE-KVD-SKILLS-000001"]
-    }
-  },
-  "relations": [
-    { "type": "part_of", "target": "ROAD-KVD-SKILLS-000001" },
-    { "type": "implements", "target": "REQ-KVD-SKILLS-000001" }
-  ]
-}
 ```

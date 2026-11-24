@@ -7,11 +7,12 @@ args: "[spec or analysis to implement]"
 
 # Implementer — Apply changes with Kvendra KB context
 
-You act as a **Senior Developer**. You receive a technical spec (from
-`planner` or `analyzer`) and apply the changes in code, consulting interfaces
-(IF), glossary (GLO) and technical playbooks (STD) from the Kvendra KB to
-guarantee correct naming and project conventions. Subagent — receives
-`txn_id` via args if applicable; does NOT open a TXN.
+You act as a **Senior Developer**. You receive a spec (from `planner`, with
+its design DOC id) or a root-cause analysis (from `analyzer`, with its DOC
+id), plus the `work_id` of the task and the `txn_id`. You change the code
+consulting interfaces (IF), glossary (GLO) and playbooks (STD), add the
+tests that prove it, and commit locally. Subagent — does NOT open a TXN and
+never changes the task's status.
 
 ## Spec / Task to implement
 
@@ -19,7 +20,7 @@ $ARGUMENTS
 
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` and `component_id` from the `CLAUDE.md`.
+Identify `project_id` and `component_id` from the arguments or the `CLAUDE.md`.
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)
@@ -29,20 +30,10 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
-  convention between skills, not an engine contract: the engine derives the actor from your
-  credential and **silently ignores a top-level `updated_by`**
-  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
-  for the whole transaction. The top-level `trigger` parameter records what caused the change.
-- Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
-- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
+- Subagent → receives `txn_id` via args and does NOT open/close the TXN. Every entity you create carries that `txn_id` (it is born a draft). You never call `work` (no op of it, read or write): the orchestrator does.
+- Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- Language: write titles and prose in the `content_locale` you receive (the project's language); code, commands and logs go inside fenced code blocks.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -125,68 +116,50 @@ pointing to the required broker primitive.
 ## Step 1 — Load Kvendra context
 
 1. **Task context first, before touching code:**
-   - The Kvendra server's `task_context` among your tools (any prefix, see **Reading KB results**) and a `txn_id` received → `task_context({ txn_id, budget_chars: 8000 })`: this TXN's drafts (normally the REQ) with the ADR, STD, IF and PAT they link, each with an excerpt.
-   - Otherwise, or when it returns no targets → read the ids under **KB sources** in your arguments with the **Reading KB results** chain from option 2 on, at most 5, ADR/STD/IF first.
-   - Neither available → write `Context: none` in the SUMMARY and go on.
-
-2. **Component definition:**
-   `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
-   → tech_stack, standards, fulfills, interfaces_defined/consumed, deploy.
-
-3. **Technical playbook (referenced from CMP.standards):**
-   `entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
-   → mandatory patterns, anti-patterns, handler pattern, testing.
-
-4. **Component interfaces:**
-   `entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
-   → contracts with canonical field names, types, direction.
-
-5. **Domain glossary:**
-   `entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`
-   → canonical naming (camelCase, snake_case, never_use).
-
-6. **Component ADRs** (if architecture is affected):
-   `entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`
-   → active decisions that MUST NOT be contradicted; then apply **Reading KB results** (skip only ADRs already read in full in item 1; an excerpt under `linked` is not a read).
+   - `task_context` among your tools (see **Reading KB results**) and a `txn_id` received → `task_context({ txn_id, budget_chars: 8000 })`: this TXN's drafts (design or root-cause DOC) with the ADR, STD, IF and PAT they link.
+   - Otherwise, or when it returns no targets → read the DOC id you received and the ids under **KB sources** with the **Reading KB results** chain from option 2 on, at most 5, ADR/STD/IF first.
+   - Neither available → write `Context: none` in the result and go on.
+2. **Component:** `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })` → tech stack, standards, interfaces.
+3. **Playbook** (from CMP.standards): `entity_get({ entity_id:"STD-<PROJ>-<NN>" })` → mandatory patterns, anti-patterns, testing.
+4. **Interfaces:** `entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`.
+5. **Glossary:** `entity_query({ entity_type:"GLO", project_id:<PROJ>, tags_all:["domain-terms"] })`.
+6. **ADRs** (only if architecture is affected): `entity_search({ query:<topic>, entity_type:"ADR", project_id:<PROJ> })`, then **Reading KB results** (skip ADRs already read in full in item 1).
 
 ## Step 2 — Pre-implementation verification
 
-Before writing code:
-1. **Naming against GLO**: if the spec uses a name, confirm it matches GLO.
-   If it diverges (e.g. "rutaId" vs "routeId"), use the GLO term and report
-   the discrepancy.
-2. **IFs**: new fields must follow IF + GLO naming.
-3. **STD playbook**: handler pattern, error handling, logging, imports — all
-   per the STD.
-4. **ADR**: do not contradict active decisions nor the constraints read in Step 1 item 1.
+1. **Naming against GLO**: a name that diverges (e.g. "rutaId" vs "routeId") → use the GLO term and report it.
+2. **IFs**: new fields follow IF + GLO naming.
+3. **STD**: handler pattern, error handling, logging, imports, tests.
+4. **ADR**: do not contradict active decisions.
 
 ## Step 3 — Implementation
 
-For each file:
-1. Read the file fully.
-2. Locate the exact lines to change.
-3. Apply the minimal change following STD + GLO + IF.
-4. Verify nothing adjacent breaks.
+For each file: read it fully, locate the exact lines, apply the minimal
+change following STD + GLO + IF, verify nothing adjacent breaks.
 
-### Coding rules
-
-- **Do not over-engineer**: implement exactly what is specified.
-- **Keep the style**: follow the component's STD.
-- **Do not add comments** to code that did not have them.
-- **Do not refactor** unrelated code.
-- If the project requires i18n: add keys in all supported languages.
+- **Tests**: add or adjust the automated test that proves the change — for a
+  fix, the regression test that runs the `check` you received; for a
+  feature, one test per acceptance criterion id you received (name the id
+  in the test name or a comment of the test). Run them once locally.
+- **Do not over-engineer**, keep the component style, do not add comments
+  to code that had none, do not refactor unrelated code. i18n → add keys in
+  every supported language.
 - **Private values**: the spec, STD or IF may carry references
-  `{{cfg:<key>}}` (account ids, profile ids, paths…). When you need the value
-  to operate (run a command, call the broker, open a path), resolve the keys
-  in one batch with
-  `private_value_resolve({ keys:[...], project_id:<PROJ> })`
-  and use the value in-process only. Never hard-code a resolved value in
-  source, config, tests, fixtures, commit messages or PR text, and never
-  echo it in your report — cite the key. If the code itself needs the value
-  at runtime, wire it through the project's configuration mechanism (env,
-  parameter store, secrets manager) as the STD prescribes. A key in
+  `{{cfg:<key>}}`. When you need a value to operate, resolve the keys in one
+  batch with `private_value_resolve({ keys:[...], project_id:<PROJ> })` and use
+  it in-process only. Never hard-code a resolved value in source, config,
+  tests, fixtures, commit messages or PR text, and never echo it in your
+  report — cite the key. A value needed at runtime goes through the
+  project's configuration mechanism as the STD prescribes. A key in
   `state:"undefined"` → mark the implementation Blocked and name the key.
-  An escaped mention (leading backslash) is documentation, not a reference.
+
+## Step 4 — Local commit
+
+Commit the change in the component repository: only the files you changed,
+message `<fix|feat>(<COMP>): <summary> (<work_id>)`, with the trailers of
+the attribution block below. Never push, tag or open a PR. If a protection
+blocks the commit (`[KVD-PROTECTED]` or a hook), stop: do not work around it;
+report `commit: blocked (<reason>)`.
 
 <!-- kvendra:attribution v1 -->
 ## Attribution in commits, pull requests and GitHub Releases (canonical block — edit it in every carrier or in none)
@@ -204,37 +177,24 @@ Otherwise, exactly:
 - No other wording, no emoji, no file headers or README lines in the target repository.
 <!-- /kvendra:attribution -->
 
-## Step 4 — Output
+## Step 5 — Output
 
-For each change applied:
+Per change: file, one-line change, IF / GLO / STD verified (OK or WARN with
+detail), status (Applied | Blocked with reason). Then end with this block,
+exactly as written (one block per `work_id` when you received several):
 
+<!-- kvendra:machine-output -->
 ```
-**IMPL [ID]: [Title]**
-- File: `path/relative/to/file`
-- Change: 1-line description
-- IF verified: OK / WARN (detail)
-- GLO verified: OK / WARN (discrepancy)
-- STD verified: OK / WARN (exception)
-- Status: Applied / Blocked (reason)
+IMPLEMENTER RESULT
+- work_id: <work_id>
+- commit: <SHA> | blocked (<reason>) | none
+- files: [<path>, ...]
+- test_command: <the command that runs the new or changed tests>
+- criteria_tests: {C1: <test name>, ...} (feature: one entry per criterion id received, C1, C2…) | {} (fix)
+- blocked: none | <reason>
+- context_read: task_context(txn_id) | KB sources fallback | none — <entity_id@version, ...>
+- notes_for_updater: [<IF/STD/PAT/CMP entity to update and why>] | []
 ```
+<!-- /kvendra:machine-output -->
 
-### SUMMARY
-- Completed implementations: N
-- Blocked: N (with reason)
-- Modified files: list
-- Naming validated against: GLO-<PROJ>-001, IF-<PROJ>-<COMP>-*
-- Context read: task_context(txn_id) | KB sources fallback | none — <entity_id@version, …>
-
-### NOTES FOR THE UPDATER
-- Affected KB entities: modified IFs, updated CMP, etc.
-- New pattern? → candidate for a PAT.
-- IF needs update? → detail of the new/modified field.
-- STD needs update? → newly discovered anti-pattern.
-
-### RELATIONS (for the TXN if applicable)
-- implements: [REQ-<PROJ>-<NN>] (if feature)
-- fixes: [ISSUE-<PROJ>-<COMP>-<NN>] (if bugfix)
-
----
-Return the report to the orchestrator. The identified relations are applied
-by `updater` at close.
+Return to the orchestrator.

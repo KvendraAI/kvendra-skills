@@ -72,9 +72,37 @@ Run any of the heavy-help skills to sanity-check the wiring:
   is connected and a real KB read works.
 - `/kvendra-skills:to-do` — fetches your open issues from the KB.
 
-The hosted server exposes 33 tools. If a call is refused because of your
-plan, jump back to step 1 (see
+If a call is refused because of your plan, jump back to step 1 (see
 <https://app.kvendra.cloud/docs/troubleshooting/#forbidden-tier>).
+
+## Upgrading to 2.0.0
+
+kvendra-skills 2.0.0 writes tasks, specifications, notes, decisions and
+project releases through the Kvendra tool `work` (the work cycle). Three
+things to know when you update from 1.x:
+
+- **Sign in once more.** The plugin server now sends the header
+  `X-Kvendra-Client: kvendra-skills/2.0.0`. Claude Code stores the OAuth
+  credential under the server's type, URL and headers, so after the update
+  `kvendra-cloud` shows *Needs authentication*. Run `/mcp`, pick
+  `kvendra-cloud` and choose Authenticate, once (once per `KVENDRA_WS`
+  account). The header keeps that value for every 2.x release, so later 2.x
+  updates do not ask again.
+- **The server must list `work`.** Without it the skills stop before any
+  write and tell you so. A session opened before the server gained `work`
+  keeps its old tool list: restart Claude Code, or run `/mcp` and reconnect.
+  A Kvendra server without `work` (for example an older self-hosted engine)
+  needs kvendra-skills 1.35.x: there is no 1.x fallback in 2.0.0.
+  `/kvendra-skills:env-check` checks both (check 2).
+- **claude.ai Kvendra connector.** If you also connected Kvendra as a
+  claude.ai connector on the same URL, Claude Code may hide the plugin server
+  (often in headless `claude -p` sessions) and the skills then use the
+  connector. The header is not sent in that case; everything else works the
+  same. `/kvendra-skills:env-check` reports it as a warning (check 1).
+
+Open sessions load 2.0.0 only after `/plugin update` (or your org's sync)
+and `/exit` + `claude --resume`. What changes in the pipelines is listed
+in the [CHANGELOG](./CHANGELOG.md).
 
 ## Several Kvendra accounts (optional)
 

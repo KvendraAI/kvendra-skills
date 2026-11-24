@@ -1,6 +1,6 @@
 ---
 name: incident-manager
-description: Incident manager — creates ISSUE type:incident with RCA and postmortem in the Kvendra KB, and generates derived RUN/REQ/PAT entities
+description: Incident manager — creates ISSUE type:incident with RCA and postmortem in the Kvendra KB, and generates derived RUN/PAT entities and improvement notes
 user_invocable: true
 args: "[incident description or 'postmortem' to close an existing one]"
 ---
@@ -9,8 +9,8 @@ args: "[incident description or 'postmortem' to close an existing one]"
 
 You manage operational incidents (outages, degradation, production errors).
 You create an ISSUE `type:incident` with impact, duration, RCA and postmortem.
-You generate derived entities: RUN (new runbooks), REQ (improvements), PAT
-(lessons).
+You generate derived entities: RUN (new runbooks), improvement notes (or a
+REQ when the user asks for the specification now), PAT (lessons).
 
 Soft orchestrator — you open a TXN to group postmortem creations, but you do
 not delegate to other subagents.
@@ -28,6 +28,10 @@ Identify `project_id` and `component_id` from the `CLAUDE.md`.
 
 Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
 <!-- /kvendra:kb-server -->
+
+**Tool `work`.** Check now that the Kvendra server lists the tool `work`;
+if it does not, follow the rule **No `work`, no run** of the **Work cycle**
+block below and stop before any write.
 
 ## Kvendra rules (summary)
 
@@ -116,6 +120,18 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   or `429 proposal_limit_exceeded`, stop and tell the user: never retry or
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
+
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
 
 ## External-execution policy
 
@@ -224,8 +240,9 @@ entity_create({
 ### What went wrong
 ### Derived actions
 - RUN: ...
-- REQ: ...
+- Note / REQ: ...
 - PAT: ...
+- Fix tasks: ...
 ```
 
 **Private values in the incident text.** Incidents attract identifiers:
@@ -234,20 +251,28 @@ names. In the Impact, Timeline, RCA and Postmortem write each one as a
 reference (`{{cfg:<proj>.aws.account}}`, `{{cfg:<proj>.support.case}}` —
 placeholders shown here; a real reference uses a concrete lowercase key) and
 propose the missing CFG keys to the user. The same applies to the derived RUN,
-REQ and PAT of Step 5 and to every `change_summary`. If you quote a log line
+note or REQ and PAT of Step 5 and to every `change_summary`. If you quote a log line
 that contains a value, replace the value by its reference before writing.
 
 ## Step 4 — Manage the lifecycle
 
-As things progress, call `entity_update` with the top-level `status`, updated
-tags (a `status:*` tag, if any, carries the same value as `status`) and
-`change_summary`. The phase is recorded in the content (`## Status:` line and
+The incident ISSUE is not a work task (the tool `work` has no incident
+type): its lifecycle stays on `entity_update`. As things progress, call
+`entity_update` with the top-level `status`, updated tags (a `status:*`
+tag, if any, carries the same value as `status`) and `change_summary`. The phase is recorded in the content (`## Status:` line and
 Timeline); the top-level `status` follows it:
 1. `detected` → first state (`status: "open"`).
 2. `investigating` → analyzing the cause (`status: "in-progress"`).
 3. `mitigating` → temporary solution applied (`status: "in-progress"`).
 4. `resolved` → service restored (`status: "in-progress"` until the postmortem).
 5. `postmortem-done` → RCA completed, derived entities created (`status: "done"`).
+
+**Evidence of the recovery.** The update to `status: "done"` carries
+`metadata.evidence: ["<RUN or TEST id>", ...]`: the RUN that verified the
+service is back (a check you ran and recorded as a RUN of this project, with
+its command and result, or an existing TEST or RUN you read). Never invent an
+id. Without one, the incident stays `in-progress`: say so and name the check
+that is missing.
 
 Each update that rewrites `content` is read-modify-write on the raw text
 `entity_get` returned: keep references and escaped mentions as they are. On
@@ -302,24 +327,32 @@ correct id from the KB and retry with the corrected target. Do NOT retry with
 `relations` removed or shortened. If the target genuinely does not exist, STOP
 and report it inside the incident rather than persisting an orphan runbook.
 
-### 5b — REQ (if applicable)
+### 5b — Improvement (if applicable)
 
-If it reveals a need for improvement (alerting, monitoring, redundancy):
+If it reveals a need for improvement (alerting, monitoring, redundancy),
+write it down as a note by default:
 
 ```
-entity_create({
-  entity_type: "REQ",
-  project_id: "<PROJ>",
-  component_id: "<COMP>",   // inherit from the originating ISSUE-<PROJ>-<COMP>-<NN>; OMIT if the improvement is project-wide
-  title: "REQ-<PROJ>-<auto>: <improvement>",
-  content: <description + acceptance criteria>,
-  relations: [
-    { type: "derives_from", target: "ISSUE-<PROJ>-<COMP>-<NN>" }
-  ],
-  txn_id: "<txn_id>",
-  metadata: { updated_by: "skill:incident-manager" }
-})
+work({ op:"capture", project_id:"<PROJ>", text:"<improvement, one or two lines, in the language of the incident>" })
 ```
+
+`ALREADY_NOTED` → follow its `next_step` (the same improvement is already
+noted: keep the old note and close the new one). Only when the user asks for
+the specification now, ask under which roadmap it goes and create it with
+its criteria as items, never only in the text:
+
+```
+work({ op:"create_structure", project_id:"<PROJ>", roadmap:"<ROAD id>", spec:{ title:"<improvement>", criteria:[ "<concrete criterion, 5+ words>", ... ] } })
+```
+
+Then link the note or the REQ to the incident with `derives_from`:
+`entity_get`, then a guarded
+`entity_update({ entity_id:"<note or REQ id>", expected_version, relations_add:[{ type:"derives_from", target:"<ISSUE id from Step 3>" }], metadata:{ updated_by:"skill:incident-manager" }, change_summary:"derives from <ISSUE id>" })`.
+Both are written live by `work` (outside the TXN).
+
+Corrective code changes are not derived entities of the incident: hand them
+to `kvendra-skills:bug` or `kvendra-skills:to-do` (a fix with `expected`
+and `check`). Never link an ISSUE `part_of` the incident.
 
 ### 5c — PAT (if applicable)
 
@@ -349,7 +382,7 @@ txn_activate({ txn_id })
 Drafts take the top-level `status` they carry (engine H3): the incident ISSUE
 its current lifecycle status (`done` once the postmortem is complete); derived
 entities without `status` go to their type's terminal (RUN → `recorded`,
-REQ/PAT → `active`).
+PAT → `active`).
 
 **Read the `txn_activate` response before reporting** (see **Governance
 proposals**): only the drafts it activated are live. Each `proposed[]` entry
@@ -377,6 +410,7 @@ otherwise skip. One query and one write per closed task, never per turn:
 ```
 ## Incident: ISSUE-<PROJ>-<COMP>-<NNN>
 - Status: <status>
+- Evidence of the recovery: <RUN or TEST ids> | missing (stays in-progress)
 - Severity: <severity>
 - Impact: <summary>
 - Duration: <time>
@@ -385,7 +419,7 @@ otherwise skip. One query and one write per closed task, never per turn:
 
 ### Derived entities
 - RUN-<PROJ>-<COMP>-<NNN>: runbook created
-- REQ-<PROJ>-<NNN>: improvement proposed (or: pending approval, proposal_id <id>, not active)
+- ISSUE-<PROJ>-<NNN>: improvement note (or REQ-<PROJ>-<NNN>: specification; or: pending approval, proposal_id <id>, not active)
 - PAT-<PROJ>-<NNN>: lesson learned
 
 ### Kvendra updated

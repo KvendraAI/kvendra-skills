@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # lvr-scan-tool-input.sh — kvendra-skills PreToolUse hook for KB writes
-# (`entity_create` / `entity_update` of the Kvendra server, any client prefix).
+# (`entity_create` / `entity_update` / `work` of the Kvendra server, any client prefix).
+# `work` writes text through start_work, fill, capture, record_decision, pause…
 #
 # REQ-KVD-11F906 RF-CLI-8 (c), DOC-KVD-E49C6E D8(c). Joins every string leaf
 # of `tool_input` and pipes it to `kvendra vars scan --stdin --json`. If the
@@ -38,9 +39,10 @@ TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || t
 # The plugin's own server is Kvendra by construction: scan it without the shape check, so
 # even an invalid call never leaves the machine with a local value in it.
 case "$TOOL_NAME" in
-  mcp__plugin_kvendra-skills_kvendra-cloud__entity_create|mcp__plugin_kvendra-skills_kvendra-cloud__entity_update) shape='true' ;;
+  mcp__plugin_kvendra-skills_kvendra-cloud__entity_create|mcp__plugin_kvendra-skills_kvendra-cloud__entity_update|mcp__plugin_kvendra-skills_kvendra-cloud__work) shape='true' ;;
   mcp__*__entity_create) shape='(.tool_input.entity_type | type) == "string" and (.tool_input.title | type) == "string"' ;;
   mcp__*__entity_update) shape='(.tool_input.entity_id | type) == "string" and (.tool_input.change_summary | type) == "string"' ;;
+  mcp__*__work) shape='(.tool_input.op | type) == "string" and (.tool_input.op as $o | ["what_now","start_work","fill","pause","finish","confirm","capture","record_decision","resolve_review","release","create_structure"] | index($o)) != null' ;;
   *) exit 0 ;;
 esac
 printf '%s' "$INPUT" | jq -e "$shape" >/dev/null 2>&1 || exit 0

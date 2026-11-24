@@ -5,22 +5,37 @@ user_invocable: true
 args: "[area or functionality to test]"
 ---
 
-# Bug Pipeline — Orchestrator with TXN resilience
+# Bug Pipeline — Orchestrator
 
-You are the **Orchestrator of the bug-testing pipeline**. You coordinate 6
-subagents (functional-expert, tester, analyzer, implementer, validator,
-updater) with:
-- **Server-backed TXN**: `txn_create` + `txn_activate` / `txn_cancel`.
-- **Draft → Active** automatic on TXN activation.
-- **Kvendra KB**: structured traceability via the 12 entity tools.
+You are the **Orchestrator of the bug pipeline**. Each confirmed bug is one
+fix task of the engine tool `work`. You coordinate the subagents
+functional-expert, tester, analyzer, implementer, validator and (optionally)
+updater, inside one server TXN for the auxiliary entities (RUN, DOC).
 
 ## Target to test
 
 $ARGUMENTS
 
-## Step 0 — Kvendra initialization + interrupted check
+## Step 0 — Kvendra initialization
 
 Identify `project_id` and `component_id` from the `CLAUDE.md`.
+
+<!-- kvendra:kb-server v1 -->
+## Kvendra server (canonical block — edit it in every carrier or in none)
+
+Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
+<!-- /kvendra:kb-server -->
+
+**Tool `work`.** Check now that the Kvendra server lists the tool `work`;
+if it does not, follow the rule **No `work`, no run** of the **Work cycle**
+block below and stop before any write.
+
+**Project settings.** `entity_get({ entity_id:"PRJ-<PROJ>" })` once: read
+`metadata.content_locale` (or `metadata.locale`). `work` does not read
+`metadata.mode`, and neither does this skill.
+Every text written to the KB (task description, expected, check, RUN and DOC
+titles and prose) is in that language; code, commands and logs go inside
+fenced code blocks. Pass `content_locale` to every subagent.
 
 ## Step 0.5 — Pipeline-autonomy policy (single query)
 
@@ -67,9 +82,8 @@ With `gates.bug: none` the stop rules at the bottom of this skill stop
 consulting the user: each signal is auto-resolved with the most
 conservative viable option and logged as one AUTONOMY_LOG line
 (`<signal> → <resolution> — <one-line rationale>`), shown in the
-progress output and persisted into the PHASE 5b ISSUE content under
-`## Autonomy log (zero-gate)` (or the `txn_cancel` reason when the TXN
-dies first).
+progress output and in the final report (and in the `txn_cancel` reason
+when the TXN dies first).
 
 **Hard floor (never configurable — pauses even in zero-gate mode):** an
 op on the deploy-policy no-go list (production deploy, real registry
@@ -94,29 +108,13 @@ line of `entity_id@version` pairs. Introduce it with this exact sentence:
 skip your context-loading queries when the pack covers them; re-query only
 what is missing or suspect — the pack is an optimization, not a cage."
 
-<!-- kvendra:kb-server v1 -->
-## Kvendra server (canonical block — edit it in every carrier or in none)
-
-Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_create(...)`). Your client adds its own prefix: call the tool of that name on the Kvendra server, the MCP server that exposes `whoami`, `help` and `entity_get`, whatever its name (`mcp__plugin_kvendra-skills_kvendra-cloud__*` from this plugin, `mcp__claude_ai_<connector>__*` from a claude.ai connector, `mcp__<name>__*` from `claude mcp add`, no prefix in other clients). Load its tools first if they are deferred. The local broker `kvendra` (`kvendra_git`, `kvendra_aws`…) is not the Kvendra server. If more than one server exposes them (for example the plugin server with a directory's `KVENDRA_WS` and a claude.ai connector on the default account), use the plugin server: it carries this directory's account. Without the plugin server, ask the user which one to use. Never mix two Kvendra servers in one task. If no server exposes those three tools, stop and tell the user the Kvendra environment is not available.
-<!-- /kvendra:kb-server -->
-
 ## Kvendra rules (summary)
 
 - **Guarded update (CAS)** — every `entity_update` is read-modify-write: capture the `version` returned by your preceding `entity_get`/`entity_query` and pass it as `expected_version`. On a `409 VERSION_CONFLICT` (the body carries `current_version` + `intervening_changes[]`) re-read the entity, re-apply your change on top of the intervening changes, then retry with the fresh `version`; bound retries to 3 and, if it still conflicts, stop and surface the conflict — never blind-overwrite. The engine ignores the lock when `expected_version` is absent, so omitting it silently reverts to last-write-wins.
-- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
-  convention between skills, not an engine contract: the engine derives the actor from your
-  credential and **silently ignores a top-level `updated_by`**
-  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
-  for the whole transaction. The top-level `trigger` parameter records what caused the change.
-- Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
-- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`). In `txn_create`, `started_by` carries the same hint.
+- **Work cycle** — tasks change status only through `work` (`start_work`, `fill`, `pause`, `finish`); never through `entity_update`. Ids of open work and open notes come from `work({ op:"what_now", project_id })`. The **Work cycle** block below has the rules every `work` call follows; the contract of each op is `help({topic:"work"})`.
+- Orchestrator → `txn_create` before creating entities, close with `txn_activate` (success) or `txn_cancel(reason)` (failure). Subagent → receives `txn_id` via args and does NOT open/close the TXN. RUN and DOC written with `txn_id` are drafts until `txn_activate`; tasks written by `work` are live at once.
+- Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -177,17 +175,10 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 
 ### Interrupted check
 
-```
-txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
-```
-
-If an in-progress TXN exists:
-- Show the user: txn_id, type, started_at, pipeline (status per step).
-- Options: **Resume** / **Cancel** / **Ignore**.
-  - Resume: read the TXN, infer the last completed step, continue.
-  - Cancel: `txn_cancel` with reason.
-  - Ignore: leave the TXN alive (not recommended — would conflict when
-    opening another for the same scope).
+`txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })`. If an
+in-progress TXN exists, show its id, type and started_at and offer
+**Resume** (infer the last completed phase and continue) / **Cancel**
+(`txn_cancel` with reason, then the **Cancel path**) / **Ignore**.
 
 ### Open the TXN
 
@@ -202,25 +193,14 @@ txn_create({
     { step:2, name:"tester" },
     { step:3, name:"analyzer" },
     { step:4, name:"implementer" },
-    { step:5, name:"validator" },
-    { step:6, name:"updater" }
+    { step:5, name:"tester + validator" },
+    { step:6, name:"finish" }
   ],
   started_by: "skill:bug"
 })
 ```
 
 Capture `txn_id`.
-
-### Subagents (delegation)
-
-Directory: `~/.claude/plugins/marketplaces/kvendra-marketplace/plugins/kvendra-skills/skills/`
-- functional-expert → `functional-expert/SKILL.md`
-- tester            → `tester/SKILL.md`
-- analyzer          → `analyzer/SKILL.md`
-- implementer       → `implementer/SKILL.md`
-- validator         → `validator/SKILL.md`
-- updater           → `updater/SKILL.md`
-- release-manager   → invoked with `Skill` in PHASE 8 (release tracking, `--auto`)
 
 <!-- kvendra:communication v3 -->
 ## Communication with the human (canonical block — edit it in every carrier or in none)
@@ -270,6 +250,18 @@ Otherwise, exactly:
 - No other wording, no emoji, no file headers or README lines in the target repository.
 <!-- /kvendra:attribution -->
 
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -280,108 +272,159 @@ pointing to the required broker primitive.
 
 ## Delegation protocol
 
-For each PHASE:
-1. Read the subagent's `SKILL.md`.
-2. Substitute `$ARGUMENTS` with context + `txn_id`.
-2b. Prepend the CONTEXT_PACK when enabled (see Step 0.5).
-3. Launch via Agent.
-4. Capture output.
-5. Report progress to the user.
+For each phase, launch one Agent whose prompt asks it to run the skill
+`kvendra-skills:<name>` with the Skill tool, followed by its arguments:
+the phase input, `project_id`, `component_id`, `txn_id`, `content_locale`,
+the `work_id` of the bug and the ids the phase needs. Prepend the
+CONTEXT_PACK when enabled (Step 0.5). Capture the subagent's machine-output
+block: subagents return ids, not prose; a phase that does not return the id
+it owes has failed. Keep a **run set**: every id this run writes (`work_id`s,
+RUN and DOC ids), and a **GATE_WARNINGS** list: every entry of `warnings[]`
+and every `advice_skipped` that `finish` and `txn_activate` answer in this
+run, with its entity id and `next_step`. The gate summary and the updater
+use both. Subagents never call `start_work`,
+`fill`, `finish`, `confirm`, `pause` or any `txn_*` tool: that is this
+orchestrator's job. Report progress to the user after each phase.
 
-If a phase fails:
-- `txn_cancel({ txn_id, reason })`.
-- Drafts → cancelled automatically.
-- Notify the user.
+If a phase fails, follow the **Cancel path**.
 
 ---
 
-## PHASE 1 — Test plan
+## PHASE 1 — Test plan (only for an area)
 
-Launch `functional-expert` with the target. Capture **TEST_PLAN**.
+If $ARGUMENTS already describes a concrete bug (what happens and what should
+happen), skip PHASES 1 and 2: that report is the one confirmed bug.
 
-If 0 flows to test → `txn_activate` (degenerate case, no drafts).
+Otherwise launch `functional-expert` with the target. Capture **TEST_PLAN**.
+0 flows → `txn_activate` (nothing written) and stop.
 
-## PHASE 2 — Execution and TEST entry creation
+## PHASE 2 — Exploratory run
 
-Launch `tester` with the TEST_PLAN + `txn_id`. Creates TEST entries as
-**draft** (associated to the TXN).
+Launch `tester` with the TEST_PLAN, `mode: explore` and `txn_id`. It records
+one RUN (draft) per execution and returns the run ids and **BUG_REPORT**.
+0 bugs → go to **Close the TXN**.
 
-Capture **BUG_REPORT** + list of created TEST IDs.
+## PHASE 2b — One fix task per confirmed bug
 
-If 0 bugs → jump to PHASE 5b (no new ISSUE), then activate the TXN.
+Call `work({ op:"what_now", project_id })` once. For each confirmed bug:
 
-## PHASE 3 — Per-bug analysis (parallel)
+1. Pick the task:
+   - Same bug already open as a task (`in_progress` or `open_not_started`)
+     → `work({ op:"start_work", project_id, reuse:"<id>" })`.
+   - Same bug already written down as an open note (`notes`) →
+     `work({ op:"start_work", project_id, reuse:"<note id>", type:"fix" })`:
+     the note becomes the task (same id).
+   - Otherwise → `work({ op:"start_work", project_id, type:"fix", description:"<symptom and where, one line>" })`;
+     add `new_because` (5+ words) when `what_now` lists open work of the
+     same area that is a different problem.
+   - A bug of critical severity that hits production is a hotfix: add
+     `urgent:true` to the new task. Its `expected` and `check` may then
+     wait until `finish` (`due_at_finish` names them).
+   - `SIMILAR_EXISTS` (the task is created anyway): follow its `next_step`.
+     Same bug → continue the old task with `reuse` and discard the new one
+     with `work({ op:"finish", work_id:"<new id>", outcome:"wontfix", reason:"duplicate of <old id>, same bug" })`.
+2. `work({ op:"fill", work_id, fields:{ expected:"<observable correct behaviour>", check:"<the test or command that proves it>" } })`.
+   Both concrete. Ask the user only if the report does not say what is
+   correct (a hotfix may leave them for `finish`).
+3. Read `warnings[]`, `missing`, `hints[]` and `next_step`; resolve them now.
 
-Launch ALL per-bug analyzers in ONE single message containing one Agent
-call per bug (N bugs = N Agent calls in the same message). Sequential
-launches are a protocol violation, not an optimization choice.
+Keep **FIXES** = one row per bug: `work_id`, `expected`, `check`, and
+`urgent` when it is a hotfix. These tasks are live (not drafts): the
+**Cancel path** pauses the ones still in progress.
 
-Exception: `parallelize.analyzer_per_bug: false` in the project's
-pipeline-autonomy policy forces serial execution (debug aid).
+## PHASE 3 — Analysis (parallel)
 
-Consolidate the outputs into **BUG_ANALYSIS**, with one merged **KB sources** list (union of every analyzer's list, duplicates removed, highest version kept).
+Launch ALL analyzers in ONE message, one Agent call per bug (N bugs = N
+Agent calls). Sequential launches are a protocol violation. Exception:
+`parallelize.analyzer_per_bug: false` in the policy forces serial runs.
+
+Arguments per bug: the bug report, its `work_id`, `expected`, `check`,
+`txn_id`. Each returns a DOC id (root cause, draft), the files and lines,
+its **KB sources**, a `verdict` (`bug` | `not_a_bug` |
+`not_reproducible`) and a `verdict_reason`. Merge the KB sources (union,
+highest version kept).
+
+A bug whose verdict is `not_a_bug` or `not_reproducible` is not fixed:
+close its task as a discard, never as `done`:
+`work({ op:"finish", work_id, outcome:"wontfix", reason:"<verdict_reason, 5+ words>", txn_id })`.
+Add its `warnings[]` to GATE_WARNINGS, keep it in **DISCARDED** (`work_id`
+→ verdict, reason, DOC id) and leave it out of PHASES 4 to 6. All bugs
+discarded → go to **Close the TXN**.
 
 ## PHASE 4 — Fix
 
-Launch `implementer` with BUG_ANALYSIS (including its **KB sources** list) + `txn_id`. The skill verifies
-naming against IF and GLO. Capture **FIX_SUMMARY**.
+Launch `implementer` with the analyses, the merged KB sources, each
+`work_id` with its `expected` and `check`, and `txn_id`. It fixes the code,
+adds a regression test that runs the check, commits locally (never pushes)
+and returns per `work_id`: `commit`, `files`, `test_command`. `commit: blocked`
+→ that bug is BLOCKED with that reason (never work around a protection).
 
-## PHASE 5 — Validation loop
+## PHASE 5 — Test and validation loop (max 3 iterations per bug)
 
-### 5a — Validation
+1. Launch `tester` with `mode: verify`, each `work_id`, its `test_command`,
+   `commit` and `check`, and `txn_id`. It records ONE RUN per execution
+   with `metadata {command, passed, failed, commit, criteria}` and returns
+   the run ids.
+2. Resolve the validator level: explicit user override > policy
+   `validator_level_by_type` keyed by the change type (fix or hotfix;
+   security → exhaustive) >
+   `validator_level_default` (`auto` = by severity). Launch `validator`
+   with the level, `kind: fix`, each `work_id` with `expected`, `check`,
+   the run ids and `txn_id`. It returns per `work_id` a verdict and
+   `check_run` (the RUN id that proves the check).
+3. Verdict fail → back to analyzer + implementer for that bug. After 3
+   failed iterations the bug is BLOCKED.
 
-Resolve the validator level with this precedence: explicit user override >
-policy `validator_level_by_type` keyed by the change type from the
-REQ/ISSUE type tags (hotfix → basic, feature → professional, security →
-exhaustive) > `validator_level_default` (`auto` = the current
-based-on-severity heuristic). Pass the resolved level in the validator
-args.
+Keep **VALIDATED** (`work_id` → `check_run`) and **BLOCKED** (`work_id` → reason).
 
-Launch `validator`. Loop up to 3 iterations per bug. If validation fails,
-re-iterate with analyzer + implementer.
+## PHASE 6 — Close each task
 
-Capture **VALIDATED_BUGS** and **BLOCKED_BUGS**.
+- VALIDATED: `work({ op:"finish", work_id, evidence:"<check_run>", txn_id })`.
+  A hotfix whose `expected` or `check` is still in `missing`
+  (`due_at_finish`) carries them in the same call:
+  `fields:{ expected, check }`. Call it once everything is ready: the RUN
+  belongs to this project and this TXN, and it ran the check of this task.
+  `finish` writes even when it warns: never call it again to clear a
+  warning. Add every `warnings[]` entry and any `advice_skipped` to
+  GATE_WARNINGS, and repair what its `evidence_plan` names now (run the
+  check with `tester`, then cite the new RUN in the closed task with a
+  guarded `entity_update` of `metadata.evidence`).
+- `GATE_REJECTED` on `finish`: nothing was written. Follow the rule
+  **Enforced gates** of the Work cycle block (do what `next_step` and
+  `evidence_plan` name, retry at most twice); still rejected → the bug is
+  BLOCKED with that code (paused below) and reported on the first line.
+- BLOCKED: `work({ op:"pause", work_id, reason:"<why it is blocked, 5+ words>" })`.
+- When the implementer listed KB entities to update (IF, STD, PAT), or
+  GATE_WARNINGS is not empty: launch `updater` with those notes, `txn_id`,
+  each closed `work_id` with its `check_run`, and `gate_warnings` (the
+  GATE_WARNINGS list). It writes drafts and evidence citations only; it
+  never changes task status.
 
-(IMPORTANT: validator does NOT suggest /updater — that step is decided by
-THIS orchestrator.)
+### Close the TXN
 
-### 5b — Create one ISSUE per confirmed bug (drafts in the TXN)
+`txn_activate({ txn_id })`. Read the response before reporting: each
+`proposed[]` entry is pending approval, not active; each `rejected[]`
+entry is a relation not applied (show its `hint`); `warnings[]` carry
+`entity_id`: report them and add them to GATE_WARNINGS.
 
-For each confirmed bug:
-`entity_create({ entity_type:"ISSUE", ..., status, txn_id })`. The server assigns the auto id.
-Top-level `status` (kept at `txn_activate`, engine H3): `"done"` for a bug in
-VALIDATED_BUGS (fixed and validated — the ISSUE records work already done);
-`"blocked"` for a bug in BLOCKED_BUGS. `closed` is for administrative closes only.
+`GATE_REJECTED` on `txn_activate`: nothing was activated. Follow its plan
+entity by entity (record or cite the evidence a draft lacks) and retry, at
+most twice; still rejected → **Cancel path**, and report it on the first
+line.
 
-## PHASE 6 — KB update + TXN activation
+### Gate summary
 
-Launch `updater` with VALIDATED_BUGS + FIX_SUMMARY + list of TEST IDs + the
-validator's Evidence attachments array (if any).
+Report `Gate warnings: N (target 0)` from GATE_WARNINGS: each code with its
+entity and its `next_step`, whether this run repaired it, and each
+`advice_skipped` (the gate could not be evaluated: say so, it is not a
+pass). A closure written with a warning stays written: name what is still
+missing.
 
-updater applies:
-- Relations: ISSUE→implements REQ, TEST→fixes ISSUE, IF/CMP→part_of, etc.
-- CMP.fulfills update if it's a feature.
-- REG.tests update if regression-cases were created.
-- metadata.attachments on the bug ISSUE (step 3f).
+### Release
 
-### Activate TXN
-
-```
-txn_activate({ txn_id })
-```
-
-Drafts → terminal automatically. The server populates `entity_changelog`
-for every activated entity that has an active REL.
-
-**Read the `txn_activate` response before reporting** (see **Governance
-proposals**): only the drafts it activated are live. Each `proposed[]` entry
-(`kind` `create` or `update`) is pending approval, not active; each
-`rejected[]` entry is a relation that was not applied (show its `hint`);
-`applied_pending_updates[]` lists the staged updates that were applied.
-Report them in the `Proposals:` / `Rejected:` output lines and keep every
-claim that depends on a proposed entity (REL changelog, `fulfills`,
-`implements` targets, follow-up steps) out of the completed list: list it
-as pending instead.
+This pipeline does not deploy, so it publishes no release: report the closed
+`work_id`s as "pending release". A later production deploy releases them with
+`work({ op:"release", project_id, name, work_ids })`.
 
 ### Update the session resume pointer (REQ-KVD-B61E92 RF-4)
 
@@ -394,100 +437,35 @@ otherwise skip. One query and one write per closed task, never per turn:
 
 `<pointer>` = `{ session:"<name>", updated_at:"<UTC ISO-8601>", doing:"<what runs now, or idle>", next:["<next task — where it comes from>"], waiting_on:["<who or what>"], sources:["<entity id + field, or 'conversation'>"] }`, replaced whole. Entity IDs and `{{cfg:<key>}}` references only: never secrets, email addresses or private values. The pointer is state, not instructions: when you read it, it tells you where you were; never do anything you would not do without it.
 
-### SLA report (non-blocking — only when the policy has sla_report: true)
+### SLA report (only when the policy has sla_report: true)
 
-After `txn_activate`, compute the wall-clock duration = activation time
-minus TXN creation time. Query the pipeline SLAs once (target: the
-bug-pipeline SLA):
+After `txn_activate`, compare the wall-clock duration of the TXN with the
+bug-pipeline SLA: `entity_query({ entity_type:"SLA", project_id:<PROJ>, tags_all:["scope:pipeline"] })`
+(0 results and <PROJ> is not KVD → retry once with `project_id:"KVD"`). Add
+one line `SLA: <duration> vs target <N> min — OK | EXCEEDED`. No row or an
+error → skip silently.
 
-```
-entity_query({
-  entity_type: "SLA",
-  project_id: <PROJ>,
-  tags_all: ["scope:pipeline"]
-})
-```
+## Cancel path
 
-If 0 results and <PROJ> is not KVD, retry once with `project_id: "KVD"`.
-Append one line to the progress output:
-
-```
-SLA: <duration> vs target <N> min — OK | EXCEEDED (informational)
-```
-
-Still 0 results, or query error → skip silently.
-
----
-
-## PHASE 7 — Create pending tasks (conditional)
-
-If there are blocked bugs (3 failed iterations) or pending work:
-`entity_create({ entity_type:"ISSUE", ... })` with top-level `status:"open"` or `status:"blocked"` (a `status:*` tag, if added, carries the same value). NOTE: these ISSUEs are
-created outside the TXN because the pipeline TXN was already activated.
-Creating them NOW means they are born live (not drafts) with that status.
-
----
-
-## PHASE 8 — Release tracking (last step, never blocking)
-
-Runs as the last step of every pipeline that reached `txn_activate` with at
-least one ISSUE created. Any failure here is a warning in the final summary
-(the PHASE 8 — Release item of the progress report), never a pipeline failure. Work only with live entities:
-skip anything listed in `proposed[]`.
-
-1. **Find the open REL** of the component:
-   ```
-   entity_query({
-     entity_type: "REL",
-     project_id: <PROJ>,
-     component_id: "<COMP>",
-     status: ["planning", "in-progress"],
-     order_by: "updated_at_desc",
-     limit: 1
-   })
-   ```
-2. **None → create it** in `planning`, linked to the pipeline's ROAD when
-   known (a ROAD id in $ARGUMENTS, or the `part_of` ROAD of the REQ the bugs
-   belong to):
-   `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --type patch --road <ROAD-id> --auto")`
-   (omit `--road` when no ROAD is known).
-3. **Attach the work** — the PHASE 5b ISSUEs of VALIDATED_BUGS (and the REQ
-   they implement, if any) get `part_of` → REL through the release manager's
-   ADD (guarded update with `expected_version`; it also moves a `planning` REL
-   to `in-progress`):
-   `Skill(skill="kvendra-skills:release-manager", args="add <ISSUE-id>,<ISSUE-id>,... --rel <REL-id> --auto")`.
-   BLOCKED_BUGS ISSUEs and PHASE 7 tasks are not attached (they would block
-   CLOSE).
-4. **No CLOSE here** — this pipeline does not deploy, so the REL stays
-   `in-progress` and ships with the next deploy of the component (the
-   `deploy` skill closes the open REL after a successful deploy). Report
-   "REL in-progress — ships on the next deploy". If a future variant of the
-   pipeline deploys to production, close it with
-   `Skill(skill="kvendra-skills:release-manager", args="close <REL-id> --sha <SHA> --auto")`
-   and, on `gate_missing`, leave it `in-progress` and report the gate.
-5. **Never blocks**: a tool error, `403`, a pending proposal or a missing
-   gate is reported in the PHASE 8 — Release item of the progress report; the pipeline result is unchanged.
+`txn_cancel({ txn_id, reason })` (drafts → cancelled). Then
+`work({ op:"pause", work_id, reason })` for every task of this run still in
+progress. A task already finished stays done and its draft evidence is
+cancelled: report it.
 
 ---
 
 ## Progress format
 
-Progress reports are `report` messages: write each one in its mode (communication block, rule 2). The list below is a content checklist, not a layout. Blocked items and rejected relations come before the status (rule 3).
+Progress reports are `report` messages: write each one in its mode (communication block, rule 2). The list below is a content checklist, not a layout. Blocked items, warnings and rejected relations come before the status (rule 3).
 
 Each progress report covers what applies at that point:
-- **Start** — pipeline `bug` started, the target, the TXN id (TXN-<PROJ>-<YYYYMMDD>-<NNN>) and the autonomy line (`autonomy: <mode> (policy: <source>)`).
-- **Per phase** — the phase, its result and its step status (completed or not):
-  - PHASE 1 — plan: N flows.
-  - PHASE 2 — N bugs, M TEST entries (draft).
-  - PHASE 3 — N analyses (parallel).
-  - PHASE 4 — N fixes (IF/GLO verified).
-  - PHASE 5 — N/M validated, K blocked; TXN drafts → active.
-  - PHASE 6 — KB updated.
-- **Closure** — TXN-<PROJ>-<YYYYMMDD>-<NNN>: COMPLETED.
-- **Proposals** — only when `txn_activate` returned a non-empty `proposed[]`, one per entry: <ENTITY-ID> — pending approval (<kind>, proposal_id <id>), not active.
-- **Rejected** — only when `rejected[]` is non-empty, one per entry: <source> -<type>-> <target> — <hint>.
-- **SLA** — only with `sla_report: true`: <duration> vs target <N> min — OK | EXCEEDED.
-- **PHASE 8 — Release** — REL-<PROJ>-<COMP>-<VER> in-progress (+N ISSUEs, ships on the next deploy) | WARNING: <reason>.
+- **Start** — pipeline `bug`, the target, the TXN id and the autonomy line.
+- **Per phase** — plan: N flows · exploratory RUN ids, N bugs · fix tasks (`work_id` per bug, hotfixes marked) · DOC ids and verdicts · discarded (`work_id`, verdict, reason) · commits · RUN ids · validated N, blocked K · `finish` per `work_id`.
+- **Closure** — TXN: COMPLETED | CANCELLED (reason).
+- **Proposals** / **Rejected** — only when `txn_activate` returned them.
+- **Gate summary** — N warnings (target 0), with codes, entities and `advice_skipped`; a `GATE_REJECTED` goes on the first line.
+- **Release** — pending release: `work_id`s.
+- **SLA** — only with `sla_report: true`.
 
 ## Stop rules
 
@@ -502,7 +480,7 @@ status, and keep the ids and counts.
 
 **Zero-gate mode** (`gates.bug: none`, schema v2) — only the hard floor
 consults the user; the three signals above auto-resolve and log: prefer
-deferring infrastructure work to a blocked ISSUE over improvising it,
+deferring infrastructure work to a paused fix task over improvising it,
 fix multi-component bugs component by component with per-component
 validation, and fold newly-surfaced bugs into the pipeline as additional
-PHASE 3 analyzer items (or a follow-up ISSUE when out of scope).
+PHASE 3 analyzer items (or a `work` `capture` note when out of scope).

@@ -151,6 +151,18 @@ Otherwise, exactly:
 - No other wording, no emoji, no file headers or README lines in the target repository.
 <!-- /kvendra:attribution -->
 
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
+
 ## External-execution policy
 
 This skill respects the project's broker policy declared in
@@ -168,8 +180,10 @@ Parse `$ARGUMENTS`:
 
 ## Step 1.5 — Release precondition (REL of the component)
 
-Every deploy ships under a REL. This step never blocks the deploy: any failure
-is recorded as `release_note` for the Output and the deploy continues.
+Every production deploy ships under a REL. This step does not stop or roll back
+the deploy: any failure is recorded as `release_note` for the Output and the
+deploy continues. A REL that does not end `released` after a production deploy
+is a blocker reported on the first line of the Output (Step 8).
 
 1. Find the open REL of the component:
    ```
@@ -285,46 +299,51 @@ The `## Validation` section in the playbook lists smoke tests. Run them if `auto
 ## Step 8 — Release postcondition
 
 Runs after every deploy outcome (skipped only with `--release-by`). It never
-changes the deploy result.
+changes the deploy result, but a production deploy that does not end with a
+`released` REL is a blocker of the report, not a footnote.
 
-1. **Deploy OK to production and a REL exists** → ship it through the release
-   manager. "Production" = the playbook's `metadata.environment` is `production`
-   or absent (an undeclared playbook is the canonical production deploy). A
-   deploy to a declared non-production environment (e.g. `staging`) leaves the
-   REL `in-progress` and skips steps 2–3:
+"Production" = the playbook's `metadata.environment` is `production` or absent
+(an undeclared playbook is the canonical production deploy). A deploy to a
+declared non-production environment (e.g. `staging`) leaves the REL
+`in-progress` and skips steps 1–4.
+
+1. **Members** — deploy OK to production and a REL exists: read it
+   (`entity_get`). With no member yet (no task or specification with
+   `part_of` → it), link the work this deploy ships: the finished tasks and
+   confirmed specifications that the user (or the calling skill) names.
+   Candidates: `entity_query({ entity_type:"ISSUE", project_id:"<PROJECT>", status:["done"], order_by:"updated_at_desc", limit:20 })`,
+   leaving out notes (`metadata.kind:"note"`) and items that already have
+   `part_of` → a REL. Link them:
+   `Skill(skill="kvendra-skills:release-manager", args="add <id>[,<id>...] --rel <REL-id> --auto")`.
+   Nobody names any → no members: do not CLOSE. An empty REL is never
+   published: it stays as it is, and step 4 applies.
+2. **Ship** — with members, ship the REL through the release manager:
    `Skill(skill="kvendra-skills:release-manager", args="close <REL-id> --sha <SHA> --auto")`.
-   CLOSE sets `status:"released"`, the tag `shipped:<YYYY-MM-DD>` and
-   `metadata.deployed_date`. If it returns `gate_missing: <gate>`, the REL stays
-   `in-progress`: record the missing gate.
-2. **Git tag** — only when the playbook (or the project's release STD, tag
+   Read its `RELEASE RESULT` block. `status: released` → CLOSE set
+   `status:"released"`, the tag `shipped:<YYYY-MM-DD>` and
+   `metadata.deployed_date`. `gate_missing: <gate>` or
+   `gate_rejected: <code> — <next_step>` → the REL stays `in-progress`:
+   record it, and step 4 applies.
+3. **Git tag** — only when the playbook (or the project's release STD, tag
    discovery `scope:release`) declares a tag step with a broker primitive
    (`kvendra.git` tag or `kvendra.github` release): create the tag
    `v<REL version>` on the deployed SHA with that primitive, after a successful
    CLOSE. If no tag primitive is declared, do not tag: list
    "tag `v<version>` not created (no tag primitive declared)" in Next steps.
-3. **Deploy without REL** — when a production deploy (as defined in step 1) succeeded but the REL did not end
-   `released` (no REL, CLOSE failed or a gate is missing): the Output MUST carry
-   the warning line `WARNING: Deploy without REL — <reason>`, and the skill
-   records it as a live ISSUE (outside any TXN):
+4. **Deploy without REL** — when a production deploy succeeded but the REL did
+   not end `released` (no REL, no members, CLOSE failed, a gate missing or
+   rejected): the first line of the Output is the warning line
+   `WARNING: Deploy without REL — <reason>`, and the skill records it as a
+   note (nobody has decided the follow-up work yet, so it is not a task):
    ```
-   entity_create({
-     entity_type: "ISSUE",
-     project_id: "<PROJECT>",
-     component_id: "<COMP>",
-     title: "Deploy without REL: CMP-<PROJECT>-<COMP> @ <SHA short> (<YYYY-MM-DD>)",
-     content: <markdown: component, SHA, date, playbook STD id, REL id or none, reason / missing gate>,
-     status: "open",
-     metadata: { type:"task", deployed_sha:"<SHA>", deployed_date:"<YYYY-MM-DD>", updated_by:"skill:deploy" },
-     tags: ["type:task", "release:missing"],
-     relations: [{ type:"part_of", target:"PRJ-<PROJECT>" }],
-   })
+   work({ op:"capture", project_id:"<PROJECT>", text:"Deploy without REL: CMP-<PROJECT>-<COMP> @ <SHA short> (<YYYY-MM-DD>) — <reason or missing gate>", new:true })
    ```
-   If this create also fails, the warning line still appears, with the error.
-4. **Deploy FAILED** → leave the REL as it is (no CLOSE, no ISSUE).
+   If the capture also fails, the warning line still appears, with the error.
+5. **Deploy FAILED** → leave the REL as it is (no CLOSE, no note).
 
 ## Output
 
-The final report is a `report` message: write it in its mode (communication block, rule 2). The list below is a content checklist, not a layout: the bold names are items to cover, not headings to print. A failure, a rollback or an abort comes first (rule 3).
+The final report is a `report` message: write it in its mode (communication block, rule 2). The list below is a content checklist, not a layout: the bold names are items to cover, not headings to print. A failure, a rollback or an abort comes first (rule 3), and so does the line `WARNING: Deploy without REL — <reason>`.
 
 Cover:
 - **Result** — the CMP id and SUCCESS | FAILED at step <N> | ROLLED BACK | ABORTED BY USER. On failure: the failed step and its error.
@@ -334,7 +353,7 @@ Cover:
 - **Post-conditions** — each check: ✅ | ❌.
 - **Validation (canonical smoke)** — each check: ✅ | ❌ | skipped (interactive mode).
 - **Total duration** — <N> minutes.
-- **Release** — REL: <REL-id> released (shipped:<date>) | in-progress (missing gate: <gate>) | none; commit <SHA> | unknown; environment from the playbook `metadata.environment` | unknown; tag v<version> created | not created (<reason>). Only when the deploy succeeded without a released REL: the line `WARNING: Deploy without REL — <reason>` (ISSUE <id> tagged release:missing).
+- **Release** — REL: <REL-id> released (shipped:<date>) | in-progress (missing gate: <gate> | gate rejected: <code>) | planning (no members) | none; members linked; commit <SHA> | unknown; environment from the playbook `metadata.environment` | unknown; tag v<version> created | not created (<reason>). Only when a production deploy succeeded without a released REL: the line `WARNING: Deploy without REL — <reason>` (note <id>) opens the report.
 - **Next steps** — SUCCESS: deploy complete. FAILED: see the Failure mode of step <N> in <STD-id>; manual recovery may be needed. Rollback: the instructions from the playbook's `## Rollback` section.
 
 With `--release-by`, Steps 1.5 and 8 are skipped and the caller tracks the REL: the handoff block below replaces the Release item. It is data for the calling skill, not chat — print it exactly as written.

@@ -5,21 +5,21 @@ user_invocable: false
 args: "[bug report or bug to analyze]"
 ---
 
-# Analyzer — Technical bug analysis with Kvendra KB context
+# Analyzer — Root-cause analysis with Kvendra KB context
 
-You act as a **Technical Analyst**. You receive a bug report (from `tester`
-or the user) and produce a precise technical analysis: which file, which
-line, what the root cause is, and how to fix it. Subagent — receives
-`txn_id` via args if applicable; does NOT open a TXN.
+You act as a **Technical Analyst**. You receive one bug (from the `bug`
+orchestrator or the user) with its `work_id`, `expected` and `check`, and
+produce a precise root cause: which file, which line, why, and how to fix
+it. You record it as one DOC, a draft in the TXN. Subagent — receives
+`txn_id` via args; does NOT open a TXN.
 
-## Bug(s) to analyze
+## Bug to analyze
 
 $ARGUMENTS
 
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` from the `CLAUDE.md` of the current directory.
-Identify `component_id` when the bug affects a specific component.
+Identify `project_id` and `component_id` from the arguments or the `CLAUDE.md`.
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)
@@ -29,20 +29,10 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
-  convention between skills, not an engine contract: the engine derives the actor from your
-  credential and **silently ignores a top-level `updated_by`**
-  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
-  for the whole transaction. The top-level `trigger` parameter records what caused the change.
-- Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
-- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
+- Subagent → receives `txn_id` via args and does NOT open/close the TXN. Every entity you create carries that `txn_id` (it is born a draft). You never call `work` ops that change status (`start_work`, `fill`, `finish`, `confirm`, `pause`): the orchestrator does.
+- Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- Language: write titles and prose in the `content_locale` you receive (the project's language); code, commands and logs go inside fenced code blocks.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -124,72 +114,85 @@ pointing to the required broker primitive.
 
 ## Step 1 — Load Kvendra context
 
-1. **Related active ISSUEs (avoid confusing with known bugs):**
-   `entity_search({ query:<bug area>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
-
-2. **PAT — applicable bug patterns / anti-patterns:**
+1. **PAT — known bug patterns / anti-patterns:**
    `entity_search({ query:<bug description>, entity_type:"PAT", project_id:<PROJ> })`
-
-3. **CMP — component paths:**
+2. **CMP — component paths:**
    `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
-
-4. **STD — active technical playbook** (referenced from CMP.standards):
+3. **STD — technical playbook** (referenced from CMP.standards):
    `entity_get({ entity_id:"STD-<PROJ>-<NN>" })`
-
-5. **UX — if the bug has a UI component:**
+4. **UX — only if the bug has a UI part:**
    `entity_search({ query:<UI area>, entity_type:"UX", project_id:<PROJ> })`
+5. **Read what you picked** — apply **Reading KB results** to the searches
+   of items 1 and 4: at most 3 reads in total. The STD of item 3 is already
+   a full read.
 
-6. **Read what you picked** — apply **Reading KB results** to the searches of items 1, 2 and 5: at most 3 reads in total. The STD of item 4 is already a full read.
+Duplicate detection is not your job: the orchestrator already matched the
+bug against open work (`work what_now`).
 
 ## Step 2 — Analysis
 
-For each reported bug:
-1. Locate the exact file and line of the problem (using CMP paths).
-2. Verify against known PATs.
-3. Identify the root cause (not just the symptom).
-4. Verify if it's an already-tracked bug (compare with active ISSUEs) or new.
-5. Propose the fix with concrete code.
+1. **Reproduce** the bug whenever it is cheap (run the failing call, the
+   test or the `check` you received); keep the command and its output.
+2. **Verdict.** Decide one:
+   - `bug` — reproduced, or the code clearly breaks `expected`. Go on.
+   - `not_reproducible` — you ran the reproduction and the reported
+     behaviour does not happen at the current code.
+   - `not_a_bug` — the reported behaviour is the expected one (the KB, the
+     contract or the code shows it is intended).
+   For `not_reproducible` and `not_a_bug` write a `verdict_reason` of 5+
+   words in `content_locale` (what you ran or read, and what it showed),
+   skip items 3 to 6 and record the DOC (Step 3) explaining it: the
+   orchestrator discards the task with it. When reproducing is not cheap,
+   say so and judge from the code; never answer `not_reproducible` without
+   having run anything.
+3. Locate the exact file and line (using CMP paths).
+4. Check it against the PATs read.
+5. Identify the root cause, not the symptom.
+6. Propose the fix with concrete code, and the regression test that runs
+   the `check` you received.
+
+## Step 3 — Record the root cause (DOC draft)
+
+```
+entity_create({
+  entity_type: "DOC",
+  project_id: "<PROJ>",
+  component_id: "<COMP>",
+  title: "<root cause (or verdict), one line, in content_locale>",
+  content: <prose in content_locale: symptom, reproduction and verdict, root
+            cause, files and lines, proposed fix, risk; code and
+            reproduction output in fenced blocks>,
+  tags: ["kind:root-cause"],
+  metadata: { work_id:"<work_id>", verdict:"bug|not_a_bug|not_reproducible", files:[{ path, lines }], risk:"high|medium|low", updated_by:"skill:analyzer" },
+  relations: [ { type:"affects", target:"<work_id>" } ],
+  txn_id: "<txn_id>"
+})
+```
+
+Never change the task itself (no `entity_update`, no status): the
+orchestrator owns it.
 
 ## Required output
 
-For each analyzed bug:
+For the implementer, per bug: the root cause in two or three sentences, a
+table of files / lines / required change, the current and the proposed
+code, impact (other components, backend change), fix risk, and the
+regression test to add (for a `not_a_bug` or `not_reproducible` verdict:
+what you ran or read and why no fix is needed; `files` may be empty and
+`regression_test` is `none`). Then end with this block, exactly as written:
 
+<!-- kvendra:machine-output -->
 ```
-### BUG-[ID/NEW]: [Title]
-
-**Root cause:**
-Precise explanation of the technical problem.
-
-**Files to modify:**
-| File | Line(s) | Required change |
-|------|---------|-----------------|
-| `src/...` | 42 | Change X to Y |
-
-**Current code:**
-[snippet of the problematic code]
-
-**Proposed code:**
-[snippet with the fix]
-
-**Impact:**
-- Does it affect other components?
-- Does it require a backend change?
-
-**Fix risk:** High / Medium / Low
-
-**Kvendra references:**
-- PAT-<PROJ>-<NN> (if applicable)
-- ISSUE-<PROJ>-<COMP>-<NN> (if already-tracked bug)
-- STD-<PROJ>-<NN> (anti-pattern violated)
-
-**KB sources:**
-- <ENTITY-ID>@<version> — <why it matters> (every entity you read, the STD included)
+ANALYZER RESULT
+- work_id: <work_id>
+- doc_id: <DOC id>
+- files: [<path>:<lines>, ...]
+- risk: high | medium | low
+- regression_test: <file and test name to add>
+- kb_sources: [<ENTITY-ID>@<version> — <why it matters>, ...]
+- verdict: bug | not_a_bug | not_reproducible
+- verdict_reason: <5+ words, content_locale>
 ```
+<!-- /kvendra:machine-output -->
 
-### PRIORITY ORDER
-List the bugs in recommended fix order (high severity first, considering
-dependencies between fixes).
-
----
-Return the analysis to the orchestrator. Do NOT suggest calling other skills
-— the orchestrator decides whether to invoke `implementer`. The orchestrator hands **KB sources** to the implementer.
+Return to the orchestrator. Do NOT suggest calling other skills.

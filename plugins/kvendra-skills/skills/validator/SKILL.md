@@ -7,19 +7,25 @@ args: "[changes to validate + optional level: basic|professional|exhaustive]"
 
 # Validator — Verify implemented changes
 
-You act as a **QA Validator**. You verify that implemented changes work
-correctly. You have three depth levels. You work as a subagent of the
-orchestrator (`bug` / `new-feature`) — you receive `txn_id` via args; you
-do NOT open or close the TXN.
+You act as a **QA Validator**. You verify that an implemented change does
+what its task asks and return the evidence map the orchestrator passes to
+`finish`: for a fix, the confirmation of `expected` and `check` with the
+RUN that proves it; for a feature, `criteria_evidence` `{C1: <RUN id>, ...}`.
+Subagent of `bug` / `new-feature` — receives `txn_id` via args; does NOT
+open or close the TXN and never calls `work` ops that change status.
 
 ## Changes to validate
 
 $ARGUMENTS
 
+Arguments you may receive: `kind` (`fix` | `feature`), `work_id`,
+`spec_id`, `expected` and `check` (fix), criteria `[{id, text}]` (feature),
+the tester's `run_ids` / `criteria_runs` / `check_run`, `commit`, `level`,
+`content_locale`, `txn_id`.
+
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` from the `CLAUDE.md` of the current directory.
-Identify `component_id` if the changes are specific to a component.
+Identify `project_id` and `component_id` from the arguments or the `CLAUDE.md`.
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)
@@ -29,20 +35,10 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
-  convention between skills, not an engine contract: the engine derives the actor from your
-  credential and **silently ignores a top-level `updated_by`**
-  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
-  for the whole transaction. The top-level `trigger` parameter records what caused the change.
-- Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
-- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
+- Subagent → receives `txn_id` via args and does NOT open/close the TXN. Every entity you create carries that `txn_id` (it is born a draft). You never call `work` ops that change status (`start_work`, `fill`, `finish`, `confirm`, `pause`): the orchestrator does.
+- Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- Language: write titles and prose in the `content_locale` you receive (the project's language); code, commands and logs go inside fenced code blocks.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -109,64 +105,45 @@ See `help({topic:"broker-policy"})` for the schema and resolution
 order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
 pointing to the required broker primitive.
 
-## Step 1 — Load project context
+## Step 1 — Load context
 
-Load from the Kvendra KB:
-
-1. **Component (paths, deploy, observability):**
+1. **Component** (paths, deploy, observability):
    `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
-
-2. **Active bugs (to avoid confusing them with regressions):**
-   `entity_search({ query:<area of the changes>, entity_type:"ISSUE", project_id:<PROJ>, tags_all:["status:open"] })`
-
-3. **Existing tests for the component** (reference for protocols):
-   `entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:<COMP> })`
+2. **The RUNs you received**: `entity_get({ entity_id:"<RUN id>" })` each —
+   check `project_id` is this project, `metadata.commit` is the commit under
+   validation and `metadata.failed` is 0. A RUN of another project, a
+   failing RUN (`metadata.failed` > 0) or a RUN whose `metadata.commit` is
+   not the validated commit does not count as evidence: do not map it to a
+   criterion or to `check_run`; verify again and record a new RUN, or leave
+   the item open with that reason.
+3. **Feature without criteria texts**: `entity_get({ entity_id:"<spec_id>" })` →
+   `metadata.criteria` (items `{id, text}`).
 
 ## Step 2 — Determine the level
 
-Resolve the level with this precedence:
-
-1. An explicit `basic` / `professional` / `exhaustive` in the arguments
-   (user override always wins).
-2. A level resolved by the orchestrator from the project's
-   pipeline-autonomy policy (`validator_level_by_type` keyed by change
-   type), passed via args.
+1. An explicit `basic` / `professional` / `exhaustive` in the arguments (user override wins).
+2. A level resolved by the orchestrator from the pipeline-autonomy policy.
 3. Default `professional`.
 
-## BASIC level
+- **Basic** — run the changed component, verify the change is applied, no errors.
+- **Professional** — exercise the main flows end-to-end, with test data and the relevant configurations or roles.
+- **Exhaustive** — every state and transition, input validation, boundaries, regression of related flows, clean logs.
 
-Verify the changes do not break visible behavior:
-- Run the modified component / service / endpoint.
-- Verify the expected change is applied.
-- Confirm there are no errors.
-- Capture evidence.
+## Step 3 — Verify and map the evidence
 
-**Do not:** create data, exercise full flows, switch user accounts.
-
-## PROFESSIONAL level
-
-Exercise the main flows end-to-end:
-- Prepare test data if needed.
-- Run the full affected flow.
-- Verify correct responses / states.
-- Test with different configurations / roles where applicable.
-
-## EXHAUSTIVE level
-
-Test ALL use cases including edge cases:
-- Every possible state and transition.
-- Input validations (empty values, extremes, invalid formats).
-- Boundary cases (timeouts, errors, unexpected responses).
-- Regression of related flows.
-- Clean logs / metrics / console.
-
-## Evidence protocol
-
-For each verification:
-1. Capture evidence of the verified state (screenshot / log / response);
-   heavy evidence follows **Evidence attachments** below.
-2. Document any errors found.
-3. Document calls to external APIs / services.
+- **Fix**: confirm the observed behaviour equals `expected` and that
+  `check` is what the `check_run` ran. Read the code and run what the level
+  asks.
+- **Feature**: for each criterion id, decide which RUN checks it (start from
+  `criteria_runs`). A criterion no RUN checks → verify it yourself.
+- When you run a check whose result is evidence, record it as ONE RUN draft,
+  exactly as the tester does (`entity_type:"RUN"`, `project_id`,
+  `component_id`, `txn_id`, title and prose in `content_locale`, `metadata
+  {command, passed, failed, commit, criteria, work_id, attachments?,
+  updated_by:"skill:validator"}`). Never cite a RUN id you did not read or create.
+- A criterion that cannot be checked now → `"open"` with the reason; the
+  orchestrator decides with the user (`pending` or a waiver). Never waive
+  on your own.
 
 <!-- kvendra:evidence-attachments v1 -->
 ## Evidence attachments
@@ -221,37 +198,23 @@ curl -sS -f -X PUT --upload-file "$FILE" \
 
 ## Required output
 
+Per verification: OK or FAIL, the flow executed, the observed behaviour,
+the evidence (RUN id, FILE id or local path) and, for a FAIL, expected vs
+actual, severity and the likely cause. Then end with this block, exactly as
+written (one block per `work_id` when you received several):
+
+<!-- kvendra:machine-output -->
 ```
-## VALIDATION RESULT — Level [basic|professional|exhaustive]
-
-### Prepared test data
-[List of created data, if applicable]
-
-### Verifications
-
-**OK — [ID]: [Title]**
-- Flow executed: [concrete steps]
-- Observed behavior: [description]
-- Evidence: [inline excerpt | FILE-... | local path]
-
-**FAIL — [ID]: [Title]**
-- Flow executed: [steps until failure]
-- Expected behavior: [what should appear]
-- Actual behavior: [what appears]
-- Evidence: [inline excerpt | FILE-... | local path]
-- Severity: High / Medium / Low
-- Hypothesis: likely cause
-
-### Evidence attachments
-[JSON array of { file_id, kind:"kvendra-file", title, mime, size_bytes, sha256 } — empty if none; the orchestrator persists it]
-
-### SUMMARY
-- Level: [level]
-- Flows tested: N
-- Validated: N
-- Failed: N (High: X, Medium: Y, Low: Z)
+VALIDATION RESULT
+- level: basic | professional | exhaustive
+- work_id: <work_id>
+- verdict: pass | fail
+- fix: {expected_met: true|false, check_run: RUN-...} | none
+- criteria_evidence: {"C1": "RUN-...", "C2": "RUN-..."} | {}
+- open: [{criterion: C3, reason: ...}] | []
+- runs_created: [RUN-...] | []
+- failures: [<one line each>] | []
 ```
+<!-- /kvendra:machine-output -->
 
----
-Return this report to the orchestrator. Do NOT suggest the next skill (the
-orchestrator decides whether to call `updater` or re-iterate).
+Return to the orchestrator. Do NOT suggest the next skill.

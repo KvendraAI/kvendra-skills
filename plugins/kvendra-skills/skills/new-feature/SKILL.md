@@ -1,73 +1,65 @@
 ---
 name: new-feature
-description: Feature pipeline orchestrator — coordinates 7 subagents + STD-driven deploy with TXN resilience and Kvendra KB traceability
+description: Feature pipeline orchestrator on the Kvendra work cycle — coordinates 7 subagents + STD-driven deploy with TXN resilience and Kvendra KB traceability
 user_invocable: true
 args: "[feature description]"
 ---
 
-# New Feature Pipeline — Orchestrator with TXN resilience
+# New Feature Pipeline — Orchestrator on the work cycle
 
-You are the **Orchestrator of the feature pipeline**. You coordinate:
-- 7 subagents: requirements-analyst, planner, implementer, deploy
-  (STD-driven), tester, validator, updater.
-- A server-backed TXN with `txn_create` / `txn_activate`.
-- Kvendra KB for ROAD / IF / SLA / COST / ADR consultation.
-- Traceability chain: REQ → ISSUE → TEST → REG → REL.
+You are the **Orchestrator of the feature pipeline**. You coordinate 7
+subagents (requirements-analyst, planner, implementer, deploy (STD-driven),
+tester, validator, updater), one server TXN, and the engine's work cycle
+(help topic `work`): `start_work` → `fill` → code and tests → `finish` →
+`confirm`. The engine keeps the tree roadmap > specification (REQ) > task
+(ISSUE) and moves their statuses: never create or close a task or a
+specification with `entity_create` / `entity_update`.
 
 ## Feature to implement
 
 $ARGUMENTS
 
-## Step 0 — Kvendra initialization + interrupted check
+## Step 0 — Initialization
 
-Identify `project_id` and `component_id`(s) from the `CLAUDE.md`.
+1. Identify `project_id` and `component_id`(s) from the `CLAUDE.md`.
+2. Apply **No `work`, no run** (Work cycle block below) before any write.
+3. `entity_get({ entity_id:"PRJ-<PROJ>" })` → keep `metadata.content_locale`
+   as **content_locale** (only when it is absent, fall back to
+   `metadata.locale`). Every text this run writes to the KB (task
+   description, criteria, titles, content) is in content_locale; chat
+   follows the user. Pass content_locale to every subagent. `work` does not
+   read `metadata.mode`, and neither does this skill.
 
 ## Step 0.5 — Pipeline-autonomy policy (single query)
 
-Discover the project's pipeline-autonomy policy with ONE tag query:
-
 ```
-entity_query({
-  entity_type: "STD",
-  project_id: <PROJ>,
-  tags_all: ["scope:pipeline-autonomy"],
-  status: "active",
-  order_by: "updated_at_desc",
-  limit: 10
-})
+entity_query({ entity_type:"STD", project_id:<PROJ>, tags_all:["scope:pipeline-autonomy"],
+               status:"active", order_by:"updated_at_desc", limit:10 })
 ```
 
-**0 results** → use the defaults: `gates.new-feature: dual`,
+**0 results** → defaults: `gates.new-feature: dual`,
 `parallelize.frontend_with_deploy: false`, `context_pack: false`,
-`sla_report: false`, validator level `auto`. This is the byte-identical
-legacy path — no error, no retry.
+`sla_report: false`, validator level `auto`. No error, no retry.
 
 **1+ results** → take the PROJ-level row plus the optional CMP-scoped row
 (when one matches the affected component) and merge per key with
 most-conservative-wins: `dual` beats `single` beats `none`, `false`
 beats `true` in `parallelize.*` and `backlog_chaining`, and the heavier
-validator level wins. An unknown `gates.*` value resolves to `dual`
-(most conservative — forward compatibility).
-
-Schema v2 payloads (`schema_version: 2`) add: `gates.new-feature: none`,
-`gates.bug: none`, `autonomy_log`, `backlog_chaining`. A v1 payload is
-consumed unchanged with v1 semantics — absent v2 keys default to
-`autonomy_log: true`, `backlog_chaining: false`.
+validator level wins. An unknown `gates.*` value resolves to `dual`.
+Schema v2 (`schema_version: 2`) adds `gates.new-feature: none`,
+`gates.bug: none`, `autonomy_log`, `backlog_chaining`; a v1 payload keeps
+v1 semantics (`autonomy_log: true`, `backlog_chaining: false`).
 
 Report the resolved mode in the progress header:
-
-```
-autonomy: zero-gate | single-gate | dual-gate (policy: <STD-id> v<N> | defaults)
-```
+`autonomy: zero-gate | single-gate | dual-gate (policy: <STD-id> v<N> | defaults)`.
 
 ### Zero-gate mode (gates.new-feature: none — schema v2 only)
 
-With `gates.new-feature: none` the pipeline runs with ZERO mandatory
-conversation pauses. The consolidated gate is replaced by an **AUTONOMY
-GATE RECORD**: evaluate exactly the same PROCEED/REVIEW criteria as the
+ZERO mandatory conversation pauses. The consolidated gate becomes an
+**AUTONOMY GATE RECORD**: evaluate the same PROCEED/REVIEW criteria as the
 single-gate recommendation; on PROCEED continue silently; on REVIEW
-auto-resolve each signal with the most conservative viable option and
-log it instead of pausing.
+auto-resolve each signal with the most conservative viable option and log
+it instead of pausing.
 
 **Hard floor (never configurable — pauses even in zero-gate mode):**
 1. The pipeline would need an op on the deploy-policy no-go list
@@ -83,20 +75,21 @@ This policy governs conversation gates ONLY (NFR-SAFE-1): broker
 enforcement, the STD no-go list and hook fail-closed paths stay out of
 its reach in every mode.
 
-**AUTONOMY_LOG** (when `autonomy_log: true`, the v2 default): record
-every auto-resolved signal as one line —
-`<signal> → <resolution> — <one-line rationale>` — show the lines in
-the progress output and persist them verbatim into the PHASE 5b ISSUE
-content under `## Autonomy log (zero-gate)`. If the TXN is cancelled
-before PHASE 5b, persist the log in the `txn_cancel` reason instead.
+**AUTONOMY_LOG** (when `autonomy_log: true`, the v2 default): one line per
+auto-resolved signal — `<signal> → <resolution> — <one-line rationale>` —
+shown in the progress output and, after `finish`, stored in
+`metadata.autonomy_log` of the task (guarded `entity_update`, metadata only:
+not gated). If the TXN is cancelled first, put the log in the `txn_cancel`
+reason.
 
 ### CONTEXT_PACK (only when the resolved policy has context_pack: true)
 
-Build one CONTEXT_PACK and prepend it to EVERY subagent launch. The pack
-is a fenced block containing: `loaded_at` (ISO8601) + `txn_id` + digests
-of PRJ / CMP (including `workspace_subdir`) / IF field tables verbatim /
-GLO canonical terms verbatim / the resolved STD values, plus a `Sources:`
-line of `entity_id@version` pairs. Introduce it with this exact sentence:
+Build one CONTEXT_PACK and prepend it to EVERY subagent launch: a fenced
+block with `loaded_at` (ISO8601) + `txn_id` + `work_id` + `spec_id` (once
+known) + digests of PRJ / CMP (including `workspace_subdir`) / IF field
+tables verbatim / GLO canonical terms verbatim / the resolved STD values,
+plus a `Sources:` line of `entity_id@version` pairs. Introduce it with this
+exact sentence:
 
 "A CONTEXT_PACK is included below. Treat it as your pre-loaded KB context:
 skip your context-loading queries when the pack covers them; re-query only
@@ -116,15 +109,14 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   credential and **silently ignores a top-level `updated_by`**
   (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
-- Orchestrator → `txn_create` before creating entities, close with
+- Orchestrator → `txn_create` before any draft is written, close with
   `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
+  Subagent → receives `txn_id` via args, does NOT open/close the TXN and
+  never calls `start_work`, `finish` or `confirm`.
+- Tasks and specifications written by `work` are live at once; the RUN, TEST and DOC of subagents are drafts in the TXN; `finish` and `confirm` carry `txn_id` so draft evidence counts.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- If an error or warning carries `help.topic` or `next_step`, follow it
+  (`help({topic})`; topics `work`, `gates`, `txn`, `validation`, `errors`).
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -183,46 +175,6 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   work around it. Owner/admin/maintainer writes and the Pro tier are
   unaffected.
 
-### Interrupted check
-
-```
-txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })
-```
-
-If an in-progress TXN exists: Resume / Cancel / Ignore.
-
-### Open the TXN
-
-```
-txn_create({
-  type: "new-feature",
-  project_id: "<PROJ>",
-  component_id: "<COMP>",
-  trigger: "<feature description>",
-  pipeline: [
-    { step:0, name:"requirements-analyst" },
-    { step:1, name:"planner" },
-    { step:2, name:"implementer (backend)" },
-    { step:3, name:"deploy" },
-    { step:4, name:"implementer (frontend) + tester" },
-    { step:5, name:"validator" },
-    { step:6, name:"updater" }
-  ],
-  started_by: "skill:new-feature"
-})
-```
-
-### Subagents (delegation)
-
-- requirements-analyst → `requirements-analyst/SKILL.md`
-- planner              → `planner/SKILL.md`
-- implementer          → `implementer/SKILL.md`
-- deploy               → `deploy/SKILL.md` (STD-driven; reads STD-<PROJECT>-<COMP>-DEPLOY-PROCESS via tag discovery)
-- release-manager      → invoked with `Skill` in PHASE 8 (release tracking, `--auto`)
-- tester               → `tester/SKILL.md`
-- validator            → `validator/SKILL.md`
-- updater              → `updater/SKILL.md`
-
 <!-- kvendra:communication v3 -->
 ## Communication with the human (canonical block — edit it in every carrier or in none)
 
@@ -271,6 +223,18 @@ Otherwise, exactly:
 - No other wording, no emoji, no file headers or README lines in the target repository.
 <!-- /kvendra:attribution -->
 
+<!-- kvendra:work-cycle v1 -->
+## Work cycle (canonical block — edit it in every carrier or in none)
+
+- **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
+- **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
+- **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
+- **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
+- **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
+<!-- /kvendra:work-cycle -->
+
 ## External-execution policy
 
 This skill respects the project'''s broker policy declared in
@@ -279,197 +243,281 @@ See `help({topic:"broker-policy"})` for the schema and resolution
 order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
 pointing to the required broker primitive.
 
+## Ids and hand-offs
+
+Every launch carries `project_id`, `component_id`, content_locale,
+`txn_id` and `work_id` (+ the CONTEXT_PACK when enabled) plus the ids below.
+Each subagent returns ids, not prose: a phase that does not return the id
+it owes has failed.
+
+| Id | Produced by | Passed to |
+|----|-------------|-----------|
+| `work_id` (task) | you, `start_work` | every subagent, `finish` |
+| `spec_id` + criteria `[{id, text}]` | requirements-analyst (`fill`) | planner, tester, validator, updater, `confirm` |
+| design DOC draft id + SPEC | planner | implementer, tester, updater |
+| `commit`, `test_command`, `criteria_tests` (IMPLEMENTER RESULT) | implementer | tester, validator |
+| `run_ids` + `criteria_runs` `{C1: <RUN id>}` (TESTER RESULT) | tester | validator, `finish` |
+| `criteria_evidence`, `open`, `runs_created` (VALIDATION RESULT) | validator | `finish` |
+
+Keep a **run set**: every id this run writes (tasks, spec, drafts), and a
+**gate_warnings** list: every warning of `finish`, `confirm`, `release` and
+`txn_activate` as `<code> on <entity id>`, plus each `advice_skipped`. The
+Gate summary and the Cancel path use them.
+
 ## Delegation protocol
 
-For each PHASE:
-1. Read the subagent SKILL.md, substitute `$ARGUMENTS` with context + `txn_id`.
-2. Launch via Agent.
-3. Capture output.
-4. Report progress.
-
-On failure:
-- `txn_cancel` with reason. Drafts → cancelled automatically.
+Subagents: `kvendra-skills:requirements-analyst`, `kvendra-skills:planner`,
+`kvendra-skills:implementer`, `kvendra-skills:deploy` (STD-driven),
+`kvendra-skills:tester`, `kvendra-skills:validator`, `kvendra-skills:updater`.
+For each PHASE, launch one Agent whose prompt asks it to run the skill
+`kvendra-skills:<name>` with the Skill tool, followed by its arguments: the
+context and the ids above. Capture its output (the machine-output block when
+the skill has one) and report progress. On failure: **Cancel path**.
 
 ---
 
-## PHASE 0 — Requirements analysis
+## Step 1 — Open the work
 
-Launch `requirements-analyst` with the description + `txn_id` (+ the
-CONTEXT_PACK when enabled). Capture **REQUIREMENTS_REPORT** and, if a REQ
-is created, its id.
+1. `txn_check_interrupted({ project_id:<PROJ>, component_id:"<COMP>" })` →
+   if an in-progress TXN exists: Resume / Cancel / Ignore.
+2. `work({ op:"what_now", project_id })`. An open or paused task that is this
+   same feature → continue it (`reuse` in step 4). Open work that is similar
+   but different → write `new_because` (5+ words, content_locale): it skips
+   the similarity check, so no `SIMILAR_EXISTS` row.
+3. `txn_create({ project_id:<PROJ>, type:"new-feature", trigger:"<feature description>", started_by:"skill:new-feature" })`
+   → **txn_id**; note its UTC start time.
+4. `work({ op:"start_work", project_id, description:"<one-line feature summary, content_locale>", type:"feature" })`
+   (+ `new_because`, or only `reuse:<id>`) → **work_id**, its placement
+   `candidates` and `hints`. An error wrote nothing: fix the input it names
+   and retry once; if it fails again, `txn_cancel` with the reason and stop.
+   `SIMILAR_EXISTS` (a warning: the task was created anyway) → follow its
+   `next_step`. Same work → continue the old task with
+   `work({ op:"start_work", project_id, reuse:"<old id>" })` and discard the
+   new one with `work({ op:"finish", work_id:"<new id>", outcome:"wontfix", reason:"<5+ words: duplicate of the old id>" })`.
+   Different work → keep the new task.
+5. **Umbrella ISSUE** — only when the request names an existing umbrella
+   ISSUE: `entity_get({ entity_id:"<umbrella id>" })` (it must exist), then
+   `entity_get({ entity_id:"<work_id>" })` → its `version`, and
+   `entity_update({ entity_id:"<work_id>", expected_version:<version>, relations_add:[{ type:"derives_from", target:"<umbrella id>" }], change_summary:"derives from <umbrella id>", metadata:{ updated_by:"skill:new-feature" } })`.
+   Never `part_of` an ISSUE: the parent of the task is its specification,
+   set by `fill`.
 
-**Early-escalation check (dual and single modes)**: if the report
-contains blocking alarms, a ROAD conflict, cost impact > 20% of current
-budget, or data-model / existing-endpoint changes → PAUSE NOW (do NOT
-launch the planner), show the report and wait for user decisions —
-identical to today's behaviour. The pause states that a yes launches the
-planner (reversible: nothing is built yet, the TXN can be cancelled), and
-shows the alarms before the status.
+## PHASE 0 — Requirements and placement
 
-**Gate mode `dual` (default — no policy STD, or `gates.new-feature: dual`)**:
-**PAUSE**: Show report, risks and blockers first. State that a yes launches
-the planner and is reversible (nothing is built yet). Wait for user decisions.
+Launch `requirements-analyst` with the description, `work_id`, the
+placement `candidates` and `txn_id`. It sends `fill` (placement +
+criteria) and returns **REQUIREMENTS_REPORT** with `spec_id`, the placement
+and the criteria ids. With a blocking alarm it returns the `fill` payload
+unsent: send it yourself (`work({ op:"fill", work_id, fields })`) once the
+user decides (zero-gate: once auto-resolved).
 
-**Gate mode `single`**: do NOT pause here. Proceed to PHASE 1 and present
-both reports at the consolidated gate.
+Engine questions, in every mode: `NO_ROADMAP` → ask the user in one
+sentence what they want to achieve; after their answer,
+`work({ op:"create_structure", project_id, roadmap:"<title>" })` and repeat
+the fill. `ROADMAP_AMBIGUOUS` → ask which roadmap (zero-gate: the best title
+match, logged).
 
-**Gate mode `none`**: do NOT pause. Run the same early-escalation
-evaluation; only hard-floor signals pause (see Zero-gate mode). Every
-other signal is auto-resolved with the most conservative viable option
-and logged to the AUTONOMY_LOG before launching the planner.
+Keep the run's **criteria** `[{id, text}]` from the answer of `fill` (in
+REQUIREMENTS_REPORT, or yours when you sent it): its `criteria_added` and
+the `CRITERIA_ADDED` hint are the ids `finish` will ask `criteria_evidence`
+for. Under an existing specification, the `CLOSE_REQUIRES_EVIDENCE` hint
+lists every criterion with its state: add the ones still `open` to the run's
+criteria. A reported `CONTENT_LOCALE_MISMATCH` → when the other language is
+intended, tag that entity `locale:<detected>` (guarded `entity_update`, tags
+only); otherwise tell the user.
+
+**Early-escalation check (dual and single modes)**: blocking alarms, a ROAD
+conflict, cost impact > 20% of current budget, or data-model /
+existing-endpoint changes → PAUSE NOW (do NOT launch the planner), show the
+report and wait. The pause states that a yes launches the planner
+(reversible: no code is changed yet; the TXN can be cancelled and the task
+paused), with the alarms before the status.
+
+Gate mode `dual` (default): the same **PAUSE**, also without alarms. `single`: no
+pause (consolidated gate after PHASE 1). `none`: no pause; only hard-floor
+signals pause, every other signal is auto-resolved and logged.
 
 ## PHASE 1 — Spec design
 
-Launch `planner` with ENRICHED_REQUIREMENT (naming the draft REQ id when
-PHASE 0 created one) + `txn_id` (+ the CONTEXT_PACK when enabled).
+Launch `planner` with ENRICHED_REQUIREMENT + `spec_id` + criteria +
+`txn_id`. It records the technical design as a draft DOC in the TXN and
+returns **SPEC** (verifications, scope, implementation plan, test cases per
+criterion, `frontend_deploy_independent`, `extra_tasks`), the DOC id and
+its **KB sources** list.
 
-planner consults:
-- ROAD → flags conflicts.
-- IF → designs respecting contracts.
-- SLA → does not degrade performance.
-- COST → presents economic impact.
-- ADR → does not contradict decisions.
+**Extra tasks** (only when `extra_tasks` is not empty): for each one,
+`work({ op:"start_work", project_id, description, type:"feature", new_because:"<5+ words: the part of the spec it covers>" })`
+then `work({ op:"fill", work_id:<new id>, fields:{ placement:<spec_id> } })`.
+Add them to the run set; each is implemented, tested and finished in this
+run. Never an ISSUE `part_of` a ROAD.
 
-Capture **SPEC** (includes verifications, ISSUEs to create, required
-TESTs, and the `frontend_deploy_independent` flag from its "Execution
-constraints" section) and its **KB sources** list.
+**New decision**: when the SPEC requires a new ADR and it is approved
+(zero-gate: a REVIEW signal, logged), `work({ op:"record_decision", project_id, text, about:<spec_id> })`.
+It answers `REVIEW_OPENED` (the task is in progress), and a release of the
+specification warns `REVIEW_PENDING` until the review is resolved. Resolve it
+after `finish` (5b) and always before PHASE 8:
+- the implementation follows the decision →
+  `work({ op:"resolve_review", spec_id, outcome:"no_change", reason:"<5+ words: the implementation follows the decision>" })`;
+- the decision changed what was built → `outcome:"changed"`, which needs a
+  task of the specification closed and created after the decision (else
+  `CHANGE_NOT_FOUND`): open it as an extra task and finish it first.
+`SIMILAR_DECISION` or `ABOUT_NEEDED` → follow its `next_step` and tell the user.
 
-**Gate mode `dual`**: **PAUSE**: Show spec, risks and blockers first. State that a yes starts
-implementation, and that it is reversible until PHASE 2 edits code (any
-deploy after that is not). Wait for confirmation.
+**Gate mode `dual`**: **PAUSE** — spec, risks and blockers first; a yes
+starts implementation, reversible until PHASE 2 edits code (any deploy
+after that is not). Wait.
 
-**Gate mode `single` — CONSOLIDATED GATE (the only mandatory pause)**:
-present, in this exact order:
+**Gate mode `single` — CONSOLIDATED GATE (the only mandatory pause)**, in
+this order:
 1. REQUIREMENTS_REPORT (alarms and improvements FIRST).
-2. SPEC (verifications, scope, implementation plan, TESTs).
+2. SPEC (verifications, scope, implementation plan, test cases).
 3. Recommendation LAST — PROCEED only if ALL hold: zero blocking alarms,
    ROAD OK, ADR OK (no new ADR required), cost impact <= 20%, no
    data-model or existing-endpoint changes; otherwise REVIEW listing the
    exact signals.
 
-**PAUSE**: state that a yes approves REQ + SPEC and starts implementation,
-reversible until PHASE 2 edits code. Wait for one user decision covering
-REQ + SPEC together. If
-the REQ is rejected, discard the SPEC (accepted trade-off) and
-`txn_cancel`.
+**PAUSE**: a yes approves the specification + SPEC and starts
+implementation, reversible until PHASE 2 edits code. If it is rejected:
+**Cancel path**.
 
-**Gate mode `none` — AUTONOMY GATE RECORD (no pause)**: build the same
-three-part summary internally and evaluate the same criteria. On
-PROCEED: continue without pausing. On REVIEW: auto-resolve each signal
-(most conservative viable option) and log it — unless a hard-floor
-signal fires, in which case show the consolidated gate and wait exactly
-as in single mode. Emit one progress line:
-
-```
-AUTONOMY GATE — auto-approved | auto-resolved: N signals | HARD FLOOR pause: <reason>
-```
+**Gate mode `none` — AUTONOMY GATE RECORD (no pause)**: the same
+three-part summary and criteria, evaluated internally. PROCEED → continue.
+REVIEW → auto-resolve and log each signal, unless a hard-floor signal fires
+(then show the consolidated gate and wait as in single mode). One progress
+line: `AUTONOMY GATE — auto-approved | auto-resolved: N signals | HARD FLOOR pause: <reason>`.
 
 ## PHASE 2 — Backend implementation (conditional)
 
-Only if the SPEC requires backend work.
+Only if the SPEC requires backend work. Launch `implementer` with the
+Backend section of the SPEC, the design DOC id, its **KB sources** list
+(verbatim), `work_id`, `spec_id`, the criteria ids and `txn_id`. Capture
+**IMPL_BACKEND** (its IMPLEMENTER RESULT: `commit`, `test_command`,
+`criteria_tests`). `commit: blocked` → **Cancel path** with that reason
+(a protection blocked it: never work around it).
 
-Launch `implementer` with the Backend section of the SPEC + its **KB sources** list (verbatim) + `txn_id`.
+## PHASE 3 — Deploy (conditional, STD-driven)
 
-Capture **IMPL_BACKEND**.
+Only if PHASE 2 executed. Skip it — one progress line
+`PHASE 3 — deploy: skipped (<reason>)`, no pause, go on with PHASE 4 — when:
+- the request says the change is not deployed;
+- `CMP-<PROJ>-<COMP>.metadata.deploy` is `"none"` (`entity_get` of the CMP);
+- there is no deploy playbook: `entity_query({ entity_type:"STD", project_id:<PROJ>, component_id:"<COMP>", tags_all:["scope:deploy","scope:process"], status:"active", limit:1 })` returns 0 rows.
 
-## PHASE 3 — Backend deploy (conditional)
-
-Only if PHASE 2 executed.
-
-Launch `deploy` (STD-driven; reads the canonical
-`STD-<PROJECT>-<COMP>-DEPLOY-PROCESS` playbook via tag discovery and executes
-its steps via broker primitives) with `--release-by new-feature`: the pipeline
-owns release tracking (PHASE 8). Capture its release handoff (SHA,
-environment, result) as **DEPLOY_RESULT**.
-
-On failure: `txn_cancel`, stop pipeline.
+Otherwise launch `deploy` (it runs the `STD-<PROJECT>-<COMP>-DEPLOY-PROCESS`
+playbook through broker primitives) with `--release-by new-feature`: this
+pipeline owns the release (PHASE 8). Capture its release handoff (SHA,
+environment, result) as **DEPLOY_RESULT**. On failure: **Cancel path**.
 
 **Parallel mode**: when the resolved policy has
 `parallelize.frontend_with_deploy: true` AND the SPEC declares
 `frontend_deploy_independent: yes`, launch `deploy` and the frontend
-`implementer` (PHASE 4a) in ONE single message with two Agent calls. If
-either condition is absent → serial (current behaviour). On deploy
-failure in parallel mode: `txn_cancel` as usual — the frontend output is
-kept locally but no KB drafts survive.
+`implementer` (PHASE 4a) in ONE message with two Agent calls; otherwise
+serial. On deploy failure in parallel mode: **Cancel path** (the frontend
+output stays local; no KB draft survives).
 
 ## PHASE 4 — Frontend implementation + Tests
 
-### 4a — Frontend (if applicable)
+**4a — Frontend (if applicable)** — skip if already launched in parallel
+with PHASE 3. Launch `implementer` with the Frontend section of the SPEC,
+the design DOC id, the **KB sources** list (verbatim), `work_id`,
+`spec_id`, the criteria ids and `txn_id`. Capture **IMPL_FRONTEND**
+(IMPLEMENTER RESULT, as in PHASE 2).
 
-(Skip if already launched in parallel with PHASE 3 — consume its captured
-output instead.)
+**4b — Tests** — launch `tester` with `mode: verify`, the SPEC test cases,
+the criteria `[{id, text}]`, the `commit` and `test_command` of each
+IMPLEMENTER RESULT, `work_id` and `txn_id`. It records ONE RUN draft per
+test execution and returns TESTER RESULT: `run_ids` and `criteria_runs`
+(criterion → RUN). No RUN id → the phase failed; never invent one.
 
-Launch `implementer` with the Frontend section of the SPEC + its **KB sources** list (verbatim) + `txn_id`.
-Capture **IMPL_FRONTEND**.
-
-### 4b — Tests
-
-Launch `tester` with the TEST cases from the SPEC + `txn_id`. Creates TEST
-entries as **draft** (associated to the TXN).
-
-## PHASE 5 — Validation + Activation
+## PHASE 5 — Validation and closing
 
 ### 5a — Validation
 
-Resolve the validator level with this precedence: explicit user override >
-policy `validator_level_by_type` keyed by the change type from the
-REQ/ISSUE type tags (hotfix → basic, feature → professional, security →
-exhaustive) > `validator_level_default` (`auto` = current heuristic).
-Pass the resolved level in the validator args. Launch `validator`. Loop
-up to 3 iterations per criterion.
-
+Validator level: user override > policy `validator_level_by_type` (feature →
+professional, security → exhaustive) > `validator_level_default` (`auto`).
+Launch `validator` with the level, `kind: feature`, `work_id`, `spec_id`,
+the criteria `[{id, text}]`, the tester's `run_ids` and `criteria_runs`,
+the `commit` and `txn_id`. It returns VALIDATION RESULT:
+**criteria_evidence** `{ "C1":"<RUN id>", … }`, `open` (criteria it could
+not check: decide `pending` or a waiver in 5b) and `runs_created` (add
+them to the run set). Loop up to 3
+iterations per criterion (a new test execution is a new RUN id).
 (IMPORTANT: validator does NOT suggest /updater.)
 
-### 5b — Create ISSUE type:task (TXN draft)
+### 5b — Finish
 
 ```
-entity_create({
-  entity_type: "ISSUE",
-  project_id: <PROJ>,
-  component_id: "<COMP>",
-  title: "<title derived from SPEC>",
-  content: <markdown>,
-  status: "done",           // the work is implemented and validated; kept at txn_activate (engine H3)
-  metadata: { type:"task", attachments: <validator Evidence attachments array, if non-empty>, updated_by: "skill:new-feature" },
-  tags: ["type:task"],
-  relations: [
-    { type:"implements", target:"REQ-<PROJ>-<NN>" }
-  ],
-  txn_id: "<txn_id>",
-})
+work({ op:"finish", work_id, evidence:"<RUN id>", criteria_evidence:{ "C1":"<RUN id>", … }, txn_id })
 ```
 
-In zero-gate mode with a non-empty AUTONOMY_LOG, append the log verbatim
-to the ISSUE content under `## Autonomy log (zero-gate)`.
+- `criteria_evidence` answers every criterion of the spec that is not
+  already covered (the `CLOSE_REQUIRES_EVIDENCE` hint or `what_now`
+  criteria list them): the RUN id that checks it; `"pending"` only while
+  another open task of this spec covers it; `{"waive":"<5+ words>"}` only
+  when it cannot be met or checked now, approved by the user (zero-gate:
+  logged), and always told to the user (`WAIVERS_RECORDED`).
+- Extra tasks: finish each one with its own RUN; finish the main task last,
+  so that its map holds RUN ids, not `"pending"`.
+- Read the answer before going on (Work cycle block, **Answers**):
+  - `criteria[]` gives the state of each criterion (`covered`, `waived`,
+    `pending`, `open`); an `open` one is a gap to repair.
+  - `warnings` and `evidence_plan`: the task is already done, so never
+    repeat `finish`. For each item of `evidence_plan`, run its `check`
+    (launch `tester` for that criterion), get the RUN draft id, then apply
+    `evidence_plan.retry`: a guarded `entity_update` of the closed task that
+    cites each RUN in `metadata.criteria_evidence` and `metadata.evidence`
+    (metadata only).
+  - `WAIVERS_RECORDED` → tell the user which criteria were waived and why.
+  - `advice_skipped` → report `gate advice skipped: <reason>`; the closure
+    was written without advice.
+  - `draft_evidence` → those RUN drafts count once `txn_activate` runs.
+  - An error wrote nothing: fix the input it names and retry once; then
+    **Cancel path**. `GATE_REJECTED` → **Enforced gates** (Work cycle block).
+- Add every warning to **gate_warnings**.
+- A review opened in PHASE 1 → resolve it now (PHASE 1, **New decision**).
 
-## PHASE 6 — KB update + TXN close
+### 5c — Confirm
 
-Launch `updater` with the full summary of changes + `txn_id`.
+Only when the `next_step` of the last `finish` proposes it, or
+`what_now` lists the spec under `ready_to_close` (every task of the spec
+closed):
 
-updater:
-- Applies relations (implements, fixes, part_of, fulfills).
-- If an active REL exists, the server populates `entity_changelog` automatically.
-- Updates REG if regression-cases were touched.
-- Updates CMP if interfaces or `fulfills` were modified.
-- Updates IF if the spec created/modified them.
+```
+work({ op:"confirm", spec_id, txn_id })
+```
 
-### Activate TXN
+- Other tasks of the spec still open (an existing specification) → do
+  not confirm; report `spec <id> stays open: N open tasks`.
+- `NO_TASKS`, `OPEN_TASKS` or `CRITERIA_UNCOVERED` come after the write: the
+  spec is already done. Never repeat `confirm`: repair with
+  `evidence_plan.prepare` (a task under the spec, finished citing each RUN)
+  and report what stays uncovered.
+- `waivers` → tell the user each waived criterion and its reason.
+- An error wrote nothing: fix the input and retry once, else report it.
+  `GATE_REJECTED` → **Enforced gates** (Work cycle block).
+- Add every warning to **gate_warnings**.
+
+## PHASE 6 — KB coherence + TXN close
+
+Launch `updater` with the summary of changes, the task ids, `spec_id`, the
+RUN id, the design DOC id, the implementers' `notes_for_updater`, the
+validator's evidence attachments, the **gate_warnings** so far, `txn_id` and the TXN start time. It records the relations of what changed (IF, CMP,
+REG), merges attachments and checks coherence.
+It creates no REL and no follow-up ISSUE.
+
+Store the AUTONOMY_LOG (zero-gate). Then:
 
 ```
 txn_activate({ txn_id })
 ```
 
-Drafts → terminal.
-
-**Read the `txn_activate` response before reporting** (see **Governance
-proposals**): only the drafts it activated are live. Each `proposed[]` entry
-(`kind` `create` or `update`) is pending approval, not active; each
-`rejected[]` entry is a relation that was not applied (show its `hint`);
-`applied_pending_updates[]` lists the staged updates that were applied.
-Report them in the `Proposals:` / `Rejected:` output lines and keep every
-claim that depends on a proposed entity (REL changelog, `fulfills`,
-`implements` targets, follow-up steps) out of the completed list: list it
-as pending instead.
+Drafts → their target status. Read `proposed[]`, `rejected[]` and
+`applied_pending_updates[]` before reporting (see **Governance proposals**),
+and add its warnings to **gate_warnings**. `GATE_REJECTED` (when the engine
+enforces its gates, the activation is all or nothing, with an evidence plan
+per entity): nothing was activated. Follow the plan of each entity (add or
+cite the missing draft evidence) and retry, at most twice; then **Cancel
+path**, reported on the first line.
 
 ### Update the session resume pointer (REQ-KVD-B61E92 RF-4)
 
@@ -484,132 +532,113 @@ otherwise skip. One query and one write per closed task, never per turn:
 
 ### SLA report (non-blocking — only when the policy has sla_report: true)
 
-After `txn_activate`, compute the wall-clock duration = activation time
-minus TXN creation time. Query the pipeline SLAs once:
+Duration = activation time minus TXN creation time.
+`entity_query({ entity_type:"SLA", project_id:<PROJ>, tags_all:["scope:pipeline"] })`;
+0 results and <PROJ> is not KVD → retry once with `project_id: "KVD"`.
+Append `SLA: <duration> vs target <N> min — OK | EXCEEDED (informational)`.
+Still 0 results, or an error → skip silently.
 
-```
-entity_query({
-  entity_type: "SLA",
-  project_id: <PROJ>,
-  tags_all: ["scope:pipeline"]
-})
-```
+## PHASE 7 — Follow-ups (conditional)
 
-If 0 results and <PROJ> is not KVD, retry once with `project_id: "KVD"`.
-Append one line to the progress output:
+Waived criteria, pending frontend deploys or tests still to write become
+notes, never tasks with a parent you choose: skip any that `what_now`
+already lists under `notes`, else
+`work({ op:"capture", project_id, text:"<content_locale>", new:true })`.
+A capture without `new:true` (PHASE 8) can answer `ALREADY_NOTED` (a warning:
+the note was created anyway): when it is the same note, close the new one as
+its `next_step` says (guarded `entity_update`, `status:"done"` and a
+`metadata.reason`).
 
-```
-SLA: <duration> vs target <N> min — OK | EXCEEDED (informational)
-```
+## PHASE 8 — Release (only after a production deploy)
 
-Still 0 results, or query error → skip silently.
+- PHASE 3 skipped, or deployed to a declared non-production environment →
+  no release: report `pending release: ships with the next production deploy`.
+  No REL is created or touched.
+- DEPLOY_RESULT is a success with `environment: production` or `unknown`
+  (a playbook without `metadata.environment` is the canonical production
+  deploy): release after `txn_activate` and after any `resolve_review`
+  (PHASE 1). Pick the route:
+  - **Component route** — the component already has its own releases:
+    `entity_query({ entity_type:"REL", project_id:<PROJ>, component_id:"<COMP>", limit:1 })`
+    returns a row. Run the release-manager three times and read its
+    RELEASE RESULT block after each one:
+    1. `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --auto")` → `rel_id` (it reuses the open REL of the component);
+    2. `Skill(skill="kvendra-skills:release-manager", args="add <task ids>[,<spec_id if confirmed>] --rel <rel_id> --auto")`;
+    3. `Skill(skill="kvendra-skills:release-manager", args="close <rel_id> --sha <SHA> --auto")`.
+    It is released when the last block says `status: released` and
+    `gate_rejected: none`. Its `warnings` go to **gate_warnings**; its
+    `waivers` go to the user.
+  - **Project route** — otherwise:
 
-### Backlog chaining (zero-gate + backlog_chaining: true only)
+    ```
+    work({ op:"release", project_id, name:"<x.y.z>", work_ids:[<task ids>, <spec_id if confirmed>] })
+    ```
 
-After `txn_activate` (the optional SLA line, PHASE 7 and PHASE 8 Release
-tracking), when the resolved
-policy has `gates.new-feature: none` AND `backlog_chaining: true` AND
-the invocation declared a backlog scope (e.g. "work through milestone
-M2.5", a ROAD id, or an explicit ISSUE/REQ list in $ARGUMENTS): query
-the next open item —
+    No `txn_id`: the TXN is no longer in progress. `name`: the version the
+    playbook shipped when it names one; else the next one after the newest
+    REL of the project (patch; minor for a new capability). The spec still
+    has other open tasks → list only the tasks of this run and add a
+    truthful `reason` (5+ words, content_locale) that says what is left out.
+    `RELEASE_EXISTS` → the next version. `partial` with `resume: true` →
+    repeat the same call. `RELEASE_WITH_WAIVERS` → tell the user which
+    criteria were waived and why. Other warnings go to **gate_warnings**:
+    `release` writes even when it warns, so never repeat it to clear one.
+    `GATE_REJECTED` → **Enforced gates** (Work cycle block).
+- The REL does not end `released` (an error, a `gate_missing` other than
+  `none`, a `gate_rejected`, or a TXN cancelled after a successful production
+  deploy) → the first line of the final report is
+  `BLOCKER: deployed to production without a published release — <reason>`.
+  Capture a follow-up note with
+  `work({ op:"capture", project_id, text:"<content_locale: the release of <COMP> at <SHA> is pending, and why>" })`
+  and write it into the `waiting_on` of the resume pointer (one more guarded
+  write, as in PHASE 6). The deploy is not undone, and the pipeline is not
+  reported as a success.
 
-```
-entity_query({
-  entity_type: "ISSUE",   // and/or REQ, per the declared scope
-  project_id: <PROJ>,
-  tags_any: ["status:open"],
-  tags_all: [<declared milestone/scope tags>],
-  order_by: "updated_at_desc"
-})
-```
+## Gate summary (last step)
 
-— announce it in one line and start the next pipeline iteration from
-Step 0.5 (fresh policy read, fresh TXN). Stop chaining when: no items
-remain in scope, a hard-floor pause fires, two consecutive items end
-blocked, or the session/loop budget is exhausted. Pacing belongs to the
-harness (`/loop` or wake-up scheduling), not to this skill: never
-busy-wait between items, and let a recurring harness loop re-invoke the
-pipeline when the scope outlives the session.
+Report `Gate warnings: N` from **gate_warnings** (target 0): each code with
+its entity, what caused it, and whether it was repaired (`evidence_plan`,
+waiver told to the user) or stays open. Add one line per `advice_skipped`
+entry. A warning written by the engine cannot be undone; a repaired one is
+reported as repaired.
 
----
+## Cancel path
 
-## PHASE 7 — Pending tasks (conditional)
+`txn_cancel(reason)` (drafts → cancelled). The tasks and the spec are live:
+`work({ op:"pause", work_id, reason })` for each task of the run still in
+progress (`what_now` `in_progress`); a task already finished stays done and
+its draft evidence is cancelled (tell the user). Then the resume pointer and
+the gate summary.
 
-For unvalidated criteria, pending frontend deploys, or additional tests:
-create ISSUE type:task outside the TXN with top-level `status:"open"` (born live, not a draft).
+## Backlog chaining (zero-gate + backlog_chaining: true only)
 
----
-
-## PHASE 8 — Release tracking (last step, never blocking)
-
-Runs after the TXN activation and the deploy, as the last step of every
-pipeline that reached `txn_activate`. If the TXN was cancelled after PHASE 3
-deployed production successfully, still run steps 1, 2 and the Deploy-without-REL
-warning and ISSUE of step 4 (there is no work to attach). Any failure here is a warning in the
-final summary (the PHASE 8 — Release item of the progress report), never a pipeline failure. Work only with
-live entities: skip anything listed in `proposed[]`.
-
-1. **Find the open REL** of the component:
-   ```
-   entity_query({
-     entity_type: "REL",
-     project_id: <PROJ>,
-     component_id: "<COMP>",
-     status: ["planning", "in-progress"],
-     order_by: "updated_at_desc",
-     limit: 1
-   })
-   ```
-2. **None → create it** in `planning`, linked to the pipeline's ROAD when
-   known (a ROAD id in $ARGUMENTS / the backlog scope, or the `part_of` ROAD
-   of the REQ or the SPEC):
-   `Skill(skill="kvendra-skills:release-manager", args="create --component <COMP> --type minor --road <ROAD-id> --auto")`
-   (omit `--road` when no ROAD is known).
-3. **Attach the work** — the PHASE 5b ISSUE and the PHASE 0 REQ (if any) get
-   `part_of` → REL through the release manager's ADD (guarded update with
-   `expected_version`; it also moves a `planning` REL to `in-progress`):
-   `Skill(skill="kvendra-skills:release-manager", args="add <ISSUE-id>,<REQ-id> --rel <REL-id> --auto")`.
-4. **Ship when production was deployed** — if PHASE 3 ran and DEPLOY_RESULT is
-   a success with `environment: production` or `unknown` (a deploy playbook
-   that does not declare `metadata.environment` is the project's canonical,
-   production deploy; a non-production target must declare itself):
-   `Skill(skill="kvendra-skills:release-manager", args="close <REL-id> --sha <SHA> --auto")`.
-   - `released` → report it (tag `shipped:<date>`, `metadata.deployed_date`).
-   - `gate_missing: <gate>` → the REL stays `in-progress`; report the gate.
-     Then, because production runs without a released REL, add
-     `WARNING: Deploy without REL — <gate>` to the summary and create the
-     `release:missing` ISSUE with the same shape as the deploy skill's
-     Step 8 (outside the TXN, top-level `status:"open"`, component, SHA,
-     date).
-   - Deploy to a declared non-production environment, or no deploy → the REL stays
-     `in-progress`; report "ships on the next production deploy".
-5. **Never blocks**: a tool error, `403`, a pending proposal or a missing
-   gate is reported in the PHASE 8 — Release item of the progress report; the pipeline result is unchanged.
+After the gate summary, when the invocation declared a backlog scope (a
+milestone, a ROAD id, or an explicit list in $ARGUMENTS): take the next item
+of that scope from `work what_now` (`open_not_started`), announce it in one
+line and start a new iteration from Step 0.5 (fresh policy, fresh TXN,
+`start_work {reuse}`). Stop when no items remain in scope, a hard-floor
+pause fires, two consecutive items end blocked, or the session/loop budget
+is exhausted. Pacing belongs to the harness (`/loop` or wake-up
+scheduling): never busy-wait between items.
 
 ---
 
 ## Progress format
 
-Progress reports are `report` messages: write each one in its mode (communication block, rule 2). The list below is a content checklist, not a layout. Blocked items, rejected relations and deploy warnings come before the status (rule 3).
+Progress reports are `report` messages: write each one in its mode (communication block, rule 2). The list below is a content checklist, not a layout. Blocked items, a release BLOCKER, gate warnings, rejected relations and deploy warnings come before the status (rule 3).
 
 Each progress report covers what applies at that point:
-- **Start** — pipeline `new-feature`, the feature name, the TXN id (TXN-<PROJ>-<YYYYMMDD>-<NNN>) and the autonomy line (`autonomy: <mode> (policy: <source>)`).
-- **Per phase** — the phase, its result and its step status (completed or not):
-  - PHASE 0 — requirements: N alarms, N improvements.
-  - PHASE 1 — spec: ROAD OK, ADR OK, COST $X/mo.
-  - PHASE 2 — backend: N files, IF verified.
-  - PHASE 3 — deploy: the deploy result (for example UPDATE_COMPLETE).
-  - PHASE 4 — frontend: N files, M TESTs.
-  - PHASE 5 — N/M validated, drafts → active.
-  - PHASE 6 — KB: ISSUE + REL changelog + REG.
-- **Gates** — dual mode: a pause after PHASE 0 (waiting for decisions) and after PHASE 1 (waiting for confirmation). Single mode: one consolidated gate after PHASE 1 (waiting for decision). Zero-gate mode: one autonomy gate after PHASE 1, plus one line per AUTONOMY_LOG entry.
-- **Closure** — TXN-<PROJ>-<YYYYMMDD>-<NNN>: COMPLETED.
-- **Proposals** — only when `txn_activate` returned a non-empty `proposed[]`, one per entry: <ENTITY-ID> — pending approval (<kind>, proposal_id <id>), not active.
-- **Rejected** — only when `rejected[]` is non-empty, one per entry: <source> -<type>-> <target> — <hint>.
-- **REL changelog** — REL-<PROJ>-<VER> changelog: +N entries (via entity_changelog).
-- **SLA** — only with `sla_report: true`: <duration> vs target <N> min — OK | EXCEEDED.
-- **PHASE 8 — Release** — REL-<PROJ>-<COMP>-<VER> released (shipped:<date>) | in-progress (missing gate: <gate>) | WARNING: <reason>.
-- **Deploy without REL** — only when production was deployed without a released REL: WARNING: Deploy without REL — <reason> (ISSUE <id>, release:missing).
+- **Start** — pipeline `new-feature`, the feature name, the TXN id, `work_id` and the autonomy line.
+- **Per phase** — its result and ids: spec + placement + criteria (0);
+  design DOC, ROAD/ADR/COST, extra tasks (1); files, IF verified (2, 4a);
+  deploy result or skipped (3); RUN id, passed/failed (4b); criteria with
+  evidence, task done, spec confirmed or open (5); relations, drafts → active (6).
+- **Gates** — the pauses taken, or the autonomy gate line plus the AUTONOMY_LOG lines.
+- **Closure** — TXN `<id>`: COMPLETED | CANCELLED (reason).
+- **Proposals** / **Rejected** — only when `txn_activate` returned them, one line per entry.
+- **SLA** — only with `sla_report: true`.
+- **PHASE 8 — Release** — the REL id released (`REL-<PROJ>-<name>` or the component REL) | pending release (no production deploy) | BLOCKER: <reason>.
+- **Gate summary** — `Gate warnings: N` (codes and entities, repaired or open) and any advice skipped.
 
 ## Stop rules
 
@@ -623,10 +652,8 @@ Each progress report covers what applies at that point:
 In single-gate mode, the first four rules are evaluated at the end of
 PHASE 0 and fire BEFORE the planner launches (early escalation).
 
-**Zero-gate mode** — only the hard floor consults the user (no-go-list
-op required, recurring cost impact > 20%, security-tagged change failing
-exhaustive validation). Every other signal auto-resolves and logs. A
-validation criterion failing 3 times does not consult: record it as a
-blocked ISSUE (PHASE 7) and continue when it does not block the SPEC's
-core acceptance criteria; `txn_cancel` (persisting the AUTONOMY_LOG in
-the reason) when it does.
+**Zero-gate mode** — only the hard floor consults the user. Every other
+signal auto-resolves and logs. A criterion failing 3 times does not
+consult: when it does not block the core of the spec, waive it in
+`finish` (5+ word reason, logged, told to the user) and capture a note
+(PHASE 7); when it does, **Cancel path** (AUTONOMY_LOG in the reason).

@@ -120,7 +120,7 @@ HELP — kvendra-skills
 Available topics:
 
   /user-help skills       Full catalogue of skills
-  /user-help to-do        ISSUE system
+  /user-help to-do        Tasks, notes and the work cycle
   /user-help pipelines    Development flows (bug, feature)
   /user-help kb           Kvendra entities and tools
   /user-help projects     Visible projects
@@ -142,21 +142,28 @@ ENTRY POINT
                            Kvendra KB context. Closes with 9 actionable
                            options.
 
-ISSUE MANAGEMENT
-  /to-do create [desc]              Create ISSUE (bug | task | incident)
-  /to-do update ISSUE-...           Update status, priority, assignee
-  /to-do close ISSUE-...            Close ISSUE
+TASKS AND NOTES (work cycle)
+  /to-do create [desc]              Start a task (feature | fix | chore)
+                                    or capture a note
+  /to-do update ISSUE-...           Place it, add criteria, pause it,
+                                    change priority
+  /to-do close ISSUE-...            Finish it with evidence, or discard
+                                    it (wontfix) with a reason
   /to-do list                       List with filters
   /to-do-summary                    Visual summary with filters
 
 DEVELOPMENT PIPELINES (orchestrators with TXN)
   /bug [area]             Testing and fix pipeline:
-                          plan → test → analysis → fix → validation → KB
+                          plan → test → one fix task per bug →
+                          analysis → fix → validation → finish with
+                          evidence (no release)
   /new-feature [desc]     New functionality pipeline:
-                          requirements → spec → backend → deploy →
-                          frontend + tests → validation → KB
+                          requirements + criteria → spec → backend →
+                          deploy → frontend + tests → validation →
+                          finish with evidence per criterion → confirm
+                          → release (only after a production deploy)
   /incident-manager       Incident management with RCA + postmortem +
-                          derived RUN/REQ/PAT
+                          derived RUN/PAT + notes (a REQ when asked)
 
 SUBAGENTS (used by pipelines, also invocable)
   /requirements-analyst   Analyzes requirements against REQ/ROAD/IF/CMP/ADR
@@ -164,16 +171,18 @@ SUBAGENTS (used by pipelines, also invocable)
   /planner                Technical spec against REQ/IF/ROAD/SLA/COST/ADR
   /implementer            Applies changes verifying IF/GLO/STD
   /validator              Verifies changes (3 levels)
-  /tester                 Runs tests and creates TEST entries (draft)
+  /tester                 Runs tests and records RUN entries (draft)
   /analyzer               Root cause + fix proposal
-  /updater                Coherence: relations, REL changelog, derived
+  /updater                Coherence: relations, evidence citations
   /interface-validator    Naming in code vs IF and GLO
   /doc-indexer            Indexes docs as DOC entries + library super-index
 
 OPERATIONS
   /deploy                 STD-driven deploy (reads STD-<PROJ>-<COMP>-DEPLOY-PROCESS)
-  /regression             Regression suite + auto-generates bug ISSUEs
-  /release-manager        Creates / manages / closes REL with SemVer
+  /regression             Regression suite + a fix task per failed
+                          blocking test
+  /release-manager        Creates / manages / closes REL with SemVer;
+                          publishes project releases (work release)
   /onboard-project        Onboarding: PRJ + CMP + IF + GLO + ENV + REL
 
 DOCUMENTATION
@@ -200,49 +209,72 @@ CONFIGURATION
   /user-help [topic]      This help
 ```
 
-## SECTION: to-do — Kvendra ISSUE system
+## SECTION: to-do — Tasks, notes and the work cycle
 
 ```
-ISSUE SYSTEM (Kvendra KB)
-=========================
+WORK CYCLE (Kvendra KB, tool `work`)
+=====================================
 
-ISSUEs are stored in the Kvendra KB (entity_type=ISSUE). They persist
-across sessions and are the nexus between bugs, features and pending work.
+Tasks, specifications, notes, decisions and project releases are written
+through the Kvendra tool `work`. A task is an ISSUE in the KB: it persists
+across sessions.
 
-ISSUE TYPES
-  bug             Bug found
-  task            Pending task
-  incident        Operational incident (managed via /incident-manager)
+TREE
+  roadmap > epic (optional) > specification (REQ) > task (ISSUE)
+  A feature task hangs from its specification (part_of), which holds the
+  acceptance criteria C1, C2...  A fix needs no specification: it carries
+  its expected behaviour and how it is checked. Notes, decisions (ADR) and
+  releases have no parent. A link to an umbrella ISSUE is derives_from.
+
+KINDS OF WORK
+  feature         New behaviour, under a specification with criteria
+  fix             A defect (an urgent fix is a hotfix)
+  chore           Maintenance; may close without a test, with a reason
+  note            An idea or follow-up, not work yet (capture); smoke
+                  checks are notes too
+  incident        Operational incident (/incident-manager)
 
 STATES
-  new             Pending, not started
-  in-progress     In progress
-  analyzing       Under analysis
-  fixing          Being implemented
+  open            Not started, or paused
+  in-progress     Being worked on
   blocked         Blocked
-  done            Completed (task)
-  closed          Closed (bug)
-  postmortem-done RCA completed (incident)
+  done            Finished, citing its evidence (a TEST or RUN id)
+  closed          Closed
+  wontfix         Discarded with a reason (not a bug, cannot be
+                  reproduced, duplicate)
 
 PRIORITIES
   critical | high | medium | low
 
 ID FORMAT
-  ISSUE-<PROJ>-<COMP>-<NNN>   With component
-  ISSUE-<PROJ>-<NNN>          Cross-component
+  ISSUE-<PROJ>-<NNN> or ISSUE-<PROJ>-<COMP>-<NNN>
   The server emits the id automatically (atomic counter).
 
 TYPICAL FLOW
-  1. /to-do-summary                See my active ISSUEs
-  2. /to-do update ISSUE-...       Change status to in-progress
-  3. (work)
-  4. /to-do close ISSUE-...        Close the ISSUE
+  1. what_now       What is open and what each task still needs
+  2. start_work     Start a task (or continue one, or promote a note)
+  3. fill           Place it and add criteria (feature), or give its
+                    expected behaviour and check (fix)
+  4. (work: change the code, run the tests, record a RUN)
+  5. finish         Close it citing the RUN; a feature cites one per
+                    criterion
+  6. confirm        Close the specification once its tasks are done
+  /to-do and the pipelines run these steps for you.
+
+ENGINE GATES
+  finish, confirm and release check evidence and criteria. Today they
+  advise: they write and return warnings with a next step, and the
+  skills act on them. When the engine enforces them, a write without
+  its evidence is rejected (GATE_REJECTED): the skills fix it and retry,
+  or stop and report it.
 
 AUTOMATIC CREATION
-  - /bug: creates a bug ISSUE per confirmed finding
-  - /new-feature: creates a task ISSUE derived from the SPEC
-  - /regression: creates a bug ISSUE if a regression-case fails
-  - /incident-manager: creates an incident ISSUE
+  - /bug: one fix task per confirmed bug; not a bug, or not
+    reproducible → closed as wontfix with the reason
+  - /new-feature: a feature task under its specification
+  - /regression: a fix task per failed blocking test (parked, open)
+  - /deploy: a note when a production deploy ends without a REL
+  - /incident-manager: an incident ISSUE
 ```
 
 ## SECTION: pipelines — Development flows
@@ -251,26 +283,35 @@ AUTOMATIC CREATION
 PIPELINES (Kvendra)
 ===================
 
-BUG PIPELINE (/bug)
-  TXN: type=bug, 6 phases.
+Both pipelines write their work through the tool `work` (see
+/user-help to-do) and keep their evidence (RUN entries) in a TXN.
 
-  PHASE 1  functional-expert      Test plan
-  PHASE 2  tester                 Execution + TEST entries (draft)
-  PHASE 3  analyzer               Root cause (parallel per bug)
+BUG PIPELINE (/bug)
+  PHASE 1  functional-expert      Test plan (for an area)
+  PHASE 2  tester                 Exploratory run, RUN entries (draft)
+           then one fix task per confirmed bug
+  PHASE 3  analyzer               Root cause (parallel per bug); verdict:
+                                  bug | not a bug | not reproducible
   PHASE 4  implementer            Apply fixes
-  PHASE 5  validator              Verify (max 3 iter per bug)
-  PHASE 6  updater                Kvendra coherence + activate TXN
+  PHASE 5  tester + validator     Test and verify (max 3 iter per bug)
+  PHASE 6  close each task        finish citing its RUN, or wontfix with
+                                  the reason; activate the TXN
+  A bug fix publishes no release by itself.
 
 FEATURE PIPELINE (/new-feature)
-  TXN: type=new-feature, 7 phases.
+  The task hangs from its specification, with criteria C1, C2...
 
-  PHASE 0  requirements-analyst   Analysis (PAUSE)
+  PHASE 0  requirements-analyst   Requirements, placement, criteria (PAUSE)
   PHASE 1  planner                Spec (PAUSE)
   PHASE 2  implementer (backend)  Apply
   PHASE 3  deploy                 STD-driven deploy
-  PHASE 4  implementer (frontend) Apply + tester creates TESTs draft
-  PHASE 5  validator              Verify (max 3 iter)
-  PHASE 6  updater + activate TXN
+  PHASE 4  implementer (frontend) Apply + tester records RUNs (draft)
+  PHASE 5  validator              Verify (max 3 iter); finish the task
+                                  with evidence per criterion, confirm
+                                  the specification
+  PHASE 6  updater                KB coherence, activate the TXN
+  PHASE 7  follow-ups             Captured as notes
+  PHASE 8  release                Only after a production deploy
 
   Gates are policy-driven (STD-<PROJ>-PIPELINE-AUTONOMY, tag
   scope:pipeline-autonomy): dual (2 pauses, default) | single
@@ -291,7 +332,9 @@ INCIDENTS (/incident-manager)
   Creates ISSUE type:incident with embedding ON (documented exception).
   Lifecycle: detected → investigating → mitigating → resolved →
              postmortem-done.
-  Generates derived RUN/REQ/PAT as drafts of the incident TXN.
+  Closes with its evidence (RUN ids in metadata.evidence). Derived RUN
+  and PAT are drafts of the incident TXN; follow-up requirements are
+  captured as notes unless you ask for a specification.
 
 VALIDATION LEVELS (validator)
   basic          Verifies nothing breaks (UI/CSS/translations)
@@ -314,7 +357,11 @@ ENTITY TYPES (20)
   PRJ, CMP, IF, REQ, TEST, REG, ISSUE, REL, SLA, ROAD, GLO, STD, PAT, ADR,
   RUN, UX, DOC, TXN, ENV, COST
 
-KVENDRA TOOLS (hosted: 33 — self-hosted Platform: the first 14)
+KVENDRA TOOLS (hosted; a self-hosted Platform server exposes a subset)
+  work                 The work cycle, one op per call: what_now,
+                       start_work, fill, pause, finish, confirm, capture,
+                       record_decision, resolve_review, release,
+                       create_structure. Contract: help({topic:"work"})
   entity_create        Create entity (auto-id)
   entity_update        Atomic update (change_summary required)
   entity_archive       Soft archive (reversible)
@@ -343,6 +390,14 @@ KVENDRA TOOLS (hosted: 33 — self-hosted Platform: the first 14)
   private_value_resolve  Resolve private-value keys (batch <= 50, hosted)
   k_note_submit / k_note_list   Send a note to the Kvendra team / list your
                        notes and replies (hosted Pro+, used by /k-notes)
+
+REQUIREMENTS (kvendra-skills 2.0.0)
+  The skills need the tool `work` on the Kvendra server and stop before
+  any write without it. A session that does not list it: restart Claude
+  Code, or run /mcp and reconnect. A server without `work`: stay on
+  kvendra-skills 1.35.x. After updating, sign in once more: /mcp ->
+  kvendra-cloud -> Authenticate (the plugin now sends the header
+  X-Kvendra-Client, which changes the stored credential).
 
 PRIVATE VALUES
   Private identifiers (account ids, local paths, profile ids, person

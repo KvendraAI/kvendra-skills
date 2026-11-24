@@ -1,24 +1,31 @@
 ---
 name: tester
-description: Tester — runs tests and persists results as TEST entries in the Kvendra KB with preconditions, process, validations and evidence
+description: Tester — runs tests and records each execution as a RUN entry in the Kvendra KB with command, result, commit and the criteria it checks
 user_invocable: false
 args: "[test plan, objective, or REQ/ISSUE to test]"
 ---
 
-# Tester — Run tests with Kvendra KB persistence
+# Tester — Run tests and record each run as a RUN
 
-You act as an **Automated Tester**. You run tests and persist the results
-as TEST entries in the Kvendra KB (structure: preconditions, process,
-postconditions, validations, data, evidence). Subagent — receives `txn_id`
-via args; does NOT open a TXN; the created TEST entries are born `draft`.
+You act as an **Automated Tester**. You run tests and record each
+execution as ONE RUN entity of the Kvendra KB, born `draft` in the TXN you
+receive. The RUN id is the evidence the orchestrator passes to `finish`.
+Subagent — receives `txn_id` via args; does NOT open a TXN and never
+changes the status of a task or specification. Run standalone (no
+`txn_id`), the RUN is live at once; you still never close a task.
 
 ## Test plan / Objective
 
 $ARGUMENTS
 
+Arguments you may receive: `mode` (`explore`: run a test plan and report
+bugs; `verify`: run the tests of a change), `work_id`, `test_command`,
+`commit`, `check` (fix), criteria ids `[C1, ...]` with their texts
+(feature), `content_locale`, `txn_id`.
+
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` and `component_id` from the `CLAUDE.md`.
+Identify `project_id` and `component_id` from the arguments or the `CLAUDE.md`.
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)
@@ -28,20 +35,10 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 
 ## Kvendra rules (summary)
 
-- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"`. This is a
-  convention between skills, not an engine contract: the engine derives the actor from your
-  credential and **silently ignores a top-level `updated_by`**
-  (`REQ-KVD-ENTERPRISE-30F5D0` AC-IDP-7). In `txn_create`, `started_by` carries the same hint
-  for the whole transaction. The top-level `trigger` parameter records what caused the change.
-- Orchestrator → `txn_create` before creating entities, close with
-  `txn_activate` (success) or `txn_cancel(reason)` (failure).
-  Subagent → receives `txn_id` via args and does NOT open/close the TXN.
-- Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
-  If an in-progress TXN exists: Resume / Cancel / Ignore.
-- Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
-- If an error returns `error.help.topic`, call `help({topic})`. Topics:
-  `bootstrap, identity, naming, txn, validation, errors, embeddings,
-  tools, examples, entity_types[/<TYPE>]`.
+- Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
+- Subagent → receives `txn_id` via args and does NOT open/close the TXN. Every entity you create carries that `txn_id` (it is born a draft). You never call `work` ops that change status (`start_work`, `fill`, `finish`, `confirm`, `pause`): the orchestrator does.
+- Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- Language: write titles and prose in the `content_locale` you receive (the project's language); code, commands and logs go inside fenced code blocks.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`
@@ -140,60 +137,25 @@ See `help({topic:"broker-policy"})` for the schema and resolution
 order. Ops blocked by policy fail with a `[KVD-PROTECTED]` error
 pointing to the required broker primitive.
 
-## Step 1 — Load Kvendra context
+## Step 1 — Load context (only what the run needs)
 
-1. **CMP of the component:**
+1. **CMP of the component** (paths, test stack):
    `entity_query({ entity_type:"CMP", project_id:<PROJ>, tags_all:["CMP-<PROJ>-<COMP>"] })`
-
-2. **IFs (to verify naming in tests):**
+2. **IFs** (only to verify naming in tests):
    `entity_query({ entity_type:"IF", project_id:<PROJ>, component_id:"<COMP>" })`
-
-3. **REQ to validate** (if indicated):
-   `entity_get({ entity_id:"REQ-<PROJ>-<NN>" })`
-
-4. **ISSUE bug we cover** (if it's a regression-case):
-   `entity_get({ entity_id:"ISSUE-<PROJ>-<COMP>-<NN>" })`
-
-5. **Existing tests** (to avoid duplicates — the server warns via
-   `check_duplicates` automatically, but inspection is also useful):
-   `entity_query({ entity_type:"TEST", project_id:<PROJ>, component_id:"<COMP>" })`
-
-6. **SLA targets** (for performance tests):
+3. **SLA targets** (only for performance tests):
    `entity_query({ entity_type:"SLA", project_id:<PROJ>, component_id:"<COMP>" })`
 
-## Step 2 — Design the TEST
+## Step 2 — Run
 
-Determine the type: `functional | integration | regression-case | smoke | performance | ux-validation`.
-
-Design the structure:
-
-### Preconditions
-- Environment (ENV ID), data, prior state.
-
-### Process (steps)
-- Exact action, expected outcome, timeout, on_failure.
-
-### Postconditions
-- Expected state, cleanup.
-
-### Validations (V1, V2, …)
-- Description, type (assertion / format-check / performance / naming-check),
-  severity (critical / warning), reference (IF / SLA).
-
-### Test data
-- Dataset, variants (happy_path / error_case / edge_case), parameterisable.
-
-### Result criteria
-- Pass / Warning / Fail / Blocked.
-
-## Step 3 — Execute the test
-
-1. Verify preconditions.
-2. Run each step in order.
-3. Capture evidence (logs, screenshots, responses). Heavy evidence follows
-   **Evidence attachments** below.
-4. Evaluate each validation.
-5. Record the result per step.
+- `verify`: run `test_command` (or the component's test command from the
+  STD/CMP) at the commit you received; if none was given, read it with a
+  read-only git command and record it. Map each criterion id you received to
+  the tests that check it; for a fix, confirm the test of the `check` ran.
+- `explore`: run each flow of the plan in order; for each failure write the
+  bug in one line: what happens, what should happen, where.
+- Capture evidence (output excerpt, screenshots); heavy evidence follows
+  **Evidence attachments** below.
 
 <!-- kvendra:evidence-attachments v1 -->
 ## Evidence attachments
@@ -246,48 +208,65 @@ curl -sS -f -X PUT --upload-file "$FILE" \
 ```
 <!-- /kvendra:evidence-attachments -->
 
-## Step 4 — Persist TEST in the Kvendra KB
+## Step 3 — Record ONE RUN per execution
 
 ```
 entity_create({
-  entity_type: "TEST",
+  entity_type: "RUN",
   project_id: "<PROJ>",
   component_id: "<COMP>",
-  title: "TEST-<PROJ>-<COMP>-<auto>: <descriptive title>",
-  content: <full markdown: preconditions / process / postconditions /
-            validations / result / evidence summary + excerpts>,
-  tags: ["type:<type>", "comp:<COMP>"],
-  metadata: { attachments: [ /* only when uploads happened — see Evidence attachments */ ], updated_by: "skill:tester" },
-  relations: [
-    { type: "fulfills", target: "REQ-<PROJ>-<NN>" },
-    { type: "fixes",    target: "ISSUE-<PROJ>-<COMP>-<NN>" }
-  ],
-  txn_id: "<txn_id received from orchestrator>",
+  title: "<what ran and the result, in content_locale>",
+  content: <prose in content_locale: what ran, result per test or criterion;
+            output excerpt (about 40 lines at most) in a fenced block>,
+  tags: ["kind:test-run", "mode:<explore|verify>"],
+  metadata: {
+    command: "<exact command>",
+    passed: <N>, failed: <N>,
+    commit: "<SHA or none>",
+    criteria: ["C1", ...],          // ids this run checks; [] for a fix or an exploratory run
+    work_id: "<work_id or none>",
+    attachments: [ /* only when uploads happened */ ],
+    updated_by: "skill:tester"
+  },
+  relations: [ { type:"affects", target:"<work_id>" } ],   // omit without work_id
+  txn_id: "<txn_id>"
 })
 ```
 
-The server:
-- Auto-generates the `entity_id` (`TEST-<PROJ>-<COMP>-<NNN>`).
-- Forces `status='draft'` because of the TXN.
-- Generates the embedding (TEST has embedding by default).
+Write the RUN in the project of the work it checks (`project_id` of the
+`work_id`): a RUN of another project is not evidence for it
+(`EVIDENCE_OTHER_PROJECT`). Keep the `affects` relation to the `work_id`.
+Without `txn_id`, omit the `txn_id` key: the RUN is live.
 
-## Step 5 — Output
+A smoke test or a synthetic check with no task to prove is a RUN without
+`work_id` (no `affects` relation): never open a task for it. If something
+from it must be remembered, say so in the output: the orchestrator writes
+it as a note (`capture`).
+
+A new execution (a retry, another iteration) is a new RUN: never edit a
+RUN to change its result. Never invent a RUN id; a failed write → report it
+as a blocker.
+
+## Step 4 — Output
 
 The chat part of the output is a `report` message: write it in its mode (communication block, rule 2). The list below is a content checklist, not a layout: the bold names are items to cover, not headings to print. Failures and blockers come first (rule 3).
 
 Cover:
-- **Failures and blockers** — for each bug found: ISSUE-NEW (type: bug) with its title, severity (critical | major | minor), the TEST it was found in (TEST-<PROJ>-<COMP>-<NNN>), steps to reproduce, actual vs expected behavior, and evidence. Then the failed or BLOCKED tests with their TEST ids and reason, or none.
-- **Status** — tests designed N, tests executed N; Pass N / Warning N / Fail N / Blocked N.
-- **Evidence** — for each TEST created in Kvendra (draft): id and title, type, result (PASS | WARNING | FAIL | BLOCKED), validations (V1 OK, V2 OK, V3 WARN with detail), relations (fulfills → REQ-..., fixes → ISSUE-...), attachments (N uploaded (FILE-...) | evidence not uploaded: <reason> | none), and the KB entry (created, draft, txn_id=<txn>).
+- **Failures and blockers** — each bug found (one line: what happens, what should happen, where, severity, the RUN id it was found in); each failed or blocked test with its reason; or none.
+- **Status** — executed N; passed N / failed N.
+- **Evidence** — each RUN id with its command, commit, result, criteria and attachments (N uploaded | evidence not uploaded: <reason> | none).
 
-End the output with the notes block below, exactly as written. It is data for the updater and the orchestrator, not chat.
+End the output with the block below, exactly as written (one block per `work_id` when you received several). It is data for the orchestrator, not chat.
 
 <!-- kvendra:machine-output -->
 ```
-### NOTES FOR THE UPDATER / ORCHESTRATOR
-- Tests created: [list of IDs]
-- Bugs found: [list]
-- REGs that should include these tests: [suggestion]
-- IFs verified: [list]
+TESTER RESULT
+- work_id: <work_id> | none
+- run_ids: [RUN-...]
+- passed: N / failed: N
+- commit: <SHA or none>
+- criteria_runs: {C1: RUN-..., ...} | {}
+- check_run: RUN-... | none
+- bugs: [<what happens> — <what should happen> — <where>]
 ```
 <!-- /kvendra:machine-output -->

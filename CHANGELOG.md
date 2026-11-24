@@ -4,6 +4,171 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [2.0.0] — 2026-11-24 — Skills run on the Kvendra work cycle
+
+> Major release. The skills write tasks, specifications, notes, decisions and
+> project releases through the Kvendra tool `work`, and need it on the
+> server: there is no 1.x fallback. The plugin server now sends a client
+> header, so every user signs in once more after updating. One hook changes
+> (`hooks.json` matcher and `lvr-scan-tool-input.sh`). No new skills.
+> `CLAUDE.md.template` does not change: `lint-claudemd` reports no drift.
+
+### Migration from 1.x
+1. **The pipelines run on `work`.** `new-feature`, `bug`, `to-do` and the
+   role skills open, place and close work with `work` (`what_now`,
+   `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`,
+   `record_decision`, `resolve_review`, `release`). What you will see:
+   - a feature task hangs from its specification (`part_of` the REQ), and
+     the specification from an epic or a roadmap; a link to an umbrella
+     ISSUE is `derives_from`, never `part_of`;
+   - acceptance criteria are items `C1`, `C2`… of the specification, and
+     closing a feature task cites a TEST or RUN for each criterion (or a
+     waiver you decide, or `pending` when another task covers it);
+   - every closure lists its TEST or RUN ids in `metadata.evidence`, not
+     only in the text;
+   - `/new-feature` confirms the specification once its tasks are closed,
+     and publishes a release only after a production deploy; `/bug`
+     publishes no release;
+   - smoke checks and follow-up ideas are notes (`capture`), not tasks;
+   - a bug that is not a bug, or cannot be reproduced, is closed `wontfix`
+     with a reason, not `done`;
+   - a REL is created in `planning`, gets its members with `part_of` and
+     only then moves to `released`; an empty REL is never published.
+2. **The Kvendra server must list `work`.** Without it the skills stop
+   before any write and say so. A session opened before the server gained
+   `work` keeps its old tool list: restart Claude Code, or run `/mcp` and
+   reconnect. A server without `work` (for example an older self-hosted
+   engine) needs 1.35.x; there is no legacy path in 2.0.0. To stay on it,
+   remove the marketplace and add it again pinned to the tag:
+   `/plugin marketplace remove kvendra-marketplace` (this also uninstalls its
+   plugins), `/plugin marketplace add KvendraAI/kvendra-skills#v1.35.0`, then
+   `/plugin install kvendra-skills@kvendra-marketplace`.
+3. **Sign in once more.** `.mcp.json` now sends
+   `X-Kvendra-Client: kvendra-skills/2.0.0`. Claude Code stores the OAuth
+   credential under the server's type, URL and headers, so after the update
+   the plugin server shows *Needs authentication*: run `/mcp` →
+   `kvendra-cloud` → Authenticate, once (once per `KVENDRA_WS` account).
+   The header carries the major version only and stays the same for every
+   2.x release, so later 2.x updates do not ask again.
+4. **claude.ai Kvendra connector.** When a claude.ai connector points at the
+   same URL as the plugin server, Claude Code hides the plugin server
+   (typical in headless `claude -p` sessions) and the skills use the
+   connector; the header is then not sent. `work` behaves the same and counts
+   as a new client either way. `/env-check` reports it as a warning.
+5. **Engine gates.** Today `finish`, `confirm` and `release` advise: they
+   write and return warnings with a `next_step`, which the skills act on.
+   When the engine starts enforcing them, a write without its evidence is
+   rejected with `GATE_REJECTED` and the engine will require kvendra-skills
+   2.0.0 or later. The skills already handle the rejection: fix what it
+   names, retry at most twice, or stop and report it on the first line.
+6. **Pipeline contract for the fleet** (`PIPELINE-CONTRACT.md`). A task the
+   fleet can drive hangs `part_of` its specification, carries exactly one
+   `road:ROAD-…` tag, `pipeline:ready` and one `priority:*`. No task is
+   `part_of` a ROAD any more: runners that discover tasks that way must read
+   the `road:` tag.
+7. **Hooks.** The local-values scan (`lvr-scan-tool-input.sh`) also covers
+   `work` calls of the Kvendra server, under any client prefix.
+
+### Added
+- **«Work cycle»** canonical block (`<!-- kvendra:work-cycle v1 -->`) in every
+  skill that calls `work`, right before «External-execution policy»: one op
+  per call with only its arguments, no 1.x fallback, how to act on
+  `next_step`, `warnings`, `hints`, `evidence_plan` and `advice_skipped`,
+  evidence, the shape of the tree, releases and `GATE_REJECTED`.
+  `help({topic:"work"})` is the reference at runtime; the pipeline-contract
+  checker keeps the block byte-identical in every carrier.
+- **Client header** `X-Kvendra-Client: kvendra-skills/2.0.0` in `.mcp.json`,
+  and the `lint-mcp-json` step «client header matches the plugin version»:
+  `plugin.json` and `marketplace.json` carry the same version, the header is
+  `kvendra-skills/<major>.0.0` (`name/x.y.z`, lower case, at most 64
+  characters, no comma) and no other header is sent. The workflow now also
+  runs when only `plugin.json` or `marketplace.json` change.
+- **`release-manager`**: action `publish <x.y.z> --members <ids>`, a project
+  release through `work` `release`; every `--auto` action ends with a
+  `RELEASE RESULT` block (REL id, status, members, missing gate, gate
+  rejection, warnings, waivers) for the calling skill.
+- **Hook fixtures** for `work`: plugin and claude.ai prefixes with a local
+  value (denied, also nested in `fields`), a clean call, no CLI, an unknown
+  or missing `op` on another server, look-alike names (`…__homework`,
+  `…__work_items`) and the `hooks.json` matcher (76 → 91 cases).
+- **Pipeline-contract checks** (`tests/pipeline-contract/run.sh`, run by
+  `hook-tests`): the fleet contract above on example ISSUEs, and five rules
+  on every SKILL.md (S1 the «Work cycle» block, S2 no `gate_log`, S3 no
+  "never blocks", S4 no REL created as `released`, S5 no `"type:task"`),
+  each proved on its own fixtures.
+- **Lint**: `work` joins the bare-name check of the «Kvendra server» block;
+  `X-Kvendra-Client` joins the allowlist of cited headers.
+
+### Changed
+- **`new-feature`**: opens the task with `start_work`, places it and adds the
+  criteria with `fill`, closes it with `finish` (evidence per criterion,
+  `txn_id` for draft RUNs), confirms the specification and publishes the
+  release only after a production deploy (a component REL through
+  `release-manager`, otherwise `work` `release`). Its gate summary comes
+  from the answers of `finish`, `confirm`, `release` and `txn_activate`.
+- **`requirements-analyst`**, **`planner`**, **`implementer`**: criteria are
+  specification items (`{text, check}`, ids `C1`… given by the engine)
+  written with `fill`; a new specification is `active`.
+- **`bug`**: one fix task per confirmed bug (`start_work` fix, with
+  `urgent` for a critical one), closed with `finish` citing the RUN that ran
+  the check; a not-a-bug or not-reproducible verdict of the `analyzer` closes
+  it `wontfix` with the reason.
+- **`to-do`**, **`to-do-summary`**, **`updater`**, **`incident-manager`**,
+  **`tester`**, **`validator`**, **`analyzer`**, **`functional-expert`**,
+  **`kvendra`**, **`k-notes`**: tasks, notes and closures follow the work
+  cycle (notes promoted with `start_work` `reuse`, discards with
+  `outcome:"wontfix"`, chores with `evidence_none`); the tester records RUN
+  entries; `to-do` emits the new fleet contract when asked.
+- **`release-manager`**: a REL points at its roadmap with `derives_from` (it
+  has no parent in the work tree). ADD takes tasks and specifications only and
+  confirms a ready specification first (`work` `confirm`). CLOSE needs at
+  least one member and every member specification confirmed, reads the
+  warnings of its write and handles `GATE_REJECTED`; a ROAD goes `done` only
+  when all its specifications are. In `--auto` a missing prerequisite is a
+  blocker the caller reports, never a silent pass. The manifest-sync
+  follow-up is a note.
+- **`deploy`**: before CLOSE, links the work the deploy ships; never
+  publishes an empty REL. A production deploy that does not end with a
+  `released` REL opens the report with `WARNING: Deploy without REL` and
+  records a note (`capture`) instead of a `type:task` ISSUE.
+- **`regression`**: a failed blocking test opens a fix task through `work`
+  (`start_work` fix, `fill` expected and check, `pause`), linked `blocks` →
+  the active REL and `affects` → the component. Its RUN points at the
+  active REL with `affects`, no longer `part_of` (the engine counts every
+  item `part_of` a REL as a release member). It now carries the
+  «Guarded update (CAS)» rule, and an `in-progress` REL counts as active.
+- **`env-check`**: check 2 checks the essential tools and `work` (FAIL
+  without it, with the restart / `/mcp` / 1.35.x message) and `help` topic
+  `work`, instead of a fixed list of 33 tools. Check 1 warns when a claude.ai
+  connector hides the plugin server and explains the one-time sign-in.
+- **`user-help`**: tasks, states and pipelines follow the work cycle; the
+  tool catalogue lists `work`; the 2.0.0 requirements are listed.
+- **`.mcp.json`**: the description no longer counts tools.
+- **Docs**: README (`work` in «Tools exposed», the header), INSTALL
+  («Upgrading to 2.0.0»), plugin README (header, `work` in the hooks).
+
+### Fixed
+- Closures cited their TEST or RUN only in the text; they now carry them in
+  `metadata.evidence` (and per criterion with `finish`).
+- Smoke and synthetic checks were recorded as tasks; they are notes now.
+- Bugs that could not be reproduced, or were not bugs, were closed `done`;
+  they are closed `wontfix` with a reason.
+- A REL could be shipped with open specifications or no member, and was
+  linked `part_of` its ROAD; it now follows planning → members → released.
+- Tasks hung `part_of` an umbrella ISSUE or a ROAD; they hang from their
+  specification, and an umbrella is `derives_from`.
+- A regression RUN was linked `part_of` the active REL, which made it a
+  member of the release; it is linked `affects` now.
+- `lint-mcp-json` did not run when a version bump touched only
+  `plugin.json` or `marketplace.json`.
+
+### Notes
+- Open sessions load 2.0.0 only after `/plugin update` (or the org sync) and
+  `/exit` + `claude --resume`; then sign in once (Migration 3).
+- The header value is fixed for the whole 2.x line on purpose: a value that
+  changed with every release would force a new sign-in on every update.
+- `kvendra-companion` is unchanged (it has its own version).
+
 ## [1.35.0] — 2026-11-19 — Skills work with any Kvendra server prefix
 
 > One hook changes (`hooks.json` matcher and `lvr-scan-tool-input.sh`). No new skills.
