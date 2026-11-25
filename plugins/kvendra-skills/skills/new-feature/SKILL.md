@@ -21,7 +21,7 @@ $ARGUMENTS
 
 ## Step 0 — Initialization
 
-1. Identify `project_id` and `component_id`(s) from the `CLAUDE.md`.
+1. Identify `project_id` and `component_id`(s) from the `CLAUDE.md`. `component_id` is the bare component code: uppercase A-Z and digits, the component segment of the ids (`TOY` in `CMP-ACME-TOY-1A2B3C`), never the CMP id and never `<PROJ>-<COMP>` (the engine rejects both).
 2. Apply **No `work`, no run** (Work cycle block below) before any write.
 3. `entity_get({ entity_id:"PRJ-<PROJ>" })` → keep `metadata.content_locale`
    as **content_locale** (only when it is absent, fall back to
@@ -52,6 +52,18 @@ v1 semantics (`autonomy_log: true`, `backlog_chaining: false`).
 
 Report the resolved mode in the progress header:
 `autonomy: zero-gate | single-gate | dual-gate (policy: <STD-id> v<N> | defaults)`.
+
+### No one to answer (non-interactive run)
+
+When no one can answer a question in this session (the request says not to
+ask, or the run is non-interactive, for example `claude -p`), a pause ends the
+session with the work half done. Then `dual` and `single` work as zero-gate
+for this run: never pause; resolve each gate and stop rule with the most
+conservative viable option and log it as an AUTONOMY_LOG line (stored as in
+zero-gate). A question only the user can answer (`NO_ROADMAP`, criteria you
+cannot infer) and a hard-floor signal are never auto-approved: take the
+**Cancel path** with that reason and report it on the first line. Report
+`autonomy: zero-gate (no one to ask)`.
 
 ### Zero-gate mode (gates.new-feature: none — schema v2 only)
 
@@ -229,7 +241,7 @@ Otherwise, exactly:
 - **The tool `work`.** Tasks, specifications, notes, decisions and project releases are written through the engine tool `work` on the Kvendra server: one call per op (`what_now`, `start_work`, `fill`, `pause`, `finish`, `confirm`, `capture`, `record_decision`, `resolve_review`, `release`, `create_structure`) with only the arguments of that op. An unknown key (for example `component_id`, `metadata`, `tags` or `updated_by`) is `INVALID_INPUT`, and `txn_id` is accepted only by `finish`, `confirm` and `release`. The contract of every op is `help({topic:"work"})`: read it before an op this skill does not show, or when an answer carries a code this skill does not explain. Never change the status of a task or a specification with `entity_update`.
 - **No `work`, no run.** If the Kvendra server does not list the tool `work`, stop before any write and tell the user: "kvendra-skills 2.0.0 needs the Kvendra tool `work`, and this session does not list it. Restart Claude Code, or run /mcp and reconnect the Kvendra server; if your Kvendra server has no `work`, keep kvendra-skills 1.35.x." There is no fallback to the 1.x flow.
 - **Answers.** Act in the same run on `next_step`, `missing`, `warnings[]` (each `{code, reason, missing, next_step}`), `hints[]`, `evidence_plan` and `advice_skipped`. An error (`{code, message, missing, next_step}`) wrote nothing: fix the input it names and retry once. `finish`, `confirm` and `release` write even when they warn: never repeat them to clear a warning; repair with `evidence_plan` (record the RUN, then cite it in the closed task with a guarded `entity_update`). Tell the user every `WAIVERS_RECORDED` and `RELEASE_WITH_WAIVERS`.
-- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`.
+- **Evidence.** Cite only the id of a TEST or RUN of this project that you created or read; never invent one, and a commit alone is not evidence. `finish` carries `evidence`, `criteria_evidence` with one entry per criterion of the specification (`"C1": "<RUN id>"`, `{"waive": "<reason, 5+ words>"}` only when the user decides it, or `"pending"` while another open task of the same specification covers it) and `txn_id` when the RUN is a draft of your TXN. A closure written with `entity_update` also lists its TEST or RUN ids in `metadata.evidence`. A discard (`finish` with `outcome: "wontfix"`) carries no `evidence`, no `criteria_evidence` and no `metadata.evidence` (the engine rejects `evidence` there with `INVALID_INPUT`): name the DOC or RUN that shows why in its `reason`; they keep their `affects` link to the task. `criteria_evidence` takes one id per criterion: the RUN that checks every part of it; never keep a second RUN for a criterion in other metadata.
 - **Shape.** A feature task hangs from its specification (`part_of` the REQ, set by `fill`), and the specification from an epic or a roadmap; a link to an umbrella ISSUE is `derives_from`, never `part_of`. A smoke test, a synthetic check or a follow-up idea is a note (`capture`), not a task. A bug that is not a bug, or that cannot be reproduced, is closed with `finish` and `outcome: "wontfix"` plus a `reason` of 5+ words, never as `done`.
 - **Releases.** Confirm the member specifications before publishing. A project release is `work` `release`; a component release (`REL-<PROJ>-<COMP>-<VER>`) is created with `entity_create` in `planning`, gets its members with `part_of`, and only then moves to `released`. Never create a REL directly as `released`.
 - **Enforced gates.** Today `finish`, `confirm` and `release` only advise. When the engine enforces its gates, a closure, a `txn_activate` or a release can fail with `GATE_REJECTED`: nothing was written. Read its `code`, `problems`, `next_step` and `evidence_plan`, do what they name (record and cite the RUN, answer the criterion, confirm the specification) and retry, at most twice; then stop and report it on the first line. Never report a rejected write as done. After a production deploy, a release that did not end `released` is a blocker you report first, not a footnote.
@@ -245,7 +257,7 @@ pointing to the required broker primitive.
 
 ## Ids and hand-offs
 
-Every launch carries `project_id`, `component_id`, content_locale,
+Every launch carries `project_id`, `component_id` (the bare code, never the CMP id), content_locale,
 `txn_id` and `work_id` (+ the CONTEXT_PACK when enabled) plus the ids below.
 Each subagent returns ids, not prose: a phase that does not return the id
 it owes has failed.
@@ -273,6 +285,7 @@ For each PHASE, launch one Agent whose prompt asks it to run the skill
 `kvendra-skills:<name>` with the Skill tool, followed by its arguments: the
 context and the ids above. Capture its output (the machine-output block when
 the skill has one) and report progress. On failure: **Cancel path**.
+Launch every Agent with `run_in_background: false`: the run waits for each result before it goes on (several Agent calls in one message still run in parallel).
 
 ---
 
@@ -311,7 +324,8 @@ and the criteria ids. With a blocking alarm it returns the `fill` payload
 unsent: send it yourself (`work({ op:"fill", work_id, fields })`) once the
 user decides (zero-gate: once auto-resolved).
 
-Engine questions, in every mode: `NO_ROADMAP` → ask the user in one
+Engine questions, in every mode (with no one to answer, see «No one to
+answer»: `NO_ROADMAP` takes the Cancel path): `NO_ROADMAP` → ask the user in one
 sentence what they want to achieve; after their answer,
 `work({ op:"create_structure", project_id, roadmap:"<title>" })` and repeat
 the fill. `ROADMAP_AMBIGUOUS` → ask which roadmap (zero-gate: the best title

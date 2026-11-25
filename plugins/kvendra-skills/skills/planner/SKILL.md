@@ -20,7 +20,7 @@ $ARGUMENTS
 
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` and the affected `component_id`(s) from the `CLAUDE.md`.
+Identify `project_id` and the affected `component_id`(s) from the `CLAUDE.md`. `component_id` is the bare component code: uppercase A-Z and digits, the component segment of the ids (`TOY` in `CMP-ACME-TOY-1A2B3C`), never the CMP id and never `<PROJ>-<COMP>` (the engine rejects both).
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)

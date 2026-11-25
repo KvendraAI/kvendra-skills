@@ -50,7 +50,8 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
   component code — uppercase A-Z + digits, NO project prefix and NO hyphens
-  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"` and never the CMP id: `TOY`, not
+  `CMP-ACME-TOY-1A2B3C`) — when the entity belongs to one
   specific component; **OMIT the key entirely** when it is genuinely
   project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
   Never invent a component to fill the field and never pass `null` (`null` is
