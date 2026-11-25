@@ -18,7 +18,7 @@ $ARGUMENTS
 
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` and `component_id` from the `CLAUDE.md`.
+Identify `project_id` and `component_id` from the `CLAUDE.md`. `component_id` is the bare component code: uppercase A-Z and digits, the component segment of the ids (`TOY` in `CMP-ACME-TOY-1A2B3C`), never the CMP id and never `<PROJ>-<COMP>` (the engine rejects both).
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)
@@ -40,6 +40,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 - Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - If an error returns `error.help.topic`, call `help({topic})`. Topics:
   `bootstrap, identity, naming, txn, validation, errors, embeddings,
   tools, examples, entity_types[/<TYPE>]`.

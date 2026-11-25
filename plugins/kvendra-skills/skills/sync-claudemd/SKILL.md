@@ -251,7 +251,7 @@ If the STD read in Step 6.1 carries `metadata.broker_install_skipped: true`, the
 
 ### Step 6.2 — Optionally merge a CMP-level override
 
-If a component context is in scope (cwd inside a known `CMP.metadata.workspace_subdir`), also query:
+If a component context is in scope (cwd inside a known `CMP.metadata.workspace_subdir`), also query with `component_id` set to the bare component code (uppercase A-Z and digits, the component segment of the ids: `TOY` in `CMP-ACME-TOY-1A2B3C`; never the CMP id and never `<PROJ>-<COMP>`, which the engine rejects):
 
 ```
 entity_query({

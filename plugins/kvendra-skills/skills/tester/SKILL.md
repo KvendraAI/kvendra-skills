@@ -25,7 +25,7 @@ bugs; `verify`: run the tests of a change), `work_id`, `test_command`,
 
 ## Step 0 — Kvendra initialization
 
-Identify `project_id` and `component_id` from the arguments or the `CLAUDE.md`.
+Identify `project_id` and `component_id` from the arguments or the `CLAUDE.md`. `component_id` is the bare component code: uppercase A-Z and digits, the component segment of the ids (`TOY` in `CMP-ACME-TOY-1A2B3C`), never the CMP id and never `<PROJ>-<COMP>` (the engine rejects both).
 
 <!-- kvendra:kb-server v1 -->
 ## Kvendra server (canonical block — edit it in every carrier or in none)
@@ -38,6 +38,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
 - Subagent → receives `txn_id` via args and does NOT open/close the TXN. Every entity you create carries that `txn_id` (it is born a draft). You never call `work` ops that change status (`start_work`, `fill`, `finish`, `confirm`, `pause`): the orchestrator does.
 - Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - Language: write titles and prose in the `content_locale` you receive (the project's language); code, commands and logs go inside fenced code blocks.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
@@ -152,6 +153,22 @@ pointing to the required broker primitive.
   STD/CMP) at the commit you received; if none was given, read it with a
   read-only git command and record it. Map each criterion id you received to
   the tests that check it; for a fix, confirm the test of the `check` ran.
+  Each criterion maps to ONE RUN in `criteria_runs` (the engine takes one id
+  per criterion): when a criterion has several parts (tests plus a
+  documentation check, for example), check every part in the same execution
+  and record it as one RUN whose `command` lists each command in order; never
+  leave a second RUN for the same criterion outside `criteria_runs`.
+- **How to run a command.** Run it exactly as you received it (`test_command`,
+  the `check`), with the repository root of the component as the working
+  directory; when the session runs elsewhere, the one allowed form is
+  `cd <repo root> && <command>`: no `--prefix <dir>`, no variable assignment in
+  front of it, no other rewrite. Permission rules match the literal command, so a rewritten one
+  can be denied where the original runs. A command that is denied or cannot
+  start is reported word for word (the command and the denial) under
+  **Failures and blockers**, and gets no RUN: a RUN records only what ran. A
+  different command you run instead is a RUN of its own, with that literal
+  command, reported as a substitute. Never say a command ran, or that nobody
+  could run it, unless you saw it.
 - `explore`: run each flow of the plan in order; for each failure write the
   bug in one line: what happens, what should happen, where.
 - Capture evidence (output excerpt, screenshots); heavy evidence follows

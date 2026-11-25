@@ -4,6 +4,65 @@ All notable changes to the `kvendra-skills` plugin are recorded here.
 Each release also has a canonical `REL-KVD-SKILLS-<VER>` entity in the
 Kvendra KB with the same content plus traceability links.
 
+## [2.0.1] — 2026-11-25 — Fixes from the 2.0.0 end-to-end runs
+
+> Patch release. Skill text only: no new skills, no hook change, no engine
+> contract change. `.mcp.json` is unchanged and still sends
+> `X-Kvendra-Client: kvendra-skills/2.0.0` (the header carries the major
+> version only), so updating from 2.0.0 does not ask you to sign in again.
+> `CLAUDE.md.template` does not change: `lint-claudemd` reports no drift.
+> Tracking: ISSUE-KVD-SKILLS-16FE9C.
+
+### Fixed
+- **`component_id` is the bare component code.** The skills that pass a
+  component now say it where they identify it: uppercase A-Z and digits, the
+  component segment of the ids (`TOY` in `CMP-ACME-TOY-1A2B3C`), never the
+  CMP id and never `<PROJ>-<COMP>`. The end-to-end runs passed the CMP id to
+  `txn_check_interrupted` and to `entity_create` (DOC, RUN) and the engine
+  refused it (`component_id` must be A-Z + digits). `new-feature` and `bug`
+  repeat it in what they hand to their subagents; `deploy` says it when its
+  input is a full CMP id.
+- **A discard carries no evidence.** `finish` with `outcome: "wontfix"`
+  takes a `reason` and no `evidence` (the engine answers `INVALID_INPUT`
+  otherwise). The **Evidence** rule of the work-cycle block and `bug`
+  PHASE 3 now say so: name the DOC or RUN that shows why inside the
+  `reason`; they keep their `affects` link to the task.
+- **`tester` runs commands as given.** It runs `test_command` and the
+  `check` exactly as received, with the repository root as the working
+  directory (elsewhere only `cd <repo root> && <command>`; no `--prefix`), reports a denied command
+  word for word and records no RUN for a command that did not run.
+  `validator` follows the same rule.
+- **`updater` writes no local paths into a CMP.** A path in a CMP's
+  `content` or `metadata.workspace_subdir` is relative to the workspace; an
+  absolute path found there is not copied, and becomes a note.
+
+### Changed
+- **No one to answer.** In a session where no one can answer (the request
+  says not to ask, or a non-interactive run such as `claude -p`), `new-feature`
+  and `bug` no longer pause: their gates and stop rules resolve as in
+  zero-gate mode and are logged in the AUTONOMY_LOG. A hard-floor signal, or
+  a question only the user can answer, is never approved on its own:
+  `new-feature` takes the Cancel path and `bug` pauses the task, and both say
+  so in the first line of their report.
+- **`bug` follow-ups are notes written with `new:true`**, as in
+  `new-feature` PHASE 7, after checking `what_now` notes.
+- **Foreground subagents.** `new-feature` and `bug` launch every Agent
+  with `run_in_background: false`, so a headless run ends with one result.
+- **One RUN per criterion.** `criteria_evidence` takes one id per
+  criterion: the work-cycle block, `tester` and `validator` ask for one RUN
+  that checks every part of a criterion, never a second RUN kept in other
+  metadata.
+- Every skill's Kvendra rules say `entity_query` is never asked for
+  `metadata` or `content` in `fields` (the engine refuses them): read them
+  with `entity_get`.
+
+### Notes
+- The `kvendra:work-cycle v1` block changed in its **Evidence** bullet; every
+  carrier and `tests/pipeline-contract/work-cycle-block.md` changed with it.
+- Not changed here: the title of a task promoted from a note is derived by
+  the engine from the note text (`capture` has no title argument), so its
+  200-character cut belongs to the engine.
+
 ## [2.0.0] — 2026-11-24 — Skills run on the Kvendra work cycle
 
 > Major release. The skills write tasks, specifications, notes, decisions and

@@ -43,6 +43,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   Subagent → receives `txn_id` via args and does NOT open/close the TXN.
 - Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - If an error returns `error.help.topic`, call `help({topic})`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a

@@ -48,9 +48,11 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 - Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
   component code — uppercase A-Z + digits, NO project prefix and NO hyphens
-  (e.g. `"SKILLS"`, never `"KVD-SKILLS"`) — when the entity belongs to one
+  (e.g. `"SKILLS"`, never `"KVD-SKILLS"` and never the CMP id: `TOY`, not
+  `CMP-ACME-TOY-1A2B3C`) — when the entity belongs to one
   specific component; **OMIT the key entirely** when it is genuinely
   project-wide (a cross-component ADR/ROAD, a project-level docs book, `PRJ`).
   Never invent a component to fill the field and never pass `null` (`null` is
