@@ -39,6 +39,7 @@ language.
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
 - **Work cycle** — tasks change status only through `work` (`start_work`, `pause`, `finish`, also to discard); never through `entity_update`. The only status this skill writes with `entity_update` is the closure of a note (`done` with `metadata.reason`). Never create an ISSUE with `entity_create`, and never link a task `part_of` a ROAD (`INVALID_PARENT`) or `part_of` an umbrella ISSUE: a feature hangs from a specification through `fill`. The **Work cycle** block below has the rules every `work` call follows; the contract of each op is `help({topic:"work"})`.
 - Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`

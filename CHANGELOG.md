@@ -52,9 +52,9 @@ Kvendra KB with the same content plus traceability links.
   criterion: the work-cycle block, `tester` and `validator` ask for one RUN
   that checks every part of a criterion, never a second RUN kept in other
   metadata.
-- `tester` and `validator` never ask `entity_query` for `metadata` or
-  `content` in `fields` (the engine refuses them); they read with
-  `entity_get`.
+- Every skill's Kvendra rules say `entity_query` is never asked for
+  `metadata` or `content` in `fields` (the engine refuses them): read them
+  with `entity_get`.
 
 ### Notes
 - The `kvendra:work-cycle v1` block changed in its **Evidence** bullet; every

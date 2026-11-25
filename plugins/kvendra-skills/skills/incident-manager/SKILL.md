@@ -51,6 +51,7 @@ block below and stop before any write.
 - Before opening a TXN: `txn_check_interrupted(project_id, component_id?)`.
   If an in-progress TXN exists: Resume / Cancel / Ignore.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - **`component_id` is an explicit decision, never a guess.** Pass the bare
   component code — uppercase A-Z + digits, NO project prefix and NO hyphens
   (e.g. `"SKILLS"`, never `"KVD-SKILLS"` and never the CMP id: `TOY`, not

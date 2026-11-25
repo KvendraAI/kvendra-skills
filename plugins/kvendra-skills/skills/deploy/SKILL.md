@@ -47,6 +47,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   for the whole transaction. The top-level `trigger` parameter records what caused the change.
 - This skill does NOT open a TXN by default — a deploy is a runtime operation, not a structural change. Optional: open a TXN if the playbook itself creates KB entities (rare; only some `STD-*-DEPLOY-PROCESS` variants do this).
 - On any error with `error.help.topic`: call `help({topic})`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`

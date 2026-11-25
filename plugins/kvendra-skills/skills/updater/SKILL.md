@@ -56,6 +56,7 @@ below. You only read with `work` (`what_now`).
   hint; a status change is evaluated. Statuses of tasks and specifications
   belong to `work`.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - If an error or warning carries `help.topic` or `next_step`, follow it
   (`help({topic})`; topics `work`, `gates`, `validation`, `errors`).
 - **Private values** — never write private identifiers (account ids, local

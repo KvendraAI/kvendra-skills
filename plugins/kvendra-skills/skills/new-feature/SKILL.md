@@ -127,6 +127,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   never calls `start_work`, `finish` or `confirm`.
 - Tasks and specifications written by `work` are live at once; the RUN, TEST and DOC of subagents are drafts in the TXN; `finish` and `confirm` carry `txn_id` so draft evidence counts.
 - Entity IDs are emitted by the server. Exception: `PRJ`/`CMP`/`REL` require `force_id`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - If an error or warning carries `help.topic` or `next_step`, follow it
   (`help({topic})`; topics `work`, `gates`, `txn`, `validation`, `errors`).
 - **Private values** — never write private identifiers (account ids, local

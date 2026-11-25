@@ -48,6 +48,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
   the TXN and never calls `start_work`, `finish` or `confirm`.
 - If an error or warning carries `help.topic` or `next_step`, follow it
   (`help({topic})`; topics `work`, `gates`, `validation`, `errors`).
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`

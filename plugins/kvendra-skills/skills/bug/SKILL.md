@@ -126,6 +126,7 @@ what is missing or suspect — the pack is an optimization, not a cage."
 - **Work cycle** — tasks change status only through `work` (`start_work`, `fill`, `pause`, `finish`); never through `entity_update`. Ids of open work and open notes come from `work({ op:"what_now", project_id })`. The **Work cycle** block below has the rules every `work` call follows; the contract of each op is `help({topic:"work"})`.
 - Orchestrator → `txn_create` before creating entities, close with `txn_activate` (success) or `txn_cancel(reason)` (failure). Subagent → receives `txn_id` via args and does NOT open/close the TXN. RUN and DOC written with `txn_id` are drafts until `txn_activate`; tasks written by `work` are live at once.
 - Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
   reference `{{cfg:<key>}}` (key `[a-z0-9][a-z0-9._-]{0,127}`). `entity_get`

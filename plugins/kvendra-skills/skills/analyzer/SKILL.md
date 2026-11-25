@@ -32,6 +32,7 @@ Engine calls in this skill use the bare tool name (`entity_get(...)`, `txn_creat
 - Identify yourself on every write with `metadata.updated_by: "skill:<this-skill>"` (a skill convention: the engine derives the actor from your credential and ignores a top-level `updated_by`).
 - Subagent → receives `txn_id` via args and does NOT open/close the TXN. Every entity you create carries that `txn_id` (it is born a draft). You never call `work` ops that change status (`start_work`, `fill`, `finish`, `confirm`, `pause`): the orchestrator does.
 - Entity IDs are emitted by the server. If an error returns `error.help.topic`, call `help({topic})`.
+- `entity_query` lists rows (ids, titles, tags, versions): never ask it for `metadata` or `content` in `fields` (the engine refuses them as not served). Read them with `entity_get`.
 - Language: write titles and prose in the `content_locale` you receive (the project's language); code, commands and logs go inside fenced code blocks.
 - **Private values** — never write private identifiers (account ids, local
   paths, profile ids, person names, case numbers…) into KB text: write a
